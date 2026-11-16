@@ -19,54 +19,61 @@ async function setupDb(){
   if(!process.env.DATABASE_URL){console.log('Database not configured. Using development-only memory store.');return;}
   const {Pool}=await import('pg');
   pg=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DB_SSL==='require'?{rejectUnauthorized:true}:undefined,max:5,connectionTimeoutMillis:5000});
-  await pg.query(`CREATE TABLE IF NOT EXISTS uic_projects (
-    id UUID PRIMARY KEY, visitor_id TEXT NOT NULL, title TEXT NOT NULL, brief TEXT NOT NULL,
-    recommendation JSONB NOT NULL, messages JSONB NOT NULL DEFAULT '[]',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-    CREATE INDEX IF NOT EXISTS uic_projects_visitor_idx ON uic_projects(visitor_id,updated_at DESC);
-    CREATE TABLE IF NOT EXISTS uic_profiles (visitor_id TEXT PRIMARY KEY, style_weights JSONB NOT NULL DEFAULT '{}', global_opt_in BOOLEAN NOT NULL DEFAULT FALSE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-    CREATE TABLE IF NOT EXISTS uic_feedback (id UUID PRIMARY KEY,visitor_id TEXT NOT NULL,project_id UUID NOT NULL,style_id TEXT NOT NULL,reaction TEXT NOT NULL,detail TEXT NOT NULL DEFAULT '',eligible_global BOOLEAN NOT NULL DEFAULT FALSE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+  const schema=await pg.query(`SELECT
+    to_regclass('frontline.uic_projects') IS NOT NULL AS projects,
+    to_regclass('frontline.uic_profiles') IS NOT NULL AS profiles,
+    to_regclass('frontline.uic_feedback') IS NOT NULL AS feedback,
+    to_regclass('frontline.design_sources') IS NOT NULL AS library`);
+  if(Object.values(schema.rows[0]||{}).some(v=>v!==true)){
+    throw new Error('Frontline schema is incomplete. Apply frontline_private_foundation migration first.');
+  }
   console.log('PostgreSQL persistence is active.');
+}
+async function listReferences(){
+  if(!pg) return REFERENCES;
+  const result=await pg.query(`SELECT id,name,site,award,category,styles,tags,rank,score
+    FROM frontline.design_sources WHERE active = true ORDER BY rank ASC NULLS LAST, name ASC LIMIT 250`);
+  return result.rows;
 }
 async function profile(owner){
   if(!pg)return guests.get(owner)||{styleWeights:{},globalOptIn:false};
-  const r=await pg.query('SELECT style_weights,global_opt_in FROM uic_profiles WHERE visitor_id=$1',[owner]);
+  const r=await pg.query('SELECT style_weights,global_opt_in FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
   return r.rows[0]?{styleWeights:r.rows[0].style_weights,globalOptIn:r.rows[0].global_opt_in}:{styleWeights:{},globalOptIn:false};
 }
 async function saveProfile(owner,p){
   if(!pg){guests.set(owner,p);return;}
-  await pg.query(`INSERT INTO uic_profiles(visitor_id,style_weights,global_opt_in) VALUES($1,$2,$3)
+  await pg.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in) VALUES($1,$2,$3)
   ON CONFLICT(visitor_id) DO UPDATE SET style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,[owner,JSON.stringify(p.styleWeights),p.globalOptIn]);
 }
 async function saveProject(owner,p){
   if(!pg){live.set(p.id,{...p,owner});return;}
-  await pg.query(`INSERT INTO uic_projects(id,visitor_id,title,brief,recommendation,messages) VALUES($1,$2,$3,$4,$5,$6)`,[p.id,owner,p.title,p.brief,JSON.stringify(p.recommendations),JSON.stringify(p.messages)]);
+  await pg.query(`INSERT INTO frontline.uic_projects(id,visitor_id,title,brief,recommendation,messages) VALUES($1,$2,$3,$4,$5,$6)`,[p.id,owner,p.title,p.brief,JSON.stringify(p.recommendations),JSON.stringify(p.messages)]);
 }
 async function getProject(owner,id){
   if(!pg){const p=live.get(id);return p?.owner===owner?p:null;}
-  const r=await pg.query(`SELECT id,title,brief,recommendation AS recommendations,messages,created_at AS "createdAt" FROM uic_projects WHERE id=$1 AND visitor_id=$2`,[id,owner]);
+  const r=await pg.query(`SELECT id,title,brief,recommendation AS recommendations,messages,created_at AS "createdAt" FROM frontline.uic_projects WHERE id=$1 AND visitor_id=$2`,[id,owner]);
   return r.rows[0]||null;
 }
 async function updateMessages(owner,id,messages){
   if(!pg){const p=live.get(id);if(p?.owner===owner){p.messages=messages;live.set(id,p);}return;}
-  await pg.query('UPDATE uic_projects SET messages=$1,updated_at=NOW() WHERE id=$2 AND visitor_id=$3',[JSON.stringify(messages),id,owner]);
+  await pg.query('UPDATE frontline.uic_projects SET messages=$1,updated_at=NOW() WHERE id=$2 AND visitor_id=$3',[JSON.stringify(messages),id,owner]);
 }
 async function listProjects(owner){
   if(!pg)return [...live.values()].filter(x=>x.owner===owner).reverse().slice(0,50).map(({owner:_,...p})=>p);
-  const r=await pg.query('SELECT id,title,brief,recommendation AS recommendations,created_at AS "createdAt" FROM uic_projects WHERE visitor_id=$1 ORDER BY updated_at DESC LIMIT 50',[owner]);
+  const r=await pg.query('SELECT id,title,brief,recommendation AS recommendations,created_at AS "createdAt" FROM frontline.uic_projects WHERE visitor_id=$1 ORDER BY updated_at DESC LIMIT 50',[owner]);
   return r.rows;
 }
 async function addVote(owner,id,style,reaction,detail,p){
   if(!pg){votes.push({owner,id,style,reaction,detail,optIn:p.globalOptIn});return;}
-  await pg.query('INSERT INTO uic_feedback(id,visitor_id,project_id,style_id,reaction,detail,eligible_global) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),owner,id,style,reaction,detail,p.globalOptIn]);
+  await pg.query('INSERT INTO frontline.uic_feedback(id,visitor_id,project_id,style_id,reaction,detail,eligible_global) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),owner,id,style,reaction,detail,p.globalOptIn]);
 }
 async function insights(){
-  const counts=pg?(await pg.query(`SELECT style_id,COUNT(DISTINCT visitor_id)::int AS people FROM uic_feedback WHERE eligible_global=true AND reaction='like' GROUP BY style_id`)).rows:votes.filter(v=>v.optIn&&v.reaction==='like').reduce((arr,v)=>{let x=arr.find(i=>i.style_id===v.style);if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}x.owners.add(v.owner);return arr},[]).map(x=>({style_id:x.style_id,people:x.owners.size}));
+  const counts=pg?(await pg.query(`SELECT style_id,COUNT(DISTINCT visitor_id)::int AS people FROM frontline.uic_feedback WHERE eligible_global=true AND reaction='like' GROUP BY style_id`)).rows:votes.filter(v=>v.optIn&&v.reaction==='like').reduce((arr,v)=>{let x=arr.find(i=>i.style_id===v.style);if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}x.owners.add(v.owner);return arr},[]).map(x=>({style_id:x.style_id,people:x.owners.size}));
   return counts.filter(x=>x.people>=5).map(x=>({style:x.style_id,people:x.people}));
 }
 async function eraseProfile(owner){
   if(!pg){guests.delete(owner);for(const [id,p] of live){if(p.owner===owner)live.delete(id)}for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
-  await pg.query('DELETE FROM uic_feedback WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM uic_projects WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM uic_profiles WHERE visitor_id=$1',[owner]);
+  await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_projects WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
 }
 function cookie(req,res){
   const pairs=Object.fromEntries((req.headers.cookie||'').split(';').map(v=>v.trim().split('=').map(decodeURIComponent)).filter(a=>a.length===2));
@@ -124,7 +131,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.url?.startsWith('/api/')){
       if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
       if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{aiEnabled:!!process.env.OPENROUTER_API_KEY,persistent:!!pg,version:'0.3.1'});
-      if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:REFERENCES,source:'https://www.webdesignawards.io/categories/ui-ux-design'});
+      if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
         const data=await readBody(req);const old=await profile(owner);
@@ -138,7 +145,7 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&req.url==='/api/projects')return json(res,200,{projects:await listProjects(owner)});
       if(req.method==='POST'&&req.url==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
-        const prefs=await profile(owner);const recommendations=recommend(b.brief,prefs);const id=crypto.randomUUID();
+        const prefs=await profile(owner);const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
         await saveProject(owner,p);return json(res,201,{project:p});
       }
@@ -157,7 +164,9 @@ const server=http.createServer(async(req,res)=>{
         }
         if(req.method==='POST'&&action==='/export'){
           const b=await readBody(req);if(!Array.isArray(b.styles)||!b.styles.length||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Choose at least one design.'});
-          return json(res,200,{prompt:exportPrompt(p,b.styles)});
+          const prompt=exportPrompt(p,b.styles);
+          if(pg)await pg.query('INSERT INTO frontline.generated_prompts(project_id,visitor_id,prompt_type,prompt_text,styles) VALUES($1,$2,$3,$4,$5)',[id,owner,b.styles.length>1?'fusion':'select',prompt,b.styles]);
+          return json(res,200,{prompt});
         }
       }
       if(req.method==='POST'&&req.url==='/api/feedback'){
