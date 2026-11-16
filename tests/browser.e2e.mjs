@@ -21,6 +21,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
     await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
     await page.waitForTimeout(1500);
+    assert.equal(await page.locator('.brand-mark .fl-monogram').count(),1,'Header must show branded F');
     await page.screenshot({path:'browser-artifacts/'+name+'-landing.png',fullPage:false});
     if(await page.locator('.fl-world').count()){
       assert.ok((await page.title()).includes('Frontline UX/UI'));
@@ -68,6 +69,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await page.locator('.composer textarea').press('Enter');
     await page.locator('.message-row.outgoing').first().waitFor({timeout:12000});
     await page.locator('.message-row.incoming').first().waitFor({timeout:12000});
+    assert.ok(await page.locator('.message-avatar .fl-monogram').count()>=1,'AI avatar must use F mark');
     await page.locator('.result-message').first().waitFor({timeout:12000});
     const selectAll=page.getByRole('button',{name:/Select all three/i});
     await selectAll.click();
@@ -92,6 +94,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await mobile.waitForTimeout(1500);
       await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-landing.png',fullPage:false});
       assert.equal(await mobile.locator('.fl-chapter-0').count(),1);
+      assert.equal(await mobile.evaluate(()=>[...document.querySelectorAll('.fl-fluid-canvas')].every(c=>c.width===300)),true,'Mobile should use lightweight CSS solar fallback');
       if(!remote){
         await mobile.locator('.composer textarea').focus();
         await mobile.locator('.studio-title').waitFor({timeout:7000});
