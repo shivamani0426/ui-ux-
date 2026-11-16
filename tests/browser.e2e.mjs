@@ -25,9 +25,10 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     assert.equal(await page.locator('.composer textarea').count(),0,name+' chat must be absent while the portal is locked');
     assert.equal(await page.locator('.fl-world').getAttribute('inert'),'',
       name+' pre-landing story must be inert until the portal opens');
-    await page.evaluate(()=>window.scrollTo({top:420,behavior:'instant'}));
-    await page.waitForTimeout(80);
-    assert.equal(await page.evaluate(()=>window.scrollY),0,'Dome gate should lock landing scroll');
+    await page.mouse.move(24,Math.round(page.viewportSize().height/2));
+    await page.mouse.wheel(0,420);
+    await page.waitForTimeout(100);
+    assert.equal(await page.evaluate(()=>window.scrollY),0,'Dome gate should lock user-initiated wheel scrolling');
     await page.screenshot({path:'browser-artifacts/'+name+'-golden-dome-entry.png',fullPage:false});
     await page.locator('.fl-dome-trigger').hover(); // No click: pointer-enter must open the portal.
     await page.locator('.fl-dome-portal.is-opening').waitFor({timeout:4000});
