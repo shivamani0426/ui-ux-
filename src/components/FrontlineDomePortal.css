@@ -242,3 +242,92 @@
   background:#000;
   transition:none;
 }
+
+
+/* MINIMAL MONUMENT / F-dome. Replace round dome visuals only; keep the
+   tested click -> 2.7s charging -> 4.2s aperture choreography intact. */
+.fl-dome-portal{background:#030303}
+.fl-dome-ambient{
+ background:radial-gradient(ellipse 32% 37% at 50% 50%,#08090a 0%,#040404 54%,#030303 100%)
+}
+.fl-dome-ambient::after{display:none}
+.fl-dome-centre{padding:0;transform:none}
+.fl-dome-trigger{
+ width:clamp(245px,43vmin,420px);
+ margin:0;cursor:pointer;outline-offset:11px
+}
+.fl-dome-trigger:focus-visible{outline:2px solid #eee}
+.fl-dome-disc{isolation:isolate}
+.fl-dome-portal-orb{
+ inset:0;top:0;left:0;width:100%;height:100%;
+ background:transparent!important;box-shadow:none!important;
+ border-radius:0;overflow:visible;
+ transform:none;will-change:auto
+}
+.fl-dome-f-sculpture{
+ display:block;width:100%;height:100%;overflow:visible;
+ filter:drop-shadow(6px 13px 6px rgba(0,0,0,.95))
+   drop-shadow(-1px -1px 5px rgba(180,185,200,.045));
+ transform:translate3d(0,0,0)
+}
+.fl-dome-ring{opacity:0;border-color:rgba(255,255,255,0);transition:opacity 1.1s ease-out}
+.fl-dome-ring-outer{inset:-2%}
+.fl-dome-ring-middle{inset:10%}
+.fl-dome-ring-inner{inset:24%}
+.fl-dome-portal.is-charging .fl-dome-ring,
+.fl-dome-portal.is-opening .fl-dome-ring{opacity:.72}
+.fl-dome-portal:not(.is-charging):not(.is-opening) .fl-dome-trigger:is(:hover,:focus-visible) .fl-dome-ring-middle{
+ opacity:0
+}
+.fl-dome-portal.is-charging .fl-dome-portal-orb{animation:none}
+.fl-dome-portal.is-charging .fl-dome-f-sculpture{
+ animation:fl-f-white-charge 2700ms cubic-bezier(.25,.5,.18,1) both
+}
+.fl-dome-portal.is-charging .fl-dome-f-body path:first-child{
+ animation:fl-f-edge-ignite 2700ms ease-in-out both
+}
+.fl-dome-portal.is-opening .fl-dome-portal-orb{box-shadow:none!important}
+.fl-dome-portal.is-opening .fl-dome-f-sculpture{
+ filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 21px rgba(255,255,255,.91))
+   drop-shadow(0 0 52px rgba(255,255,255,.50))
+}
+.fl-dome-floor-reflection{
+ bottom:7%;left:24%;right:24%;height:2%;
+ background:radial-gradient(ellipse at 50% 50%,rgba(64,66,70,.22),transparent 74%);
+ box-shadow:none;opacity:.35;filter:blur(10px)
+}
+.fl-dome-white-aura{
+ z-index:-1;inset:-28%;
+ background:radial-gradient(circle,rgba(255,255,255,.23) 0%,rgba(255,255,255,.06) 33%,transparent 67%)
+}
+@keyframes fl-f-white-charge{
+ 0%{filter:drop-shadow(6px 13px 6px rgba(0,0,0,.95))
+   drop-shadow(-1px -1px 5px rgba(180,185,200,.045))}
+ 35%{filter:drop-shadow(0 0 3px rgba(255,255,255,.25))
+   drop-shadow(0 0 13px rgba(255,255,255,.25))}
+ 72%{filter:drop-shadow(0 0 6px rgba(255,255,255,.76))
+   drop-shadow(0 0 24px rgba(255,255,255,.57))}
+ 100%{filter:drop-shadow(0 0 9px #fff)
+   drop-shadow(0 0 27px rgba(255,255,255,.88))
+   drop-shadow(0 0 58px rgba(255,255,255,.49))}
+}
+@keyframes fl-f-edge-ignite{
+ 0%{stroke:#3b3d41}
+ 55%{stroke:#92989c}
+ 100%{stroke:#fff}
+}
+@media(max-width:700px){
+ .fl-dome-trigger{width:min(80vw,370px)}
+ .fl-dome-centre{transform:none}
+}
+@media(max-height:680px){
+ .fl-dome-trigger{width:min(58vh,310px)}
+ .fl-dome-centre{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+ .fl-dome-portal.is-charging .fl-dome-f-sculpture,
+ .fl-dome-portal.is-charging .fl-dome-f-body path:first-child{animation:none}
+ .fl-dome-portal.is-charging .fl-dome-f-sculpture{
+  filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 26px rgba(255,255,255,.7))
+ }
+}
