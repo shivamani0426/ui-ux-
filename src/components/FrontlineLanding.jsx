@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUpRight } from 'lucide-react';
 import SolarFluidCanvas from './SolarFluidCanvas.jsx';
+import FrontlineMark from './FrontlineMark.jsx';
 import './FrontlineLanding.css';
 
 // Original Frontline visual scene: no artwork, fonts or animation code copied from the reference.
@@ -87,7 +88,7 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
       <div className="fl-clouds"/>
       <div className="fl-shimmer"/>
     </div>
-    <div className="fl-corner-label fl-corner-left">AN INFINITE FIELD OF POSSIBILITY <span>✳</span></div>
+    <div className="fl-corner-label fl-corner-left">AN INFINITE FIELD OF POSSIBILITY <span className="fl-corner-monogram"><FrontlineMark size={22}/></span></div>
     <div className="fl-corner-label fl-corner-right">DESIGN INTELLIGENCE — EST. 2026</div>
     <div className="fl-chapter-content" key={chapter.no} aria-live="off">
       <p className="fl-overline"><span className="fl-overline-dot"/> {chapter.overline}</p>
