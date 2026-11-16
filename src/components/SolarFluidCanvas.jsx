@@ -77,8 +77,9 @@ export default function SolarFluidCanvas({mode='sun'}){
   const ref=useRef(null);
   useEffect(()=>{
     const canvas=ref.current;
-    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if(!canvas || reduced) return;
+    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce), (pointer: coarse), (max-width: 700px)')?.matches;
+    const lowPower=(navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || navigator.connection?.saveData;
+    if(!canvas || reduced || lowPower) return;
     const gl=canvas.getContext('webgl',{alpha:true,antialias:false,premultipliedAlpha:false,preserveDrawingBuffer:false});
     if(!gl) return;
     const v=shader(gl,gl.VERTEX_SHADER,VERTEX);
@@ -114,13 +115,13 @@ export default function SolarFluidCanvas({mode='sun'}){
     const paint=(time)=>{
       if(!running)return;
       raf=requestAnimationFrame(paint);
-      if(!visible || document.hidden || time-lastDraw<30)return;
+      if(!visible || document.hidden || time-lastDraw<40)return;
       lastDraw=time;
       const rect=canvas.getBoundingClientRect();
       if(rect.width<2||rect.height<2)return;
-      const dpr=Math.min(window.devicePixelRatio||1,1.5);
-      const width=Math.max(1,Math.min(1150,Math.round(rect.width*dpr)));
-      const height=Math.max(1,Math.min(800,Math.round(rect.height*dpr)));
+      const dpr=Math.min(window.devicePixelRatio||1,1.25);
+      const width=Math.max(1,Math.min(900,Math.round(rect.width*dpr)));
+      const height=Math.max(1,Math.min(620,Math.round(rect.height*dpr)));
       if(canvas.width!==width||canvas.height!==height){
         canvas.width=width;canvas.height=height;
         gl.viewport(0,0,width,height);
