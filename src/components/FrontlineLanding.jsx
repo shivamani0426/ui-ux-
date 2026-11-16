@@ -15,14 +15,21 @@ const CHAPTERS=[
   {no:'04',overline:'04 / DESIGN PREFERENCES · THE CREATIVE SPIRAL',headline:['IMAGINE','WHAT’S NEXT.'],accent:'Your story begins here.',description:'Every direction, every possibility, one space to create. Keep scrolling to reveal your design studio.',subtitle:'SCROLL TO REVEAL YOUR CANVAS',mode:null}
 ];
 const clamp=(n,min=0,max=1)=>Math.max(min,Math.min(max,n));
-const ease=(a,b,p)=>{const t=clamp((p-a)/(b-a));return t*t*(3-2*t)};
+// Quintic easing keeps each chapter still long enough to read, then softly hands
+// the scene over. It is always driven by scroll position, never wall-clock time.
+const ease=(a,b,p)=>{const t=clamp((p-a)/(b-a));return t*t*t*(t*(t*6-15)+10)};
+// Extended chapters: slow entrances, a readable hold and a separate exit.
+ // No simultaneous fade-in/fade-out between neighbouring feature headlines.
 const SCENES=[
-  {inStart:-1,inEnd:0,outStart:.10,outEnd:.23},
-  {inStart:.14,inEnd:.26,outStart:.33,outEnd:.44},
-  {inStart:.34,inEnd:.45,outStart:.53,outEnd:.64},
-  {inStart:.54,inEnd:.66,outStart:.73,outEnd:.83},
-  {inStart:.77,inEnd:.87,outStart:2,outEnd:3}
+  {inStart:-1,inEnd:0,outStart:.158,outEnd:.195},
+  {inStart:.203,inEnd:.285,outStart:.351,outEnd:.380},
+  {inStart:.388,inEnd:.470,outStart:.535,outEnd:.568},
+  {inStart:.576,inEnd:.662,outStart:.728,outEnd:.765},
+  {inStart:.773,inEnd:.855,outStart:2,outEnd:3}
 ];
+const CHAPTER_STARTS=[0,.203,.388,.576,.773];
+const CHAPTER_STOPS=[0,.294,.482,.678,.855];
+
 function KineticText({value,base=0}){
   const chars=Array.from(value);
   return <span className="fl-kinetic-line" aria-label={value}>
@@ -41,7 +48,7 @@ function spiralPath(){
   return out.join(' ');
 }
 const SPIRAL_PATH=spiralPath();
-const SPIRAL_WORDS=('FRONTLINE  ·  SELECT  ·  GENERATE  ·  FUSE  ·  DESIGN INTELLIGENCE  ·  ').repeat(24);
+const SPIRAL_WORDS=('FRONTLINE  ·  SELECT  ·  GENERATE  ·  FUSE  ·  DESIGN INTELLIGENCE  ·  ').repeat(12);
 
 export default function FrontlineLanding({onBegin,onMode,onSceneChange,onComposeReady}){
   const root=useRef(null),frameRef=useRef(0),readyRef=useRef(false);
@@ -56,35 +63,46 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
   },[]);
   useEffect(()=>{
     let raf=0,pointerFrame=0,tx=0,ty=0,sx=0,sy=0;
+    let scrollRange=1,previousReveal='';
+    const previousStyles=new Map();
+    const setStyle=(el,name,value)=>{if(previousStyles.get(name)!==value){el.style.setProperty(name,value);previousStyles.set(name,value)}};
     const update=()=>{
       raf=0;
       if(!root.current)return;
-      const available=Math.max(1,document.documentElement.scrollHeight-window.innerHeight);
-      const p=clamp(window.scrollY/available);
+      const p=clamp(window.scrollY/scrollRange);
       const el=root.current;
-      el.style.setProperty('--fl-progress',p.toFixed(5));
-      el.style.setProperty('--fl-paper-progress',ease(.11,.28,p).toFixed(5));
-      el.style.setProperty('--fl-scroll-lift',(p*15).toFixed(2)+'vh');
-      el.style.setProperty('--fl-cloud-drift',(p*28).toFixed(2)+'vw');
-      el.style.setProperty('--fl-orb-scale',(1-p*.35).toFixed(4));
-      el.style.setProperty('--fl-spiral-progress',ease(.75,.91,p).toFixed(5));
-      el.style.setProperty('--fl-spiral-turn',((p-.76)*270).toFixed(2)+'deg');
-      const reveal=ease(.86,.99,p);
+      setStyle(el,'--fl-progress',p.toFixed(5));
+      setStyle(el,'--fl-paper-progress',ease(.145,.206,p).toFixed(5));
+      // Keep the original golden sphere steady during its own opening chapter.
+      setStyle(el,'--fl-scroll-lift',(p*15).toFixed(2)+'vh');
+      setStyle(el,'--fl-cloud-drift',(p*28).toFixed(2)+'vw');
+      setStyle(el,'--fl-orb-scale',(1-p*.35).toFixed(4));
+      // The spiral starts as a seed and takes almost two viewport heights
+      // to mature. The chat starts much later, after the spiral has grown.
+      const spiral=ease(.767,.947,p);
+      setStyle(el,'--fl-spiral-progress',spiral.toFixed(5));
+      setStyle(el,'--fl-spiral-opacity',ease(.773,.827,p).toFixed(5));
+      setStyle(el,'--fl-spiral-turn',(spiral*316).toFixed(2)+'deg');
+      const reveal=ease(.914,.999,p);
       const ready=reveal>=.75;
       if(ready!==readyRef.current){readyRef.current=ready;onComposeReady?.(ready);}
-      document.documentElement.style.setProperty('--fl-compose-reveal',reveal.toFixed(5));
-      el.style.setProperty('--fl-compose-reveal',reveal.toFixed(5));
+      const revealText=reveal.toFixed(5);
+      if(revealText!==previousReveal){
+        previousReveal=revealText;
+        document.documentElement.style.setProperty('--fl-compose-reveal',revealText);
+      }
+      setStyle(el,'--fl-compose-reveal',revealText);
       for(let i=0;i<SCENES.length;i++){
         const s=SCENES[i];
         const enter=i===0?1:ease(s.inStart,s.inEnd,p);
         const exit=i===4?0:ease(s.outStart,s.outEnd,p);
-        el.style.setProperty('--fl-scene-enter-'+i,enter.toFixed(5));
-        el.style.setProperty('--fl-scene-opacity-'+i,((1-exit)*enter).toFixed(5));
-        el.style.setProperty('--fl-scene-shift-'+i,((1-enter)*108).toFixed(2)+'px');
-        el.style.setProperty('--fl-letter-shift-'+i,((1-enter)*112).toFixed(2)+'%');
-        el.style.setProperty('--fl-scene-scale-'+i,(0.966+enter*.034).toFixed(5));
+        setStyle(el,'--fl-scene-enter-'+i,enter.toFixed(5));
+        setStyle(el,'--fl-scene-opacity-'+i,((1-exit)*enter).toFixed(5));
+        setStyle(el,'--fl-scene-shift-'+i,((1-enter)*108).toFixed(2)+'px');
+        setStyle(el,'--fl-letter-shift-'+i,((1-enter)*112).toFixed(2)+'%');
+        setStyle(el,'--fl-scene-scale-'+i,(0.966+enter*.034).toFixed(5));
       }
-      const next=Math.min(4,Math.floor(p*5));
+      const next=p>=CHAPTER_STARTS[4]?4:p>=CHAPTER_STARTS[3]?3:p>=CHAPTER_STARTS[2]?2:p>=CHAPTER_STARTS[1]?1:0;
       if(next!==frameRef.current){
         frameRef.current=next;
         setFrame(next);
@@ -92,6 +110,10 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
       }
     };
     const queue=()=>{if(!raf)raf=window.requestAnimationFrame(update)};
+    const onResize=()=>{
+      scrollRange=Math.max(1,document.documentElement.scrollHeight-window.innerHeight);
+      queue();
+    };
     const smoothPointer=()=>{
       pointerFrame=0;
       if(!root.current)return;
@@ -109,12 +131,13 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
       if(!pointerFrame)pointerFrame=requestAnimationFrame(smoothPointer);
     };
     window.addEventListener('scroll',queue,{passive:true});
-    window.addEventListener('resize',queue,{passive:true});
+    window.addEventListener('resize',onResize,{passive:true});
     window.addEventListener('pointermove',move,{passive:true});
+    scrollRange=Math.max(1,document.documentElement.scrollHeight-window.innerHeight);
     update();
     return()=>{
       window.removeEventListener('scroll',queue);
-      window.removeEventListener('resize',queue);
+      window.removeEventListener('resize',onResize);
       window.removeEventListener('pointermove',move);
       if(raf)cancelAnimationFrame(raf);
       if(pointerFrame)cancelAnimationFrame(pointerFrame);
@@ -122,7 +145,7 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
     };
   },[onSceneChange,onComposeReady,reduceMotion]);
   const available=()=>Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
-  const goToChapter=n=>window.scrollTo({top:available()*[0,.26,.46,.67,.875][n],behavior:reduceMotion?'instant':'smooth'});
+  const goToChapter=n=>window.scrollTo({top:available()*CHAPTER_STOPS[n],behavior:reduceMotion?'instant':'smooth'});
   return <section ref={root} className={'fl-world fl-scroll-story fl-chapter-'+frame} aria-label="Frontline UX/UI cinematic scroll introduction">
     <div className="fl-atmosphere" aria-hidden="true">
       <div className="fl-sky"/><div className="fl-grain"/><div className="fl-aura"/>
