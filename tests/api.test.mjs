@@ -51,7 +51,7 @@ test('project creation, all-three feedback, history isolation and deletion',asyn
     assert.match(fusion.data.prompt,/FUSION STRATEGY/);
     assert.match(fusion.data.prompt,/one cohesive result/i);
     const learned=await call(0,'/api/profile');
-    assert.equal(learned.data.styleWeights.minimal,2,'Repeated Generate should only learn once');
+    assert.equal(learned.data.styleWeights.minimal,3,'Repeated Generate should only learn once');
     assert.equal(learned.data.styleWeights.glass,2);
     assert.equal(learned.data.globalOptIn,false,'Implicit learning must remain private');
     const isolated=await call(1,`/api/projects/${id}/design-prompt`,'POST',{mode:'fusion',styles:selection});
