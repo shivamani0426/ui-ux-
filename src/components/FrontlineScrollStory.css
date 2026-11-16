@@ -200,8 +200,9 @@
 /* Slower cinematic timeline: ~9 viewport heights of intentional scroll,
    with separate entrance, reading hold, exit, spiral growth and chat birth.
    Longer than the former 560svh story without time-based animation loops. */
-.landing-scrollspace.scroll-story-space{height:1040svh}
-@supports not (height:100svh){.landing-scrollspace.scroll-story-space{height:1040vh}}
+/* Higher specificity than the legacy 510svh welcome-page rule. */
+.app.in-welcome .landing-scrollspace.scroll-story-space{height:1040svh}
+@supports not (height:100svh){.app.in-welcome .landing-scrollspace.scroll-story-space{height:1040vh}}
 
 /* Editorial polish after real desktop/mobile screenshot review. */
 .fl-story-scene-0 .fl-story-footnote{display:none}
