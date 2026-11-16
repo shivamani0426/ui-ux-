@@ -163,9 +163,9 @@ function App(){
       </div>
     </header>
 
+    {!active&&<FrontlineLanding onSceneChange={setLandingFrame} onBegin={focusChat} onMode={enterLandingMode}/>}
     {!active&&<div className="landing-scrollspace" aria-hidden="true"/>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
-      {!active&&<FrontlineLanding onSceneChange={setLandingFrame} onBegin={focusChat} onMode={enterLandingMode}/>}
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
           {!messages.length&&<div className="conversation-empty">
