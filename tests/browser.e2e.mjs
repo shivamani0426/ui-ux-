@@ -172,6 +172,9 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.ok((await page.locator('.inspiration-card').count())>=1,'Portfolio filter should yield references');
       await page.locator('.inspiration-search input').fill('');
       await page.reload({waitUntil:'networkidle'});
+      // A refresh starts a fresh site entry. Open the golden dome before navigating history.
+      await page.locator('.fl-dome-trigger').hover();
+      await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8500});
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/My conversations/i}).click();
       await page.locator('.history-item').first().click();
