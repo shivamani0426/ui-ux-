@@ -199,3 +199,7 @@
  .fl-story-scroll-guide{animation:none}
  .fl-scroll-story .fl-sun-reflection,.fl-scroll-story .fl-ripple{animation:none!important}
 }
+
+/* Five deliberate scroll chapters give each feature room to breathe. */
+.landing-scrollspace.scroll-story-space{height:560svh}
+@supports not (height:100svh){.landing-scrollspace.scroll-story-space{height:560vh}}
