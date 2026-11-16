@@ -5,8 +5,10 @@ import TechText from './components/TechText.jsx';
 import StarBorder from './components/StarBorder.jsx';
 import FrontlineLanding from './components/FrontlineLanding.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
+import InspirationExplorer from './components/InspirationExplorer.jsx';
 import './styles.css';
 import './frontline-studio.css';
+import './inspiration-explorer.css';
 
 const api=async (path,options={})=>{
   const r=await fetch(path,{credentials:'same-origin',...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}});
@@ -194,9 +196,10 @@ function App(){
           {project&&<section className="result-message">
             <div className="result-header">
               <span className="small-eyebrow">DESIGN EXPLORER / {project.recommendations.category?.toUpperCase()}</span>
-              <strong>Three directions. Your decision.</strong>
-              <p>Choose one, two, or all three. These are explainable recommendations, not copied websites.</p>
+              <strong>Explore. Select. Make it yours.</strong>
+              <p>Explore real inspiration sites first, then combine complementary style directions. We never copy other websites.</p>
             </div>
+            {(designMode==='select'||designMode==='fusion')&&<InspirationExplorer key={project.id} project={project} api={api} notice={notice}/>}
             <div className="result-actions">
               <button className={selected.length===3?'quiet-active':''} onClick={()=>setSelected(styleKeys)}><CheckCheck size={15}/> Select all three</button>
               <button onClick={()=>setSelected([])}><X size={13}/> Clear</button>
@@ -285,9 +288,9 @@ function App(){
         {panel==='tools'&&<div className="menu-subcontent">
           <p className="menu-intro">Choose your design workflow. All three share the same chat experience.</p>
           {[
-            {key:'select',name:'Select UI/UX',description:'Compare three relevant design directions.'},
+            {key:'select',name:'Select UI/UX',description:'Explore, save and combine matching inspiration websites from our library.'},
             {key:'generate',name:'Generate UI/UX',description:'Shape an original direction from a brief; full model generation needs an AI key.'},
-            {key:'fusion',name:'Design Fusion',description:'Combine one, two, or all three design styles.'}
+            {key:'fusion',name:'Design Fusion',description:'Combine saved inspirations with design styles into a detailed prompt.'}
           ].map(item=><button className={'tool-mode '+(designMode===item.key?'active':'')} key={item.key} onClick={()=>{setDesignMode(item.key);setSelected(item.key==='fusion'?styleKeys:selected);setMenuOpen(false);focusChat();notice(item.name+' ready. Describe your idea in chat.');}}>
             <span className="mode-symbol">{item.key==='select'?'◈':item.key==='generate'?'✧':<FrontlineMark size={23}/>}</span>
             <span><strong>{item.name}</strong><small>{item.description}</small></span>
