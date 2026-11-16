@@ -289,7 +289,7 @@ function App(){
             {key:'generate',name:'Generate UI/UX',description:'Shape an original direction from a brief; full model generation needs an AI key.'},
             {key:'fusion',name:'Design Fusion',description:'Combine one, two, or all three design styles.'}
           ].map(item=><button className={'tool-mode '+(designMode===item.key?'active':'')} key={item.key} onClick={()=>{setDesignMode(item.key);setSelected(item.key==='fusion'?styleKeys:selected);setMenuOpen(false);focusChat();notice(item.name+' ready. Describe your idea in chat.');}}>
-            <span className="mode-symbol">{item.key==='select'?'◈':item.key==='generate'?'✧':'✳'}</span>
+            <span className="mode-symbol">{item.key==='select'?'◈':item.key==='generate'?'✧':<FrontlineMark size={23}/>}</span>
             <span><strong>{item.name}</strong><small>{item.description}</small></span>
             {designMode===item.key&&<Check size={17}/>}
           </button>)}
