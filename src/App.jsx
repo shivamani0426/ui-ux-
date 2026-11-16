@@ -5,6 +5,7 @@ import TechText from './components/TechText.jsx';
 import StarBorder from './components/StarBorder.jsx';
 import FrontlineLanding from './components/FrontlineLanding.jsx';
 import './styles.css';
+import './frontline-studio.css';
 
 const api=async (path,options={})=>{
   const r=await fetch(path,{credentials:'same-origin',...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}});
@@ -22,7 +23,7 @@ const starterNotes=[
 const safeRead=(key,fallback)=>{try{return localStorage.getItem(key)||fallback}catch{return fallback}};
 
 function App(){
-  const [theme,setTheme]=useState(()=>safeRead('uic-theme','light')==='dark'?'dark':'light');
+  const [theme,setTheme]=useState(()=>safeRead('uic-theme','dark')==='dark'?'dark':'light');
   const [menuOpen,setMenuOpen]=useState(false);
   const [panel,setPanel]=useState('menu');
   const [mode,setMode]=useState('welcome');
@@ -52,7 +53,7 @@ function App(){
   };
   useEffect(()=>{
     document.documentElement.setAttribute('data-theme',theme);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#0c0d13':'#fafafd');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#261e23':'#f7f0e4');
     try{localStorage.setItem('uic-theme',theme)}catch{}
   },[theme]);
   useEffect(()=>{
@@ -153,7 +154,7 @@ function App(){
     <header className="topbar">
       <button className="brand" onClick={newChat} title="New chat" aria-label="Frontline UX/UI — new chat">
         <span className="brand-mark">✦</span>
-        <span className="brand-tech"><span className="brand-word">FRONTLINE</span></span>
+        <span className="brand-tech"><span className="brand-word">FRONTLINE</span><span className="brand-sub">UX / UI STUDIO</span></span>
       </button>
       <div className="top-right">
         {active&&<button className="top-new" onClick={newChat}><Plus size={15}/> New chat</button>}
@@ -170,8 +171,16 @@ function App(){
         <div className="conversation-inner">
           {!messages.length&&<div className="conversation-empty">
             <span className="floating-symbol">✳</span>
-            <p>Tell me about the experience you want to create.</p>
-            <span>I’ll help you select, combine, and refine design directions.</span>
+            <span className="studio-eyebrow">THE FRONTLINE DESIGN ATELIER</span>
+            <h1 className="studio-title">Design beyond <em>the ordinary.</em></h1>
+            <p>Every extraordinary interface begins with a thought. Tell me what you imagine, and we’ll find its visual direction together.</p>
+            <div className="studio-starters" aria-label="Try a design brief">
+              {starterNotes.map((note,i)=><button type="button" key={note} onClick={()=>sendPreset(note)}>
+                <Sparkles size={13} aria-hidden="true"/>
+                {['Learning dashboard','Cinematic portfolio','Health experience'][i]}
+              </button>)}
+            </div>
+            <span>Select. Generate. Fuse. Your vision leads the way.</span>
           </div>}
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
             {message.role!=='user'&&<div className="message-avatar">✳</div>}
@@ -211,22 +220,32 @@ function App(){
                 <div className="preview-content"><div className="preview-heading"><span>Workspace overview</span><span>•••</span></div><div className="preview-hero"><small>{project.recommendations.category} / CONCEPT</small><strong>Design with intention.</strong><p>{project.brief.slice(0,100)}</p></div><div className="preview-stats"><div><small>Experience</small><b>01</b><i/></div><div><small>Interface</small><b>02</b><i/></div></div></div>
               </div><small>Illustrative composition only. Not exported working application code.</small>
             </div>}
-            <div className="feedback-line">
-              <span>Help the advisor learn</span>
+            <details className="feedback-details">
+              <summary>Optional refinement notes</summary>
+              <div className="feedback-line">
+              <span>Fine-tune these directions</span>
               <div className="reaction-set" role="group" aria-label="Feedback reaction">
                 {['like','dislike','edit'].map(value=><button key={value} className={reaction===value?'reaction-current':''} aria-pressed={reaction===value} onClick={()=>setReaction(value)}>{value==='like'?'Like':value==='dislike'?'Dislike':'Improve'}</button>)}
               </div>
               <input value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Optional feedback on your selections" maxLength={500} aria-label="Feedback detail"/>
-              <button className="save-feedback" onClick={feedbackSave} disabled={!selected.length}>Save feedback <ArrowUp size={14}/></button>
-            </div>
+              <button className="save-feedback" onClick={feedbackSave} disabled={!selected.length}>Save refinement <ArrowUp size={14}/></button>
+              </div>
+            </details>
           </section>}
           <div ref={endRef}/>
         </div>
       </section>}
       <div className={'composer-position '+(active?'docked':'centered')+(landingFrame===4&&!active?' scroll-rise':'')}>
-        <StarBorder as="div" theme={theme} backgroundColor={theme==='dark'?'#16171f':'#ffffff'} textColor={theme==='dark'?'#f6f6fa':'#20212b'} color={theme==='dark'?'#b0a3ff':'#775fe8'} trailColor={theme==='dark'?'#7ae0fa':'#c3a7ff'} radius={23} thickness={1.25} duration={4.2} stars={2} trailLength={0.32} glow={0.85} hover="lap" sparkle clickPulse className="chat-star">
+        <StarBorder as="div" theme={theme}
+          backgroundColor={active?(theme==='dark'?'#382a2b':'#fff8ec'):'#fff8eb'}
+          textColor={active?(theme==='dark'?'#f9e7ce':'#4b312b'):'#45302a'}
+          borderColor={active?'#d79e64':'#f3cf94'}
+          color={active?(theme==='dark'?'#ffe3aa':'#c77e3e'):'#ffe6b0'}
+          trailColor={active?(theme==='dark'?'#df935c':'#d6a263'):'#dc8f54'}
+          radius={26} thickness={1.7} duration={4.8} stars={2} trailLength={0.34} glow={0.95}
+          hover="lap" sparkle clickPulse className="chat-star">
           <form className="composer" onSubmit={e=>{e.preventDefault();send();}}>
-            {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="YOUR NEXT IDEA STARTS HERE" fontSize={43} fontWeight={650} reveal="letter" reach={110} labels={false} selection={false} draggable={false} specks={0} reach={0} sweep={false} clickKick={false} color="currentColor" accentColor={theme==='dark'?'#c7b5ff':'#7356e8'} /></div></div>}
+            {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="DESIGN BEGINS WITH YOU" fontSize={38} fontWeight={650} reveal="letter" reach={0} labels={false} selection={false} draggable={false} specks={0} sweep={false} clickKick={false} color="currentColor" accentColor="#bd7444" /></div></div>}
             <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
               <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?'AI advisor connected':'Design guidance ready'}</span>

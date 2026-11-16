@@ -44,6 +44,26 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     console.log(name+' errors:\n'+errors.join('\n'));
     assert.ok(body.trim().length>30,name+' BLANK PAGE: content missing. '+errors.join('\n'));
     await page.locator('.composer textarea').waitFor({timeout:7000});
+    if(!remote && await page.locator('.fl-world').count()){
+      await page.locator('.composer textarea').focus();
+      await page.locator('.studio-title').waitFor({timeout:7000});
+      assert.match(await page.locator('.studio-title').innerText(),/Design beyond/);
+      assert.equal(await page.locator('.studio-starters button').count(),3);
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'dark');
+      await page.waitForTimeout(1150); // wait for the chat transition and welcome entrance motion
+      await page.screenshot({path:'browser-artifacts/'+name+'-studio-dark.png',fullPage:false});
+      await page.getByRole('button',{name:'Open navigation menu'}).click();
+      await page.locator('.menu-panel').waitFor();
+      assert.equal(await page.locator('.menu-panel .tool-mode').count(),0);
+      await page.getByRole('button',{name:/Switch to light theme/i}).click();
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'light');
+      await page.locator('.close-menu').click();
+      await page.waitForTimeout(450);
+      await page.screenshot({path:'browser-artifacts/'+name+'-studio-light.png',fullPage:false});
+      await page.getByRole('button',{name:'Open navigation menu'}).click();
+      await page.getByRole('button',{name:/Switch to dark theme/i}).click();
+      await page.locator('.close-menu').click();
+    }
     await page.locator('.composer textarea').fill('A modern student learning platform with a study dashboard and AI tutor');
     await page.locator('.composer textarea').press('Enter');
     await page.locator('.message-row.outgoing').first().waitFor({timeout:12000});
@@ -54,7 +74,17 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     const count=await page.locator('.design-option.picked').count();
     assert.equal(count,3);
     console.log(name+' workflow passed, selected='+count);
+    await page.waitForTimeout(950);
     await page.screenshot({path:'browser-artifacts/'+name+'-chat.png',fullPage:false});
+    if(!remote){
+      await page.getByRole('button',{name:/Preview selected design/i}).click();
+      await page.locator('.preview-app.fusion').waitFor();
+      await page.waitForTimeout(650);
+      await page.screenshot({path:'browser-artifacts/'+name+'-fusion-workbench.png',fullPage:false});
+      await page.locator('.feedback-details > summary').click();
+      assert.equal(await page.locator('.reaction-set button').count(),3);
+      await page.locator('.feedback-details > summary').click();
+    }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
     await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
     await mobile.locator('.composer textarea').waitFor();
@@ -62,6 +92,14 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await mobile.waitForTimeout(1500);
       await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-landing.png',fullPage:false});
       assert.equal(await mobile.locator('.fl-chapter-0').count(),1);
+      if(!remote){
+        await mobile.locator('.composer textarea').focus();
+        await mobile.locator('.studio-title').waitFor({timeout:7000});
+        await mobile.waitForTimeout(1300);
+        await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-studio.png',fullPage:false});
+        const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+        assert.equal(overflow,false,'Frontline mobile studio must have no horizontal overflow');
+      }
     }
     await mobile.close();
     if(errors.length)console.log(name+' had nonfatal errors: '+errors.join('\n'));
