@@ -177,7 +177,7 @@ function App(){
             <div className="studio-starters" aria-label="Try a design brief">
               {starterNotes.map((note,i)=><button type="button" key={note} onClick={()=>sendPreset(note)}>
                 <Sparkles size={13} aria-hidden="true"/>
-                {['A thoughtful learning platform','A cinematic personal portfolio','An accessible health dashboard'][i]}
+                {['Learning dashboard','Cinematic portfolio','Health experience'][i]}
               </button>)}
             </div>
             <span>Select. Generate. Fuse. Your vision leads the way.</span>
