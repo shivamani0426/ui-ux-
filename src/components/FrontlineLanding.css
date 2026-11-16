@@ -149,3 +149,18 @@
  .fl-sun-reflection{animation:none!important;will-change:auto}
 }
 @media(prefers-reduced-motion:reduce){.fl-sun-reflection{animation:none!important}.fl-chapter-content{animation:none!important}}
+
+/* The intro chapter has translateX(-50%) centering. Preserve it while fading.
+   Generic keyframes used by later chapters must never override that transform. */
+.fl-chapter-0 .fl-chapter-content{
+  animation:fl-intro-fast .76s cubic-bezier(.16,.85,.25,1) both!important;
+}
+@keyframes fl-intro-fast{
+  from{opacity:0;transform:translate3d(-50%,18px,0)}
+  to{opacity:1;transform:translate3d(-50%,0,0)}
+}
+@media(prefers-reduced-motion:reduce){
+ .fl-chapter-0 .fl-chapter-content{
+   animation:none!important;transform:translateX(-50%);
+ }
+}
