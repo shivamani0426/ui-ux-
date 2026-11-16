@@ -232,3 +232,17 @@
    border-color:rgba(145,95,64,.28)
  }
 }
+
+/* Keep the brand readable when a cream paper chapter replaces the dark hero. */
+.fl-chapter-1 .fl-story-corner{display:none}
+.fl-chapter-2 .fl-atmosphere,.fl-chapter-3 .fl-atmosphere,.fl-chapter-4 .fl-atmosphere{
+  visibility:hidden /* also pauses offscreen WebGL via intersection detection */
+}
+@supports selector(:has(*)){
+ .app.in-welcome:has(.fl-chapter-1) .topbar{background:linear-gradient(180deg,rgba(245,240,228,.92),rgba(245,240,228,0))}
+ .app.in-welcome:has(.fl-chapter-1) .topbar .menu-button{color:#533b31;background:rgba(255,249,237,.82);border-color:rgba(145,95,64,.28)}
+ .app.in-welcome:has(.fl-chapter-1) .brand-word,
+ .app.in-welcome:has(.fl-chapter-2) .brand-word,
+ .app.in-welcome:has(.fl-chapter-3) .brand-word,
+ .app.in-welcome:has(.fl-chapter-4) .brand-word{color:#533b31}
+}
