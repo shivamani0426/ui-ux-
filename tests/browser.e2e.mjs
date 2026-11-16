@@ -20,7 +20,28 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('console',message=>{if(message.type()==='error')errors.push('CONSOLE '+message.text())});
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
     await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
-    await page.waitForTimeout(1500);
+    await page.locator('.fl-dome-portal').waitFor({timeout:7000});
+    assert.equal(await page.locator('.fl-dome-trigger').count(),1,name+' should start at the central golden dome');
+    assert.equal(await page.locator('.composer textarea').count(),0,name+' chat must be absent while the portal is locked');
+    assert.equal(await page.locator('.fl-world').getAttribute('inert'),'',
+      name+' pre-landing story must be inert until the portal opens');
+    await page.mouse.move(24,Math.round(page.viewportSize().height/2));
+    await page.mouse.wheel(0,420);
+    await page.waitForTimeout(100);
+    assert.equal(await page.evaluate(()=>window.scrollY),0,'Dome gate should lock user-initiated wheel scrolling');
+    await page.screenshot({path:'browser-artifacts/'+name+'-golden-dome-entry.png',fullPage:false});
+    await page.locator('.fl-dome-trigger').hover(); // No click: pointer-enter must open the portal.
+    await page.locator('.fl-dome-portal.is-opening').waitFor({timeout:4000});
+    await page.waitForTimeout(480);
+    assert.ok((await page.evaluate(()=>getComputedStyle(document.querySelector('.fl-world')).clipPath)).includes('circle('),
+      name+' landing must expand from a circular inside-out aperture');
+    await page.screenshot({path:'browser-artifacts/'+name+'-dome-inside-out-reveal.png',fullPage:false});
+    await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8000});
+    assert.equal(await page.locator('.fl-world').getAttribute('inert'),null,
+      name+' landing must become keyboard and pointer accessible after reveal');
+    assert.notEqual(await page.evaluate(()=>getComputedStyle(document.documentElement).overflow),'hidden',
+      name+' scroll should unlock after dome reveal');
+    await page.waitForTimeout(650);
     assert.equal(await page.locator('.brand-mark .fl-monogram').count(),1,'Header must show branded F');
     await page.screenshot({path:'browser-artifacts/'+name+'-landing.png',fullPage:false});
     if(await page.locator('.fl-world').count()){
@@ -151,6 +172,9 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.ok((await page.locator('.inspiration-card').count())>=1,'Portfolio filter should yield references');
       await page.locator('.inspiration-search input').fill('');
       await page.reload({waitUntil:'networkidle'});
+      // A refresh starts a fresh site entry. Open the golden dome before navigating history.
+      await page.locator('.fl-dome-trigger').hover();
+      await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8500});
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/My conversations/i}).click();
       await page.locator('.history-item').first().click();
@@ -175,6 +199,12 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
     await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
+    await mobile.locator('.fl-dome-portal').waitFor({timeout:7000});
+    assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile portal should hide the chat');
+    await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-dome.png',fullPage:false});
+    await mobile.locator('.fl-dome-trigger').dispatchEvent('pointerdown',{pointerType:'touch'});
+    await mobile.locator('.fl-dome-portal.is-opening').waitFor({timeout:4000});
+    await mobile.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8000});
     if(await mobile.locator('.fl-world').count())
       assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile composer must start absent');
     if(await mobile.locator('.fl-world').count()){
