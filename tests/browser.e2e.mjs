@@ -7,7 +7,7 @@ await fs.mkdir('browser-artifacts',{recursive:true});
 const remote=process.env.TARGET_URL;
 if(!remote)await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const url=remote||'http://127.0.0.1:'+server.address().port;
-console.log('Testing UI Compass at '+url);
+console.log('Testing Frontline UX/UI at '+url);
 
 let failed=false;
 for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
@@ -21,6 +21,19 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
     await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
     await page.screenshot({path:'browser-artifacts/'+name+'-landing.png',fullPage:false});
+    if(await page.locator('.fl-world').count()){
+      assert.ok((await page.title()).includes('Frontline UX/UI'));
+      assert.equal(await page.locator('.fl-chapter-0').count(),1);
+      await page.evaluate(() => window.scrollTo(0,(document.documentElement.scrollHeight-window.innerHeight)*.53));
+      await page.waitForFunction(() => document.querySelector('.fl-chapter-2'),null,{timeout:8000});
+      await page.screenshot({path:'browser-artifacts/'+name+'-generate-story.png',fullPage:false});
+      await page.evaluate(() => window.scrollTo(0,(document.documentElement.scrollHeight-window.innerHeight)*.73));
+      await page.waitForFunction(() => document.querySelector('.fl-chapter-3'),null,{timeout:8000});
+      await page.screenshot({path:'browser-artifacts/'+name+'-fusion-story.png',fullPage:false});
+      await page.evaluate(() => window.scrollTo(0,0));
+      await page.waitForFunction(() => document.querySelector('.fl-chapter-0'),null,{timeout:8000});
+      console.log(name+' Frontline landing story passed');
+    }
     const doc=await page.title();
     const body=await page.locator('body').innerText();
     console.log(name+' title: '+doc);
@@ -39,6 +52,14 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     assert.equal(count,3);
     console.log(name+' workflow passed, selected='+count);
     await page.screenshot({path:'browser-artifacts/'+name+'-chat.png',fullPage:false});
+    const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+    await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
+    await mobile.locator('.composer textarea').waitFor();
+    if(await mobile.locator('.fl-world').count()){
+      await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-landing.png',fullPage:false});
+      assert.equal(await mobile.locator('.fl-chapter-0').count(),1);
+    }
+    await mobile.close();
     if(errors.length)console.log(name+' had nonfatal errors: '+errors.join('\n'));
   }catch(error){
     failed=true;
