@@ -20,7 +20,27 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('console',message=>{if(message.type()==='error')errors.push('CONSOLE '+message.text())});
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
     await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
-    await page.waitForTimeout(1500);
+    await page.locator('.fl-dome-portal').waitFor({timeout:7000});
+    assert.equal(await page.locator('.fl-dome-trigger').count(),1,name+' should start at the central golden dome');
+    assert.equal(await page.locator('.composer textarea').count(),0,name+' chat must be absent while the portal is locked');
+    assert.equal(await page.locator('.fl-world').getAttribute('inert'),'',
+      name+' pre-landing story must be inert until the portal opens');
+    await page.evaluate(()=>window.scrollTo({top:420,behavior:'instant'}));
+    await page.waitForTimeout(80);
+    assert.equal(await page.evaluate(()=>window.scrollY),0,'Dome gate should lock landing scroll');
+    await page.screenshot({path:'browser-artifacts/'+name+'-golden-dome-entry.png',fullPage:false});
+    await page.locator('.fl-dome-trigger').hover(); // No click: pointer-enter must open the portal.
+    await page.locator('.fl-dome-portal.is-opening').waitFor({timeout:4000});
+    await page.waitForTimeout(480);
+    assert.ok((await page.evaluate(()=>getComputedStyle(document.querySelector('.fl-world')).clipPath)).includes('circle('),
+      name+' landing must expand from a circular inside-out aperture');
+    await page.screenshot({path:'browser-artifacts/'+name+'-dome-inside-out-reveal.png',fullPage:false});
+    await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8000});
+    assert.equal(await page.locator('.fl-world').getAttribute('inert'),null,
+      name+' landing must become keyboard and pointer accessible after reveal');
+    assert.notEqual(await page.evaluate(()=>getComputedStyle(document.documentElement).overflow),'hidden',
+      name+' scroll should unlock after dome reveal');
+    await page.waitForTimeout(650);
     assert.equal(await page.locator('.brand-mark .fl-monogram').count(),1,'Header must show branded F');
     await page.screenshot({path:'browser-artifacts/'+name+'-landing.png',fullPage:false});
     if(await page.locator('.fl-world').count()){
@@ -175,6 +195,12 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
     await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
+    await mobile.locator('.fl-dome-portal').waitFor({timeout:7000});
+    assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile portal should hide the chat');
+    await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-dome.png',fullPage:false});
+    await mobile.locator('.fl-dome-trigger').dispatchEvent('pointerdown',{pointerType:'touch'});
+    await mobile.locator('.fl-dome-portal.is-opening').waitFor({timeout:4000});
+    await mobile.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8000});
     if(await mobile.locator('.fl-world').count())
       assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile composer must start absent');
     if(await mobile.locator('.fl-world').count()){
