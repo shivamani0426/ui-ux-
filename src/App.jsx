@@ -4,6 +4,7 @@ import {ArrowUp, Check, CheckCheck, ChevronLeft, ChevronRight, Copy, ExternalLin
 import TechText from './components/TechText.jsx';
 import StarBorder from './components/StarBorder.jsx';
 import FrontlineLanding from './components/FrontlineLanding.jsx';
+import FrontlineDomePortal from './components/FrontlineDomePortal.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
 import './styles.css';
@@ -49,7 +50,8 @@ function App(){
   const [rise,setRise]=useState(false);
   const [landingFrame,setLandingFrame]=useState(0);
   const [landingComposerReady,setLandingComposerReady]=useState(false);
-  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null);
+  const [portalState,setPortalState]=useState('idle');
+  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null);
 
   const notice=(message)=>{
     setToast(message);clearTimeout(toastTimer.current);
@@ -67,8 +69,28 @@ function App(){
       api('/api/profile').then(setProfile),
       api('/api/config').then(setConfig)
     ]).then(results=>{if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded.');});
-    return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);};
+    return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);};
   },[]);
+  // The pre-landing portal locks scrolling only until the inside-out reveal ends.
+  // It doesn't change saved projects, user preferences, the studio or any APIs.
+  useEffect(()=>{
+    if(mode==='chat'||portalState==='done')return;
+    const oldHTML=document.documentElement.style.overflow;
+    const oldBody=document.body.style.overflow;
+    document.documentElement.style.overflow='hidden';
+    document.body.style.overflow='hidden';
+    return ()=>{
+      document.documentElement.style.overflow=oldHTML;
+      document.body.style.overflow=oldBody;
+    };
+  },[mode,portalState]);
+  const enterPortal=()=>{
+    if(portalState!=='idle')return;
+    setPortalState('opening');
+    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    clearTimeout(portalTimer.current);
+    portalTimer.current=setTimeout(()=>setPortalState('done'),reduced?160:1840);
+  };
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth',block:'end'});},[messages,working,viewPreview]);
   const active=mode==='chat';
   const focusChat=()=>{
@@ -154,8 +176,8 @@ function App(){
   const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
   const enterLandingMode=key=>{setDesignMode(key);if(key==='fusion')setSelected(styleKeys);focusChat();};
 
-  return <div className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')}>
-    <header className="topbar">
+  return <div className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')+(!active?' portal-'+portalState:'')}>
+    <header className="topbar" inert={!active&&portalState!=='done'}>
       <button className="brand" onClick={newChat} title="New chat" aria-label="Frontline UX/UI — new chat">
         <span className="brand-mark"><FrontlineMark size={29}/></span>
         <span className="brand-tech"><span className="brand-word">FRONTLINE</span><span className="brand-sub">UX / UI STUDIO</span></span>
@@ -168,8 +190,9 @@ function App(){
       </div>
     </header>
 
-    {!active&&<FrontlineLanding onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
+    {!active&&<FrontlineLanding locked={portalState!=='done'} onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
     {!active&&<div className="landing-scrollspace scroll-story-space" aria-hidden="true"/>}
+    {!active&&portalState!=='done'&&<FrontlineDomePortal opening={portalState==='opening'} onEnter={enterPortal}/>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
