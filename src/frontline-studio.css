@@ -434,3 +434,19 @@ input,textarea{accent-color:var(--lav)}
  .app.in-chat .brand-mark{width:29px;height:29px;font-size:17px}
  .app.in-chat .brand{gap:8px}
 }
+
+/* Compact studio suggestions: single scrollable rail instead of hidden third chip. */
+@media(max-width:420px){
+ .app.in-chat .studio-starters{
+   width:100%;max-width:none;
+   flex-wrap:nowrap;justify-content:flex-start;
+   overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain;
+   padding:5px 1px 12px;
+ }
+ .app.in-chat .studio-starters::-webkit-scrollbar{display:none}
+ .app.in-chat .studio-starters button{
+   width:auto;max-width:none;flex:0 0 auto;white-space:nowrap;
+   padding:10px 12px;
+ }
+ .app.in-chat .conversation-empty{width:100%;padding:23px 5px 36px}
+}
