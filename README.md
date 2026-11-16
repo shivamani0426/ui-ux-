@@ -2,10 +2,12 @@
 
 A responsive UI/UX design recommendation workspace. Tell it what you want to build, compare **all three** original UI styles, record feedback and return later to continue your design decisions.
 
-## What's in v0.1
+## What's in v0.2
 
 - Three original design directions: **Minimal SaaS**, **Glass UI**, **Creative UI**.
 - Multi-select feedback: choose any combination, including all three, before saving like/dislike/change signals.
+- Interactive original composition preview adapts to the brief category and selected style(s), with desktop/mobile switches and a navigable overview/insights mockup.
+- Unsaved feedback/chat drafts survive style switching and preview changes.
 - Explainable prompt-based recommendation rankings using a curated reference index.
 - 12 verified UI/UX leaderboard entries (August 2026 archive) plus three additional, explicitly unranked sites; credited outbound links and original illustrative thumbnails only.
 - Studio assistant with a useful deterministic design guide; optional OpenRouter model integration.
