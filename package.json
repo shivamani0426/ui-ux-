@@ -11,8 +11,8 @@
     "start": "node server.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "test": "node --test tests/*.test.mjs",
-    "postinstall": "vite build"
+    "test": "NODE_ENV=test node --test tests/*.test.mjs",
+    "postinstall": "vite build && npm test"
   },
   "dependencies": {
     "pg": "^8.13.1",
