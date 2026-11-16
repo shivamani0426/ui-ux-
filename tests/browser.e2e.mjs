@@ -30,6 +30,18 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       const titleViewport=page.viewportSize();
       assert.ok(introTitle && introTitle.x>=-6 && introTitle.x+introTitle.width<=titleViewport.width+6,
         name+' INTRO TITLE OVERFLOW: '+JSON.stringify(introTitle));
+      if(!remote){
+        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.385,behavior:'instant'}));
+        await page.waitForTimeout(270);
+        const letterBefore=await page.locator('.fl-story-scene-2 .fl-kinetic-glyph').first()
+          .evaluate(el=>getComputedStyle(el).transform);
+        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.455,behavior:'instant'}));
+        await page.waitForTimeout(270);
+        const letterAfter=await page.locator('.fl-story-scene-2 .fl-kinetic-glyph').first()
+          .evaluate(el=>getComputedStyle(el).transform);
+        assert.notEqual(letterBefore,letterAfter,
+          name+' scroll-responsive kinetic letters must animate through position, not pop');
+      }
       await page.evaluate(() => window.scrollTo({top:(document.documentElement.scrollHeight-window.innerHeight)*.53,behavior:'instant'}));
       await page.waitForFunction(() => document.querySelector('.fl-chapter-2'),null,{timeout:8000});
       await page.waitForTimeout(1400);
