@@ -22,6 +22,15 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
     await page.locator('.fl-dome-portal').waitFor({timeout:7000});
     assert.equal(await page.locator('.fl-dome-trigger').count(),1,name+' should start at the central black dome');
+    assert.equal((await page.locator('.fl-dome-portal').innerText()).trim(),'',
+      name+' black entrance must contain ZERO visible text');
+    assert.equal(await page.locator('.fl-dome-f-sculpture').count(),1,
+      name+' entrance must show one original sculpted F');
+    const sculpture=await page.locator('.fl-dome-f-sculpture').boundingBox();
+    const viewport=page.viewportSize();
+    assert.ok(sculpture&&Math.abs(sculpture.x+sculpture.width/2-viewport.width/2)<6
+      && Math.abs(sculpture.y+sculpture.height/2-viewport.height/2)<6,
+      name+' F sculpture must be precisely centered: '+JSON.stringify(sculpture));
     assert.equal(await page.locator('.composer textarea').count(),0,name+' chat must be absent while the portal is locked');
     assert.equal(await page.locator('.fl-world').getAttribute('inert'),'',
       name+' pre-landing story must be inert until the portal opens');
@@ -241,6 +250,12 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,hasTouch:true});
     await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
     await mobile.locator('.fl-dome-portal').waitFor({timeout:7000});
+    assert.equal((await mobile.locator('.fl-dome-portal').innerText()).trim(),'',
+      name+' mobile entrance must contain ZERO visible text');
+    const mobileF=await mobile.locator('.fl-dome-f-sculpture').boundingBox();
+    assert.ok(mobileF&&mobileF.x>=0&&mobileF.x+mobileF.width<=390,
+      name+' F sculpture must fit the mobile viewport');
+
     assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile portal should hide the chat');
     await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-dome.png',fullPage:false});
     await mobile.locator('.fl-dome-trigger').dispatchEvent('pointerdown',{pointerType:'touch'});
