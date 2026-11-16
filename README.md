@@ -42,7 +42,7 @@ The automated suite checks three-style recommendations, feedback signal learning
 
 ## Deploy to Render
 
-The checked-in `render.yaml` defines a **free Node web service + free PostgreSQL** in the Singapore region. Connect this GitHub repository to Render and create a Blueprint. Review the resources before approving creation. Render free PostgreSQL instances are temporary and expire unless upgraded, so use a paid persistent database/backups before relying on the product for long-term customer memory.
+The app is hosted on a **free Render Node web service** at https://ui-compass-studio.onrender.com, deployed directly from `main` in the Singapore region. The checked-in `render.yaml` also defines a reproducible web + PostgreSQL Blueprint for future infrastructure setup, but this Blueprint has **not** been applied. The Render workspace already has its maximum one active free PostgreSQL database, so UI Compass runs with temporary memory until its own database is available. Do not interpret the `database: demo-memory` health response as durable persistence. Render free PostgreSQL instances are temporary and expire unless upgraded, so use a maintained database and backups before storing important customer history.
 
 Once the deployment becomes live, add `OPENROUTER_API_KEY` in the Render service's Environment panel if you want real model-generated chat responses. Without it, the guide still works but is **rule-based**, not a generative model.
 
