@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {ArrowUp, Check, CheckCheck, ChevronLeft, ChevronRight, Copy, ExternalLink, Heart, Layers3, Menu, Moon, Plus, RotateCcw, Search, ShieldCheck, Sparkles, Sun, X} from 'lucide-react';
 import TechText from './components/TechText.jsx';
 import StarBorder from './components/StarBorder.jsx';
+import FrontlineLanding from './components/FrontlineLanding.jsx';
 import './styles.css';
 
 const api=async (path,options={})=>{
@@ -42,6 +43,7 @@ function App(){
   const [mobilePreview,setMobilePreview]=useState(false);
   const [search,setSearch]=useState('');
   const [rise,setRise]=useState(false);
+  const [landingFrame,setLandingFrame]=useState(0);
   const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null);
 
   const notice=(message)=>{
@@ -60,15 +62,7 @@ function App(){
       api('/api/profile').then(setProfile),
       api('/api/config').then(setConfig)
     ]).then(results=>{if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded.');});
-    const onScroll=()=>{
-      if(window.scrollY>56&&window.scrollY<window.innerHeight*1.8){
-        setRise(false);
-        clearTimeout(scrollTimer.current);
-        scrollTimer.current=setTimeout(()=>setRise(true),24);
-      }
-    };
-    window.addEventListener('scroll',onScroll,{passive:true});
-    return ()=>{window.removeEventListener('scroll',onScroll);clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);};
+    return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);};
   },[]);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth',block:'end'});},[messages,working,viewPreview]);
   const active=mode==='chat';
@@ -153,12 +147,13 @@ function App(){
   const showMenu=next=>{setPanel(next);setMenuOpen(true);};
   const sendPreset=text=>{setBrief(text);focusChat();setTimeout(()=>textareaRef.current?.focus(),100);};
   const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
+  const enterLandingMode=key=>{setDesignMode(key);if(key==='fusion')setSelected(styleKeys);focusChat();};
 
-  return <div className={'app '+(active?'in-chat':'in-welcome')}>
+  return <div className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')}>
     <header className="topbar">
-      <button className="brand" onClick={newChat} title="New chat" aria-label="UI Compass — new chat">
-        <span className="brand-mark">✳</span>
-        <span className="brand-tech"><TechText text="UI COMPASS" fontSize={50} fontWeight={750} reach={70} softness={0.55} labels={false} selection={false} draggable={false} specks={3} color="currentColor" accentColor={theme==='dark'?'#bcb8ff':'#7963e8'} /></span>
+      <button className="brand" onClick={newChat} title="New chat" aria-label="Frontline UX/UI — new chat">
+        <span className="brand-mark">✦</span>
+        <span className="brand-tech"><TechText text="FRONTLINE" fontSize={50} fontWeight={750} reach={70} softness={0.55} labels={false} selection={false} draggable={false} specks={3} color="currentColor" accentColor={theme==='dark'?'#bcb8ff':'#7963e8'} /></span>
       </button>
       <div className="top-right">
         {active&&<button className="top-new" onClick={newChat}><Plus size={15}/> New chat</button>}
@@ -170,6 +165,7 @@ function App(){
 
     {!active&&<div className="landing-scrollspace" aria-hidden="true"/>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
+      {!active&&<FrontlineLanding onSceneChange={setLandingFrame} onBegin={focusChat} onMode={enterLandingMode}/>}
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
           {!messages.length&&<div className="conversation-empty">
@@ -180,7 +176,7 @@ function App(){
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
             {message.role!=='user'&&<div className="message-avatar">✳</div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
-              {message.role!=='user'&&<div className="bubble-label">UI Compass <span>{message.source==='guide'?'Guided recommendations':message.source==='error'?'Error':config.aiEnabled?'AI design consultant':'Design advisor'}</span></div>}
+              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations':message.source==='error'?'Error':config.aiEnabled?'AI design consultant':'Design advisor'}</span></div>}
               <p>{message.content}</p>
             </div>
           </div>)}
@@ -227,11 +223,11 @@ function App(){
           <div ref={endRef}/>
         </div>
       </section>}
-      <div className={'composer-position '+(active?'docked':'centered')+(rise&&!active?' scroll-rise':'')}>
+      <div className={'composer-position '+(active?'docked':'centered')+(landingFrame===4&&!active?' scroll-rise':'')}>
         <StarBorder as="div" theme={theme} backgroundColor={theme==='dark'?'#16171f':'#ffffff'} textColor={theme==='dark'?'#f6f6fa':'#20212b'} color={theme==='dark'?'#b0a3ff':'#775fe8'} trailColor={theme==='dark'?'#7ae0fa':'#c3a7ff'} radius={23} thickness={1.25} duration={4.2} stars={2} trailLength={0.32} glow={0.85} hover="lap" sparkle clickPulse className="chat-star">
           <form className="composer" onSubmit={e=>{e.preventDefault();send();}}>
-            {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="YOUR DESIGN STARTS HERE" fontSize={43} fontWeight={650} reveal="letter" reach={110} labels={false} selection={false} draggable={false} specks={4} color="currentColor" accentColor={theme==='dark'?'#c7b5ff':'#7356e8'} /></div></div>}
-            <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the UI Compass design advisor" />
+            {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="YOUR NEXT IDEA STARTS HERE" fontSize={43} fontWeight={650} reveal="letter" reach={110} labels={false} selection={false} draggable={false} specks={4} color="currentColor" accentColor={theme==='dark'?'#c7b5ff':'#7356e8'} /></div></div>}
+            <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
               <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?'AI advisor connected':'Design guidance ready'}</span>
               <div className="composer-buttons">
@@ -241,8 +237,8 @@ function App(){
             </div>
           </form>
           </StarBorder>
-        {!active&&<div className="landing-hint">Scroll to explore the motion <span>↑</span> · Tap to start a conversation</div>}
-        {active&&<p className="composer-disclaimer">UI Compass can make mistakes. Validate recommendations before building.</p>}
+        {!active&&<div className="landing-hint">A design universe, shaped by you. Tap to begin.</div>}
+        {active&&<p className="composer-disclaimer">Frontline UX/UI can make mistakes. Validate recommendations before building.</p>}
       </div>
     </main>
 
