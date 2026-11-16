@@ -37,7 +37,7 @@ export function inferCategory(text){
   if(/dashboard|analytics|saas|business|crm/.test(s))return 'SaaS';
   return 'Digital product';
 }
-export function recommend(brief, preferences={}){
+export function recommend(brief, preferences={}, library=REFERENCES){
   const prompt=clean(brief);
   const words=keywords(prompt);
   const category=inferCategory(prompt);
@@ -46,7 +46,7 @@ export function recommend(brief, preferences={}){
   const designs=STYLES.map(style=>{
     const matched=style.tags.filter(tag=>words.has(tag)||prompt.toLowerCase().includes(tag));
     const score=Math.min(98,69+Math.min(16,matched.length*5)+(style.id===specialStyle?10:0)+Math.min(7,(weights[style.id]||0)*2));
-    const refs=REFERENCES.filter(r=>r.styles.includes(style.id)).sort((a,b)=>{
+    const refs=library.filter(r=>r.styles.includes(style.id)).sort((a,b)=>{
       const ka=a.tags.filter(t=>words.has(t)).length;const kb=b.tags.filter(t=>words.has(t)).length;
       return kb-ka || (b.score||0)-(a.score||0);
     }).slice(0,3).map(r=>({id:r.id,name:r.name,award:r.award,site:r.site,rank:r.rank}));
