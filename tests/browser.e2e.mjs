@@ -50,6 +50,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.match(await page.locator('.studio-title').innerText(),/Design beyond/);
       assert.equal(await page.locator('.studio-starters button').count(),3);
       assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'dark');
+      await page.waitForTimeout(1150); // wait for the chat transition and welcome entrance motion
       await page.screenshot({path:'browser-artifacts/'+name+'-studio-dark.png',fullPage:false});
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.locator('.menu-panel').waitFor();
@@ -57,6 +58,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.getByRole('button',{name:/Switch to light theme/i}).click();
       assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'light');
       await page.locator('.close-menu').click();
+      await page.waitForTimeout(450);
       await page.screenshot({path:'browser-artifacts/'+name+'-studio-light.png',fullPage:false});
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/Switch to dark theme/i}).click();
@@ -72,10 +74,12 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     const count=await page.locator('.design-option.picked').count();
     assert.equal(count,3);
     console.log(name+' workflow passed, selected='+count);
+    await page.waitForTimeout(950);
     await page.screenshot({path:'browser-artifacts/'+name+'-chat.png',fullPage:false});
     if(!remote){
       await page.getByRole('button',{name:/Preview selected design/i}).click();
       await page.locator('.preview-app.fusion').waitFor();
+      await page.waitForTimeout(650);
       await page.screenshot({path:'browser-artifacts/'+name+'-fusion-workbench.png',fullPage:false});
       await page.locator('.feedback-details > summary').click();
       assert.equal(await page.locator('.reaction-set button').count(),3);
@@ -91,6 +95,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       if(!remote){
         await mobile.locator('.composer textarea').focus();
         await mobile.locator('.studio-title').waitFor({timeout:7000});
+        await mobile.waitForTimeout(1300);
         await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-studio.png',fullPage:false});
         const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
         assert.equal(overflow,false,'Frontline mobile studio must have no horizontal overflow');
