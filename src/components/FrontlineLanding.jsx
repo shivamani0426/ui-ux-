@@ -50,7 +50,7 @@ function spiralPath(){
 const SPIRAL_PATH=spiralPath();
 const SPIRAL_WORDS=('FRONTLINE  ·  SELECT  ·  GENERATE  ·  FUSE  ·  DESIGN INTELLIGENCE  ·  ').repeat(12);
 
-export default function FrontlineLanding({onBegin,onMode,onSceneChange,onComposeReady}){
+export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneChange,onComposeReady}){
   const root=useRef(null),frameRef=useRef(0),readyRef=useRef(false);
   const [frame,setFrame]=useState(0);
   const [reduceMotion,setReduceMotion]=useState(false);
@@ -146,7 +146,7 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
   },[onSceneChange,onComposeReady,reduceMotion]);
   const available=()=>Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
   const goToChapter=n=>window.scrollTo({top:available()*CHAPTER_STOPS[n],behavior:reduceMotion?'instant':'smooth'});
-  return <section ref={root} className={'fl-world fl-scroll-story fl-chapter-'+frame} aria-label="Frontline UX/UI cinematic scroll introduction">
+  return <section ref={root} inert={locked} aria-hidden={locked} className={'fl-world fl-scroll-story fl-chapter-'+frame} aria-label="Frontline UX/UI cinematic scroll introduction">
     <div className="fl-atmosphere" aria-hidden="true">
       <div className="fl-sky"/><div className="fl-grain"/><div className="fl-aura"/>
       <div className="fl-architecture">
