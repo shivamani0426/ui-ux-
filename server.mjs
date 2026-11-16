@@ -98,24 +98,32 @@ async function chatReply(brief,messages,styleIds){
   return {text:`I would approach “${latest.slice(0,130)}” by clarifying the user's most important task, then improving the hierarchy, components and responsive behavior around it. ${chosen.length?`Your selected directions are ${chosen.map(x=>x.name).join(', ')}. `:''}Which page or user journey should we design first?`,source:'guide'};
 }
 async function serveFile(req,res){
-  let name=new URL(req.url,'http://localhost').pathname;
-  if(name==='/'||!name.includes('.'))name='/index.html';
-  if(!['/index.html','/app.js','/styles.css','/favicon.svg','/robots.txt'].includes(name)){json(res,404,{error:'Not found'});return;}
-  const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.txt':'text/plain'};
-  const data=await fs.readFile(path.join(root,'public',name));
-  res.writeHead(200,{'Content-Type':types[path.extname(name)],'Cache-Control':name==='/index.html'?'no-cache':'public, max-age=3600'});res.end(data);
+  const pathname=new URL(req.url,'http://localhost').pathname;
+  let name;
+  try{name=decodeURIComponent(pathname);}catch{return json(res,400,{error:'Invalid path'});}
+  if(name==='/'||(!path.posix.extname(name)&&!name.startsWith('/assets/')))name='/index.html';
+  const allowed=/^\/(?:index\.html|favicon\.svg|robots\.txt|assets\/[a-zA-Z0-9_.-]+\.(?:js|css|png|svg|woff|woff2))$/;
+  if(!allowed.test(name))return json(res,404,{error:'Not found'});
+  const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.txt':'text/plain; charset=utf-8','.png':'image/png','.woff':'font/woff','.woff2':'font/woff2'};
+  try{
+    const data=await fs.readFile(path.join(root,'dist',name));
+    res.writeHead(200,{'Content-Type':types[path.extname(name)]||'application/octet-stream','Cache-Control':name==='/index.html'?'no-store':'public, max-age=31536000, immutable'});
+    if(req.method==='HEAD')return res.end();
+    res.end(data);
+  }catch(e){if(e.code==='ENOENT')return json(res,404,{error:'Asset unavailable'});throw e;}
 }
+
 const RATE_WINDOW=60_000,MAX_CALLS=75;const rateMap=new Map();
 function rateLimited(id){const now=Date.now();const rec=rateMap.get(id)||{start:now,count:0};if(now-rec.start>RATE_WINDOW){rec.start=now;rec.count=0;}rec.count++;rateMap.set(id,rec);return rec.count>MAX_CALLS;}
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
-  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
+  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
   if(req.method==='GET'&&req.url==='/api/health')return json(res,200,{status:'ok',database:pg?'connected':'demo-memory',ai:!!process.env.OPENROUTER_API_KEY});
   let owner=cookie(req,res);
   try{
     if(req.url?.startsWith('/api/')){
       if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
-      if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{aiEnabled:!!process.env.OPENROUTER_API_KEY,persistent:!!pg,version:'0.2.0'});
+      if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{aiEnabled:!!process.env.OPENROUTER_API_KEY,persistent:!!pg,version:'0.3.0'});
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:REFERENCES,source:'https://www.webdesignawards.io/categories/ui-ux-design'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){

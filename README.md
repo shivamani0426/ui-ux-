@@ -1,8 +1,8 @@
-# UI Compass — Design, with direction
+# UI Compass — chat-first UI/UX consultant
 
 A responsive UI/UX design recommendation workspace. Tell it what you want to build, compare **all three** original UI styles, record feedback and return later to continue your design decisions.
 
-## What's in v0.2
+## What's in v0.3
 
 - Three original design directions: **Minimal SaaS**, **Glass UI**, **Creative UI**.
 - Multi-select feedback: choose any combination, including all three, before saving like/dislike/change signals.
@@ -67,3 +67,10 @@ Once the deployment becomes live, add `OPENROUTER_API_KEY` in the Render service
 - `render.yaml` — web service and database infrastructure.
 
 Designed to expand toward a richer AI Design Fusion experience, authenticated teams, visual website analysis, and AI-generated React code with sandboxed previews.
+## Chat-first React Bits redesign (v0.3)
+
+- Original React Bits `TechText` and `StarBorder` components live under `src/components` and retain the upstream license in `REACT-BITS-LICENSE.md`.
+- React 19 + Vite build to `dist/`. Render still runs `npm install --omit=dev` and `npm start`; Vite builds automatically through `postinstall`.
+- Composer starts centered and docks at the bottom on focus or submission. Scrolling the landing triggers a bottom-to-center rise sequence. Messages float above the docked composer.
+- All features are inside one menu; light/dark themes and reduced-motion support are included.
+- All original backend API endpoints and project / learning logic are preserved. No persistent storage or AI model key is configured in the existing free Render deployment.
