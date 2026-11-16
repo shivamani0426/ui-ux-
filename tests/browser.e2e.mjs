@@ -75,6 +75,26 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await page.locator('.message-row.incoming').first().waitFor({timeout:12000});
     assert.ok(await page.locator('.message-avatar .fl-monogram').count()>=1,'AI avatar must use F mark');
     await page.locator('.result-message').first().waitFor({timeout:12000});
+    if(!remote){
+      await page.locator('.inspiration-card').first().waitFor({timeout:8000});
+      const firstCard=page.locator('.inspiration-card').first();
+      assert.ok((await page.locator('.inspiration-card').count())>=10,'Should render references from curated library');
+      await firstCard.getByRole('button',{name:'Save inspiration'}).click();
+      await page.waitForFunction(()=>document.querySelector('.inspiration-saved-counter strong')?.textContent?.includes('1 saved'));
+      assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Chosen inspiration should be saved');
+      await firstCard.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(450);
+      await page.screenshot({path:'browser-artifacts/'+name+'-select-inspirations.png',fullPage:false});
+      await page.locator('.inspiration-search input').fill('portfolio');
+      assert.ok((await page.locator('.inspiration-card').count())>=1,'Portfolio filter should yield references');
+      await page.locator('.inspiration-search input').fill('');
+      await page.reload({waitUntil:'networkidle'});
+      await page.getByRole('button',{name:'Open navigation menu'}).click();
+      await page.getByRole('button',{name:/My conversations/i}).click();
+      await page.locator('.history-item').first().click();
+      await page.locator('.inspiration-save.selected').first().waitFor({timeout:10000});
+      assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Inspiration pick should survive refresh');
+    }
     const selectAll=page.getByRole('button',{name:/Select all three/i});
     await selectAll.click();
     const count=await page.locator('.design-option.picked').count();

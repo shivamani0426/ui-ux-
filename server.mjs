@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
+import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const PORT=Number(process.env.PORT||3000);
@@ -11,6 +12,7 @@ const MAX_BODY=12_000;
 const live=new Map();
 const guests=new Map();
 const votes=[];
+const memorySelections=new Map();
 const isProd=process.env.NODE_ENV==='production';
 const cookieName=isProd?'__Host-uic_guest':'uic_guest';
 let pg=null;
@@ -34,6 +36,52 @@ async function listReferences(){
   const result=await pg.query(`SELECT id,name,site,award,category,styles,tags,rank,score
     FROM frontline.design_sources WHERE active = true ORDER BY rank ASC NULLS LAST, name ASC LIMIT 250`);
   return result.rows;
+}
+async function selectionIds(owner,projectId){
+  if(!pg)return [...(memorySelections.get(owner+':'+projectId)||new Set())];
+  const r=await pg.query('SELECT source_id FROM frontline.reference_selections WHERE visitor_id=$1 AND project_id=$2 AND selected=true ORDER BY created_at ASC',[owner,projectId]);
+  return r.rows.map(x=>x.source_id);
+}
+async function personalInspirationTags(owner){
+  if(!pg){
+    const ids=new Set();
+    for(const [key,values] of memorySelections){if(key.startsWith(owner+':'))for(const value of values)ids.add(value);}
+    return REFERENCES.filter(x=>ids.has(x.id)).flatMap(x=>x.tags).slice(0,60);
+  }
+  const r=await pg.query(`SELECT s.tags FROM frontline.reference_selections r
+    JOIN frontline.design_sources s ON s.id=r.source_id
+    WHERE r.visitor_id=$1 AND r.selected=true ORDER BY r.created_at DESC LIMIT 60`,[owner]);
+  return r.rows.flatMap(x=>x.tags||[]);
+}
+async function updateInspirationSelection(owner,projectId,sourceId,selected){
+  if(!pg){
+    const key=owner+':'+projectId, picks=memorySelections.get(key)||new Set();
+    if(selected)picks.add(sourceId);else picks.delete(sourceId);
+    memorySelections.set(key,picks);return;
+  }
+  if(selected){
+    await pg.query(`INSERT INTO frontline.reference_selections(project_id,visitor_id,source_id,selected)
+      VALUES($1,$2,$3,true) ON CONFLICT(project_id,source_id)
+      DO UPDATE SET selected=true`,[projectId,owner,sourceId]);
+  }else{
+    await pg.query('DELETE FROM frontline.reference_selections WHERE project_id=$1 AND visitor_id=$2 AND source_id=$3',[projectId,owner,sourceId]);
+  }
+}
+async function savedSourceRows(owner,projectId){
+  const ids=await selectionIds(owner,projectId);
+  if(!ids.length)return [];
+  const refs=await listReferences();
+  return ids.map(id=>refs.find(r=>r.id===id)).filter(Boolean).slice(0,8);
+}
+async function makeInspirationResponse(owner,project){
+  const [refs,prefs,picks,personalTags]=await Promise.all([listReferences(),profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)]);
+  return {
+    projectId:project.id,
+    matches:rankInspirations(project.brief,refs,{styleWeights:prefs.styleWeights||{},favoriteTags:personalTags}),
+    selected:picks,
+    librarySize:refs.length,
+    ranking:'Metadata signals + your private selection history; not live website scraping',
+  };
 }
 async function profile(owner){
   if(!pg)return guests.get(owner)||{styleWeights:{},globalOptIn:false};
@@ -72,7 +120,8 @@ async function insights(){
   return counts.filter(x=>x.people>=5).map(x=>({style:x.style_id,people:x.people}));
 }
 async function eraseProfile(owner){
-  if(!pg){guests.delete(owner);for(const [id,p] of live){if(p.owner===owner)live.delete(id)}for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
+  if(!pg){guests.delete(owner);for(const [id,p] of live){if(p.owner===owner)live.delete(id)}for(const key of memorySelections.keys())if(key.startsWith(owner+':'))memorySelections.delete(key);for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
+  await pg.query('DELETE FROM frontline.interaction_events WHERE visitor_id=$1',[owner]);
   await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_projects WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
 }
 function cookie(req,res){
@@ -148,6 +197,30 @@ const server=http.createServer(async(req,res)=>{
         const prefs=await profile(owner);const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
         await saveProject(owner,p);return json(res,201,{project:p});
+      }
+      const inspireMatch=new URL(req.url,'http://localhost').pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/inspirations(\/prompt)?$/);
+      if(inspireMatch){
+        const id=inspireMatch[1],action=inspireMatch[2],p=await getProject(owner,id);
+        if(!p)return json(res,404,{error:'Project not found'});
+        if(req.method==='GET'&&!action)return json(res,200,await makeInspirationResponse(owner,p));
+        if(req.method==='PUT'&&!action){
+          const b=await readBody(req);
+          if(typeof b.sourceId!=='string'||!/^[-a-zA-Z0-9_]{1,80}$/.test(b.sourceId)||typeof b.selected!=='boolean')
+            return json(res,400,{error:'Choose a valid reference and selection state'});
+          const found=(await listReferences()).find(x=>x.id===b.sourceId);
+          if(!found)return json(res,404,{error:'Inspiration not found'});
+          await updateInspirationSelection(owner,id,found.id,b.selected);
+          return json(res,200,await makeInspirationResponse(owner,p));
+        }
+        if(req.method==='POST'&&action==='/prompt'){
+          const chosen=await savedSourceRows(owner,id);
+          if(!chosen.length)return json(res,400,{error:'Save at least one inspiration first'});
+          const prompt=makeSelectionPrompt(p,chosen);
+          if(pg)await pg.query(`INSERT INTO frontline.generated_prompts(project_id,visitor_id,prompt_type,prompt_text,styles)
+            VALUES($1,$2,'select',$3,$4)`,[id,owner,prompt,chosen.flatMap(x=>x.styles).filter((x,i,a)=>a.indexOf(x)===i)]);
+          return json(res,200,{prompt,references:chosen.map(x=>x.id)});
+        }
+        return json(res,405,{error:'Method not allowed'});
       }
       const projectMatch=new URL(req.url,'http://localhost').pathname.match(/^\/api\/projects\/([a-f0-9-]{36})(\/messages|\/export)?$/);
       if(projectMatch){
