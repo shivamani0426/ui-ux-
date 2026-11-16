@@ -31,6 +31,40 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.ok(introTitle && introTitle.x>=-6 && introTitle.x+introTitle.width<=titleViewport.width+6,
         name+' INTRO TITLE OVERFLOW: '+JSON.stringify(introTitle));
       if(!remote){
+        const timeline=await page.evaluate(()=>({
+          screens:document.documentElement.scrollHeight/window.innerHeight,
+          composerCount:document.querySelectorAll('.composer textarea').length,
+        }));
+        assert.ok(timeline.screens>=9,name+' should offer an extended, deliberate scroll journey: '+JSON.stringify(timeline));
+        assert.equal(timeline.composerCount,0,'Opening should remain free of the composer');
+        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.296,behavior:'instant'}));
+        await page.waitForFunction(()=>document.querySelector('.fl-chapter-1'),null,{timeout:9000});
+        const separate=await page.evaluate(()=>{
+          const a=[...document.querySelectorAll('.fl-story-scene')].map(x=>Number(getComputedStyle(x).opacity));
+          return {select:a[1],generate:a[2],intro:a[0]};
+        });
+        assert.ok(separate.select>.92 && separate.generate<.04 && separate.intro<.04,
+          name+' feature chapters must have an independent reading hold: '+JSON.stringify(separate));
+        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.787,behavior:'instant'}));
+        await page.waitForFunction(()=>document.querySelector('.fl-chapter-4'),null,{timeout:9000});
+        const seed=await page.evaluate(()=>{
+          const m=new DOMMatrix(getComputedStyle(document.querySelector('.fl-spiral-stage')).transform);
+          return {scale:Math.hypot(m.a,m.b),composer:Number(getComputedStyle(document.documentElement).getPropertyValue('--fl-compose-reveal'))};
+        });
+        assert.ok(seed.scale<.15 && seed.composer===0,name+' spiral must begin as a tiny seed, with no chat: '+JSON.stringify(seed));
+        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.952,behavior:'instant'}));
+        await page.waitForTimeout(250);
+        const mature=await page.evaluate(()=>{
+          const m=new DOMMatrix(getComputedStyle(document.querySelector('.fl-spiral-stage')).transform);
+          return {scale:Math.hypot(m.a,m.b),composer:Number(getComputedStyle(document.documentElement).getPropertyValue('--fl-compose-reveal'))};
+        });
+        assert.ok(mature.scale>.98 && mature.scale>seed.scale*8,
+          name+' spiral should mature progressively across a long scroll distance: '+JSON.stringify({seed,mature}));
+        assert.ok(mature.composer>0 && mature.composer<.75,
+          name+' chat reveal should lag spiral maturation rather than pop fully into view: '+JSON.stringify(mature));
+        await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+      }
+      if(!remote){
         await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.385,behavior:'instant'}));
         await page.waitForTimeout(270);
         const letterBefore=await page.locator('.fl-story-scene-2 .fl-kinetic-glyph').first()
