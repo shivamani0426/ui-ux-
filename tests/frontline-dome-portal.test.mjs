@@ -35,7 +35,7 @@ test('White halo charges on an all-black screen before the slow centre-out revea
   assert.match(css,/\.app\.portal-idle \.fl-world,\.app\.portal-charging \.fl-world/);
   assert.match(css,/clip-path:circle\(0% at 50% 50%\)/);
   assert.match(css,/\.app\.portal-opening \.fl-world/);
-  assert.match(css,/clip-path:circle\(165vmax at 50% 50%\)/);
+  assert.match(css,/clip-path:circle\(76vmax at 50% 50%\)/);
   assert.match(css,/prefers-reduced-motion/);
   assert.match(app,/document\.documentElement\.style\.overflow='hidden'/);
   assert.match(app,/document\.documentElement\.style\.overflow=oldHTML/);
