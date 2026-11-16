@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUpRight } from 'lucide-react';
+import SolarFluidCanvas from './SolarFluidCanvas.jsx';
 import './FrontlineLanding.css';
 
 // Original Frontline visual scene: no artwork, fonts or animation code copied from the reference.
@@ -76,9 +77,10 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
         <div className="fl-floor"/>
       </div>
       <div className="fl-sun-wrap">
-        <div className="fl-sun-halo"/><div className="fl-sun"/>
+        <div className="fl-sun-halo"/><div className="fl-sun"><SolarFluidCanvas mode="sun"/></div>
       </div>
       <div className="fl-basin"><div className="fl-water">
+        <SolarFluidCanvas mode="water"/>
         <div className="fl-sun-reflection"/>
         <div className="fl-ripple fl-ripple-a"/><div className="fl-ripple fl-ripple-b"/><div className="fl-ripple fl-ripple-c"/>
       </div></div>
