@@ -247,3 +247,11 @@
  .app.in-welcome:has(.fl-chapter-3) .brand-word,
  .app.in-welcome:has(.fl-chapter-4) .brand-word{color:#533b31}
 }
+
+/* Once the opaque editorial paper covers the opening sphere, completely
+   remove the WebGL canvases from layout/visibility. IntersectionObserver
+   stops their draw loops until the visitor scrolls back to the hero. */
+.fl-scroll-story.fl-chapter-1 .fl-atmosphere,
+.fl-scroll-story.fl-chapter-2 .fl-atmosphere,
+.fl-scroll-story.fl-chapter-3 .fl-atmosphere,
+.fl-scroll-story.fl-chapter-4 .fl-atmosphere{display:none}
