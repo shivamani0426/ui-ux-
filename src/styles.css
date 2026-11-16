@@ -49,3 +49,30 @@
 }
 @media(max-height:620px){.app.in-welcome .composer-position.centered{top:66svh}.app.in-welcome.story-end .composer-position.centered{top:68svh}}
 @media(prefers-reduced-motion:reduce){.app.in-welcome .composer-position.scroll-rise{animation:none!important}}
+
+/* Frontline 1.1 — balanced cinematic composition, readable wordmarks and GPU fallback */
+.fl-world .fl-fluid-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:0;transition:opacity .65s ease;z-index:1;overflow:hidden}
+.fl-world .fl-fluid-sun{border-radius:50%;mix-blend-mode:soft-light}
+.fl-world .fl-fluid-water{border-radius:50%;mix-blend-mode:screen}
+.fl-chapter-0 .fl-headline-main{font-size:clamp(78px,12.4vw,208px);letter-spacing:-.075em}
+.fl-chapter-0 .fl-headline-accent{font-size:clamp(55px,7vw,112px);margin-top:8px;padding-right:2vw}
+.fl-chapter-0 .fl-chapter-content{top:13.5vh}
+.fl-chapter-0 .fl-note{max-width:520px}
+.app .brand-word{font:800 15px/1 'Manrope',sans-serif;letter-spacing:-.045em;white-space:nowrap;display:inline-block}
+.app.in-welcome .brand-word{color:#fff3df;font-size:19px;letter-spacing:-.055em}
+.app.in-chat .brand-word{color:var(--text)}
+.app .brand-tech{width:auto;height:auto;display:flex;align-items:center}
+.app.in-welcome .brand-tech{width:auto;height:auto}
+.app .composer-wordmark{height:28px}
+.app .composer-tech{height:28px}
+@media(max-width:700px){
+ .app.in-welcome .brand-word{font-size:17px}
+ .fl-chapter-0 .fl-chapter-content{top:15vh}
+ .fl-chapter-0 .fl-headline-main{font-size:13.4vw!important}
+ .fl-chapter-0 .fl-headline-accent{font-size:12.8vw!important}
+ .app.in-welcome .composer-wordmark{height:25px}
+ .app.in-welcome .composer-tech{height:25px}
+}
+@media(prefers-reduced-motion:reduce){
+ .fl-world .fl-fluid-canvas{display:none!important}
+}
