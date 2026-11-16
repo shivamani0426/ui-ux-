@@ -1,4 +1,4 @@
-# UI Compass — chat-first UI/UX consultant
+# Frontline UX/UI — immersive design intelligence studio (formerly UI Compass)
 
 A responsive UI/UX design recommendation workspace. Tell it what you want to build, compare **all three** original UI styles, record feedback and return later to continue your design decisions.
 
@@ -74,3 +74,17 @@ Designed to expand toward a richer AI Design Fusion experience, authenticated te
 - Composer starts centered and docks at the bottom on focus or submission. Scrolling the landing triggers a bottom-to-center rise sequence. Messages float above the docked composer.
 - All features are inside one menu; light/dark themes and reduced-motion support are included.
 - All original backend API endpoints and project / learning logic are preserved. No persistent storage or AI model key is configured in the existing free Render deployment.
+
+
+## Frontline UX/UI cinematic landing (2026-11-16)
+
+- A custom original solar / architectural landing inspired by the motion language (not the assets, font, or code) of Casa di Solare.
+- Five scroll chapters: Intro, Select UI/UX, Generate UI/UX, Design Fusion, and Personal Preferences.
+- Scroll-animated luminous sphere, water reflection and ripples, pointer parallax, responsive decorative architecture, staged typography and in-scene actions.
+- The centered chat composer remains available on the intro; it docks on feature chapters and rises on the final chapter. Interacting with it opens the existing chat workspace.
+- Menu, projects, feedback API, guest privacy, optional OpenRouter and optional PostgreSQL backend are intentionally unchanged.
+- Styles are hand-authored CSS with reduced-motion accessibility. The landing is an original Frontline design and is not represented as the Casa di Solare site's proprietary 3D assets or source implementation.
+
+### Important limitations
+
+Generate mode currently offers design guidance and original illustrative concepts, not exported running React apps. The saved preference system depends on persistent PostgreSQL; temporary in-memory Render storage is not durable. Implicit final-choice learning is planned, not yet implemented. Do not describe these as shipped features.
