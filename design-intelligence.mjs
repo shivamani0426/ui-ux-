@@ -22,7 +22,7 @@ const referenceNames=items=>(items||[]).slice(0,8).map(r=>({
   category:safe(r.category,80),tags:(r.tags||[]).slice(0,6).map(t=>safe(t,30)),
 }));
 export function buildDesignBrief({project,mode='generate',styles=[],references=[],preferences={},refinement=''}) {
-  const selected=getStyles(styles);
+  const selected=mode==='generate'?STYLES:getStyles(styles);
   const category=project.recommendations?.category||inferCategory(project.brief);
   const pages=defaultPages[category]||defaultPages['Digital product'];
   const namedRefs=referenceNames(references);
