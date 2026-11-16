@@ -246,6 +246,24 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.locator('.feedback-details > summary').click();
       assert.equal(await page.locator('.reaction-set button').count(),3);
       await page.locator('.feedback-details > summary').click();
+      // Milestone 0.4: actual Generate UI/UX and Design Fusion prompt journeys.
+      await page.getByRole('button',{name:'Open navigation menu'}).click();
+      await page.getByRole('button',{name:/Select \/ Generate \/ Fusion/i}).click();
+      await page.locator('.tool-mode').filter({hasText:'Generate UI/UX'}).click();
+      await page.getByRole('button',{name:/Generate three directions/i}).click();
+      await page.locator('.di-result').waitFor({timeout:16000});
+      const generatedPrompt=await page.locator('.di-result pre').innerText();
+      assert.match(generatedPrompt,/THREE ORIGINAL DESIGN DIRECTIONS/);
+      assert.match(generatedPrompt,/DIRECTION 3/);
+      assert.ok(generatedPrompt.length>1800,name+' generated UI/UX prompt should be substantial');
+      await page.screenshot({path:'browser-artifacts/'+name+'-generate-uiux-prompt.png',fullPage:false});
+      await page.getByRole('button',{name:'Open navigation menu'}).click();
+      await page.getByRole('button',{name:/Select \/ Generate \/ Fusion/i}).click();
+      await page.locator('.tool-mode').filter({hasText:'Design Fusion'}).click();
+      await page.getByRole('button',{name:/Combine my selected concepts/i}).click();
+      await page.locator('.di-result').waitFor({timeout:16000});
+      assert.match(await page.locator('.di-result pre').innerText(),/DESIGN FUSION SPECIFICATION/);
+      await page.screenshot({path:'browser-artifacts/'+name+'-intelligent-design-fusion.png',fullPage:false});
     }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,hasTouch:true});
     await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});

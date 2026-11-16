@@ -7,6 +7,7 @@ import FrontlineLanding from './components/FrontlineLanding.jsx';
 import FrontlineDomePortal from './components/FrontlineDomePortal.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
+import DesignPromptPanel from './components/DesignPromptPanel.jsx';
 import './styles.css';
 import './frontline-studio.css';
 import './inspiration-explorer.css';
@@ -158,7 +159,9 @@ function App(){
   const copyPrompt=async()=>{
     if(!project||!selected.length){notice('Select a design direction first.');return;}
     try{
-      const r=await api('/api/projects/'+encodeURIComponent(project.id)+'/export',{method:'POST',body:JSON.stringify({styles:selected})});
+      const endpoint=designMode==='select'?'export':'design-prompt';
+      const payload=designMode==='select'?{styles:selected}:{mode:designMode,styles:selected};
+      const r=await api('/api/projects/'+encodeURIComponent(project.id)+'/'+endpoint,{method:'POST',body:JSON.stringify(payload)});
       await navigator.clipboard.writeText(r.prompt);
       notice('Implementation prompt copied to clipboard.');
     }catch(e){notice(e.message);}
@@ -217,7 +220,7 @@ function App(){
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
             {message.role!=='user'&&<div className="message-avatar"><FrontlineMark size={25}/></div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
-              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations':message.source==='error'?'Error':config.aiEnabled?'AI design consultant':'Design advisor'}</span></div>}
+              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations · AI fallback':message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
               <p>{message.content}</p>
             </div>
           </div>)}
@@ -253,6 +256,9 @@ function App(){
                 <div className="preview-content"><div className="preview-heading"><span>Workspace overview</span><span>•••</span></div><div className="preview-hero"><small>{project.recommendations.category} / CONCEPT</small><strong>Design with intention.</strong><p>{project.brief.slice(0,100)}</p></div><div className="preview-stats"><div><small>Experience</small><b>01</b><i/></div><div><small>Interface</small><b>02</b><i/></div></div></div>
               </div><small>Illustrative composition only. Not exported working application code.</small>
             </div>}
+            {(designMode==='generate'||designMode==='fusion')&&<DesignPromptPanel
+              key={project.id+':'+designMode} project={project} mode={designMode}
+              styles={selected} api={api} notice={notice}/>}
             <details className="feedback-details">
               <summary>Optional refinement notes</summary>
               <div className="feedback-line">
@@ -281,7 +287,7 @@ function App(){
             {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="DESIGN BEGINS WITH YOU" fontSize={38} fontWeight={650} reveal="letter" reach={0} labels={false} selection={false} draggable={false} specks={0} sweep={false} clickKick={false} color="currentColor" accentColor="#bd7444" /></div></div>}
             <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
-              <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?'AI advisor connected':'Design guidance ready'}</span>
+              <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?'AI configured · fallback ready':'Design guidance ready'}</span>
               <div className="composer-buttons">
                 <button type="button" className="tool-button" title="Explore tools" onClick={()=>showMenu('tools')} aria-label="Open design tools"><Plus size={19}/></button>
                 <button className="submit-button" type="submit" disabled={working||brief.trim().length<2} aria-label="Send message">{working?<RotateCcw size={18} className="spin"/>:<ArrowUp size={19}/>}</button>
@@ -318,8 +324,8 @@ function App(){
           <p className="menu-intro">Choose your design workflow. All three share the same chat experience.</p>
           {[
             {key:'select',name:'Select UI/UX',description:'Explore, save and combine matching inspiration websites from our library.'},
-            {key:'generate',name:'Generate UI/UX',description:'Shape an original direction from a brief; full model generation needs an AI key.'},
-            {key:'fusion',name:'Design Fusion',description:'Combine saved inspirations with design styles into a detailed prompt.'}
+            {key:'generate',name:'Generate UI/UX',description:'Create three original design directions and a detailed copyable prompt.'},
+            {key:'fusion',name:'Design Fusion',description:'Fuse saved inspirations and chosen styles into one original prompt.'}
           ].map(item=><button className={'tool-mode '+(designMode===item.key?'active':'')} key={item.key} onClick={()=>{setDesignMode(item.key);setSelected(item.key==='fusion'?styleKeys:selected);setMenuOpen(false);focusChat();notice(item.name+' ready. Describe your idea in chat.');}}>
             <span className="mode-symbol">{item.key==='select'?'◈':item.key==='generate'?'✧':<FrontlineMark size={23}/>}</span>
             <span><strong>{item.name}</strong><small>{item.description}</small></span>

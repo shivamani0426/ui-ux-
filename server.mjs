@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
 import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
+import {createDesignPrompt} from './design-intelligence.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const PORT=Number(process.env.PORT||3000);
@@ -14,6 +15,7 @@ const live=new Map();
 const guests=new Map();
 const votes=[];
 const memorySelections=new Map();
+const finalizedModes=new Set();
 const isProd=process.env.NODE_ENV==='production';
 const cookieName=isProd?'__Host-uic_guest':'uic_guest';
 let pg=null;
@@ -121,7 +123,7 @@ async function insights(){
   return counts.filter(x=>x.people>=5).map(x=>({style:x.style_id,people:x.people}));
 }
 async function eraseProfile(owner){
-  if(!pg){guests.delete(owner);for(const [id,p] of live){if(p.owner===owner)live.delete(id)}for(const key of memorySelections.keys())if(key.startsWith(owner+':'))memorySelections.delete(key);for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
+  if(!pg){guests.delete(owner);for(const [id,p] of live){if(p.owner===owner)live.delete(id)}for(const key of memorySelections.keys())if(key.startsWith(owner+':'))memorySelections.delete(key);for(const key of finalizedModes)if(key.startsWith(owner+':'))finalizedModes.delete(key);for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
   await pg.query('DELETE FROM frontline.interaction_events WHERE visitor_id=$1',[owner]);
   await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_projects WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
 }
@@ -142,7 +144,8 @@ function validateText(text,min,max){return typeof text==='string'&&text.trim().l
 async function chatReply(brief,messages,styleIds){
   const latest=messages.at(-1)?.content||'';
   const chosen=styleIds.map(i=>STYLES.find(s=>s.id===i)).filter(Boolean);
-  const ai=await designAiReply({brief,messages,styles:chosen});
+  // CI/build tests must never consume real API quotas or transmit test data.
+  const ai=process.env.NODE_ENV==='test'?null:await designAiReply({brief,messages,styles:chosen});
   if(ai)return ai;
   const s=latest.toLowerCase();
   if(/color|palette|theme/.test(s))return {text:`For this project, begin with ${chosen[0]?.name||'Minimal SaaS'} and establish a four-color system: one neutral background, one surface, one readable text color, and one primary accent. Keep text contrast high and validate accessible combinations. If you select all three styles, use one as the base and borrow selective details from the others.`,source:'guide'};
@@ -176,7 +179,7 @@ const server=http.createServer(async(req,res)=>{
   try{
     if(req.url?.startsWith('/api/')){
       if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
-      if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.3.2'});
+      if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.4.0'});
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
@@ -218,6 +221,46 @@ const server=http.createServer(async(req,res)=>{
           return json(res,200,{prompt,references:chosen.map(x=>x.id)});
         }
         return json(res,405,{error:'Method not allowed'});
+      }
+      const designMatch=new URL(req.url,'http://localhost').pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/design-prompt$/);
+      if(designMatch){
+        const id=designMatch[1],p=await getProject(owner,id);
+        if(!p)return json(res,404,{error:'Project not found'});
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        const b=await readBody(req);
+        if(!['generate','fusion'].includes(b.mode))return json(res,400,{error:'Choose Generate UI/UX or Design Fusion'});
+        if(!Array.isArray(b.styles)||b.styles.length<1||b.styles.length>3||
+            b.styles.some(style=>!STYLES.some(s=>s.id===style)))
+          return json(res,400,{error:'Choose one to three valid design styles'});
+        if(b.refinement!==undefined&&(typeof b.refinement!=='string'||b.refinement.length>600))
+          return json(res,400,{error:'Refinement must be 600 characters or fewer'});
+        const styleIds=[...new Set(b.styles)];
+        const [refs,prefs]=await Promise.all([savedSourceRows(owner,id),profile(owner)]);
+        const result=await createDesignPrompt({
+          project:p,mode:b.mode,styles:styleIds,references:refs,preferences:prefs,
+          refinement:b.refinement||'',
+          env:process.env.NODE_ENV==='test'?{}:process.env
+        });
+        // Learn privately from the first intentional finalization in each mode.
+        // Repeated clicks on Copy do not inflate the user's learned preferences.
+        let hasFinalized=false;
+        if(pg){
+          const prior=await pg.query('SELECT 1 FROM frontline.generated_prompts WHERE project_id=$1 AND visitor_id=$2 AND prompt_type=$3 LIMIT 1',
+            [id,owner,b.mode]);
+          hasFinalized=prior.rowCount>0;
+          await pg.query('INSERT INTO frontline.generated_prompts(project_id,visitor_id,prompt_type,prompt_text,styles) VALUES($1,$2,$3,$4,$5)',
+            [id,owner,b.mode,result.prompt,styleIds]);
+        }else{
+          const key=owner+':'+id+':'+b.mode;
+          hasFinalized=finalizedModes.has(key);
+          finalizedModes.add(key);
+        }
+        if(!hasFinalized){
+          const next={...prefs,styleWeights:{...(prefs.styleWeights||{})}};
+          for(const style of styleIds)next.styleWeights[style]=Math.max(-5,Math.min(5,(next.styleWeights[style]||0)+1));
+          await saveProfile(owner,next);
+        }
+        return json(res,200,{...result,styles:styleIds,references:refs.map(x=>x.id)});
       }
       const projectMatch=new URL(req.url,'http://localhost').pathname.match(/^\/api\/projects\/([a-f0-9-]{36})(\/messages|\/export)?$/);
       if(projectMatch){

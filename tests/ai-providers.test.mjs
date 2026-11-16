@@ -16,9 +16,9 @@ const openRouterOk=text=>response(200,{choices:[{message:{content:text}}]});
 test('Provider configuration never exposes keys, and no key means no network access',async()=>{
   const env={GEMINI_API_KEY:'super-private-123',OPENROUTER_API_KEY:'another-private-789',AI_FALLBACK_ENABLED:'true'};
   const config=aiConfig(env);
-  assert.deepEqual(config,{aiEnabled:true,aiProviders:{gemini:true,openrouter:true},aiPrimary:'gemini',aiFallbackEnabled:true});
+  assert.deepEqual(config,{aiEnabled:true,aiProviders:{gemini:true,openrouter:true},aiPrimary:'gemini',aiFallbackEnabled:true,aiStatus:'configured-unverified'});
   assert.ok(!JSON.stringify(config).includes('private'));
-  assert.deepEqual(aiConfig({}),{aiEnabled:false,aiProviders:{gemini:false,openrouter:false},aiPrimary:'gemini',aiFallbackEnabled:false});
+  assert.deepEqual(aiConfig({}),{aiEnabled:false,aiProviders:{gemini:false,openrouter:false},aiPrimary:'gemini',aiFallbackEnabled:false,aiStatus:'not-configured'});
   let calls=0;
   const out=await designAiReply({brief,messages,env:{},request:()=>{calls++;throw Error('must not run')}});
   assert.equal(out,null);
@@ -35,12 +35,14 @@ test('Gemini receives server-only key, original project brief and role-mapped co
   assert.equal(answer.source,'ai');
   assert.equal(answer.provider,'gemini');
   assert.equal(calls.length,1,'OpenRouter should not receive user content when Gemini succeeds');
-  assert.ok(calls[0].url.endsWith('/gemini-2.5-flash-lite:generateContent'));
+  assert.ok(calls[0].url.endsWith('/gemini-3.5-flash-lite:generateContent'));
   assert.equal(calls[0].init.headers['x-goog-api-key'],'gemini-test-secret');
   assert.ok(!JSON.stringify(calls[0].init.body).includes('gemini-test-secret'));
   const body=JSON.parse(calls[0].init.body);
-  assert.match(body.systemInstruction.parts[0].text,/student learning dashboard/);
-  assert.match(body.systemInstruction.parts[0].text,/Minimal SaaS/);
+  assert.doesNotMatch(body.systemInstruction.parts[0].text,/student learning dashboard/,
+    'Untrusted user brief must not be elevated to system instructions');
+  assert.match(body.contents[0].parts[0].text,/student learning dashboard/);
+  assert.match(body.contents[0].parts[0].text,/Minimal SaaS/);
   assert.deepEqual(body.contents.map(x=>x.role),['user','model','user']);
   assert.equal(body.contents[2].parts[0].text,'Use a calming blue color system');
   assert.equal(body.generationConfig.maxOutputTokens,1100);
@@ -98,4 +100,23 @@ test('Unsuccessful or empty provider responses leave the deterministic guide ava
   const result=await designAiReply({brief,messages,
     env:{GEMINI_API_KEY:'test'},request:async()=>response(200,{candidates:[{finishReason:'SAFETY'}]})});
   assert.equal(result,null);
+});
+
+test('Prompt-only task requests longer design output, not application code',async()=>{
+  const env={GEMINI_API_KEY:'not-a-real-key'};
+  let payload;
+  const answer=await designAiReply({brief,messages,styles,task:'prompt',env,request:async(url,init)=>{
+    payload=JSON.parse(init.body);
+    return geminiOk('A sufficiently detailed original UI/UX prompt '.repeat(20));
+  }});
+  assert.equal(answer.provider,'gemini');
+  assert.equal(payload.generationConfig.maxOutputTokens,3600);
+  assert.match(payload.systemInstruction.parts[0].text,/No actual application code/i);
+});
+test('Latest model configuration is still overridable with a safe model ID',async()=>{
+  let url;
+  await designAiReply({brief,messages,env:{GEMINI_API_KEY:'test',GEMINI_MODEL:'gemini-3.8-flash'},request:async(u)=>{
+    url=u;return geminiOk('A clear design');
+  }});
+  assert.ok(url.endsWith('/gemini-3.8-flash:generateContent'));
 });
