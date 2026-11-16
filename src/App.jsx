@@ -1,0 +1,302 @@
+import React, {useEffect, useRef, useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {ArrowUp, Check, CheckCheck, ChevronLeft, ChevronRight, Copy, ExternalLink, Heart, Layers3, Menu, Moon, Plus, RotateCcw, Search, ShieldCheck, Sparkles, Sun, X} from 'lucide-react';
+import TechText from './components/TechText.jsx';
+import StarBorder from './components/StarBorder.jsx';
+import './styles.css';
+
+const api=async (path,options={})=>{
+  const r=await fetch(path,{credentials:'same-origin',...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(data.error||'The request could not be completed.');
+  return data;
+};
+const formats={minimal:'Minimal SaaS',glass:'Glass UI',creative:'Creative UI'};
+const styleKeys=['minimal','glass','creative'];
+const starterNotes=[
+  'Design a minimalist student learning platform with an AI tutor and study dashboard.',
+  'Create a modern portfolio with cinematic typography and delightful transitions.',
+  'Plan an accessible health dashboard for appointments, patient care, and analytics.'
+];
+const safeRead=(key,fallback)=>{try{return localStorage.getItem(key)||fallback}catch{return fallback}};
+
+function App(){
+  const [theme,setTheme]=useState(()=>safeRead('uic-theme','light')==='dark'?'dark':'light');
+  const [menuOpen,setMenuOpen]=useState(false);
+  const [panel,setPanel]=useState('menu');
+  const [mode,setMode]=useState('welcome');
+  const [brief,setBrief]=useState('');
+  const [project,setProject]=useState(null);
+  const [messages,setMessages]=useState([]);
+  const [catalog,setCatalog]=useState({styles:[],references:[]});
+  const [projects,setProjects]=useState([]);
+  const [profile,setProfile]=useState({styleWeights:{},globalOptIn:false});
+  const [config,setConfig]=useState({aiEnabled:false,persistent:false});
+  const [selected,setSelected]=useState(styleKeys);
+  const [working,setWorking]=useState(false);
+  const [toast,setToast]=useState('');
+  const [feedback,setFeedback]=useState('');
+  const [reaction,setReaction]=useState('like');
+  const [designMode,setDesignMode]=useState('select');
+  const [viewPreview,setViewPreview]=useState(false);
+  const [mobilePreview,setMobilePreview]=useState(false);
+  const [search,setSearch]=useState('');
+  const [rise,setRise]=useState(false);
+  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null);
+
+  const notice=(message)=>{
+    setToast(message);clearTimeout(toastTimer.current);
+    toastTimer.current=setTimeout(()=>setToast(''),3800);
+  };
+  useEffect(()=>{
+    document.documentElement.setAttribute('data-theme',theme);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#0c0d13':'#fafafd');
+    try{localStorage.setItem('uic-theme',theme)}catch{}
+  },[theme]);
+  useEffect(()=>{
+    Promise.allSettled([
+      api('/api/catalog').then(setCatalog),
+      api('/api/projects').then(v=>setProjects(v.projects||[])),
+      api('/api/profile').then(setProfile),
+      api('/api/config').then(setConfig)
+    ]).then(results=>{if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded.');});
+    const onScroll=()=>{
+      if(window.scrollY>56&&window.scrollY<window.innerHeight*1.8){
+        setRise(false);
+        clearTimeout(scrollTimer.current);
+        scrollTimer.current=setTimeout(()=>setRise(true),24);
+      }
+    };
+    window.addEventListener('scroll',onScroll,{passive:true});
+    return ()=>{window.removeEventListener('scroll',onScroll);clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);};
+  },[]);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth',block:'end'});},[messages,working,viewPreview]);
+  const active=mode==='chat';
+  const focusChat=()=>{
+    if(!active){
+      setMode('chat');setRise(false);
+      window.scrollTo({top:0,behavior:'instant'});
+    }
+  };
+  const send=async()=>{
+    const raw=brief.trim();
+    if(working||raw.length<2){if(raw.length<2)notice('Describe what you want to design.');return;}
+    focusChat();
+    setBrief('');
+    setWorking(true);
+    setMenuOpen(false);
+    setMessages(prev=>[...prev,{role:'user',content:raw,time:new Date().toISOString()}]);
+    try{
+      let current=project;
+      if(!current){
+        const fullBrief=raw.length<15?'Design a thoughtful user interface based on this request: '+raw:raw;
+        const r=await api('/api/projects',{method:'POST',body:JSON.stringify({brief:fullBrief})});
+        current=r.project;
+        setProject(current);
+        setProjects(p=>[current,...p]);
+        setViewPreview(false);
+      }
+      const out=await api('/api/projects/'+encodeURIComponent(current.id)+'/messages',{method:'POST',body:JSON.stringify({message:raw,styles:selected})});
+      setMessages(out.messages||[]);
+    }catch(e){
+      setMessages(prev=>[...prev,{role:'assistant',content:'Something went wrong: '+e.message,source:'error'}]);
+    }finally{setWorking(false);}
+  };
+  const newChat=()=>{
+    setProject(null);setMessages([]);setBrief('');setSelected(styleKeys);setMode('welcome');setPanel('menu');
+    setMenuOpen(false);setViewPreview(false);setFeedback('');setRise(false);
+    window.scrollTo({top:0,behavior:'smooth'});
+    setTimeout(()=>textareaRef.current?.focus({preventScroll:true}),150);
+  };
+  const openProject=async p=>{
+    try{
+      const r=await api('/api/projects/'+encodeURIComponent(p.id));
+      setProject(r.project);setMessages(r.project.messages||[]);setSelected(styleKeys);
+      setMode('chat');setMenuOpen(false);setViewPreview(false);setBrief('');
+      window.scrollTo({top:0,behavior:'instant'});
+    }catch(e){notice(e.message);}
+  };
+  const toggleStyle=id=>{
+    setSelected(current=>current.includes(id)?current.filter(s=>s!==id):[...current,id]);
+  };
+  const feedbackSave=async()=>{
+    if(!project){notice('Start a design conversation first.');return;}
+    if(!selected.length){notice('Select at least one direction first.');return;}
+    try{
+      const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({projectId:project.id,styles:selected,reaction,detail:feedback})});
+      setProfile(r.profile);
+      setFeedback('');
+      notice('Feedback saved for '+r.saved+' design '+(r.saved===1?'direction.':'directions.'));
+    }catch(e){notice(e.message);}
+  };
+  const copyPrompt=async()=>{
+    if(!project||!selected.length){notice('Select a design direction first.');return;}
+    try{
+      const r=await api('/api/projects/'+encodeURIComponent(project.id)+'/export',{method:'POST',body:JSON.stringify({styles:selected})});
+      await navigator.clipboard.writeText(r.prompt);
+      notice('Implementation prompt copied to clipboard.');
+    }catch(e){notice(e.message);}
+  };
+  const saveOptIn=async e=>{
+    try{setProfile(await api('/api/profile',{method:'PUT',body:JSON.stringify({globalOptIn:e.target.checked})}));notice('Your learning preference was saved.');}
+    catch(err){notice(err.message);}
+  };
+  const eraseEverything=async()=>{
+    if(!window.confirm('Delete all your saved projects, history, and preferences? This cannot be undone.'))return;
+    try{
+      await api('/api/profile',{method:'DELETE'});
+      setProjects([]);setProfile({styleWeights:{},globalOptIn:false});newChat();notice('Your workspace data has been deleted.');
+    }catch(e){notice(e.message);}
+  };
+  const recommendations=project?.recommendations?.designs||[];
+  const references=(catalog.references||[]).filter(x=>(x.name+' '+x.category+' '+x.tags.join(' ')).toLowerCase().includes(search.toLowerCase()));
+  const showMenu=next=>{setPanel(next);setMenuOpen(true);};
+  const sendPreset=text=>{setBrief(text);focusChat();setTimeout(()=>textareaRef.current?.focus(),100);};
+  const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
+
+  return <div className={'app '+(active?'in-chat':'in-welcome')}>
+    <header className="topbar">
+      <button className="brand" onClick={newChat} title="New chat" aria-label="UI Compass — new chat">
+        <span className="brand-mark">✳</span>
+        <span className="brand-tech"><TechText text="UI COMPASS" fontSize={50} fontWeight={750} reach={70} softness={0.55} labels={false} selection={false} draggable={false} specks={3} color="currentColor" accentColor={theme==='dark'?'#bcb8ff':'#7963e8'} /></span>
+      </button>
+      <div className="top-right">
+        {active&&<button className="top-new" onClick={newChat}><Plus size={15}/> New chat</button>}
+        <button className={'menu-button '+(menuOpen?'on':'')} onClick={()=>{setMenuOpen(v=>!v);setPanel('menu')}} aria-expanded={menuOpen} aria-label="Open navigation menu">
+          <Menu size={18}/><span>Menu</span>
+        </button>
+      </div>
+    </header>
+
+    {!active&&<div className="landing-scrollspace" aria-hidden="true"/>}
+    <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
+      {active&&<section className="conversation" aria-label="Design conversation">
+        <div className="conversation-inner">
+          {!messages.length&&<div className="conversation-empty">
+            <span className="floating-symbol">✳</span>
+            <p>Tell me about the experience you want to create.</p>
+            <span>I’ll help you select, combine, and refine design directions.</span>
+          </div>}
+          {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
+            {message.role!=='user'&&<div className="message-avatar">✳</div>}
+            <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
+              {message.role!=='user'&&<div className="bubble-label">UI Compass <span>{message.source==='guide'?'Guided recommendations':message.source==='error'?'Error':config.aiEnabled?'AI design consultant':'Design advisor'}</span></div>}
+              <p>{message.content}</p>
+            </div>
+          </div>)}
+          {working&&<div className="message-row incoming"><div className="message-avatar">✳</div><div className="bubble ai-bubble thinking" aria-label="Analyzing your request"><i/><i/><i/></div></div>}
+          {project&&<section className="result-message">
+            <div className="result-header">
+              <span className="small-eyebrow">DESIGN EXPLORER / {project.recommendations.category?.toUpperCase()}</span>
+              <strong>Three directions. Your decision.</strong>
+              <p>Choose one, two, or all three. These are explainable recommendations, not copied websites.</p>
+            </div>
+            <div className="result-actions">
+              <button className={selected.length===3?'quiet-active':''} onClick={()=>setSelected(styleKeys)}><CheckCheck size={15}/> Select all three</button>
+              <button onClick={()=>setSelected([])}><X size={13}/> Clear</button>
+              <span>{selected.length} selected</span>
+            </div>
+            <div className="design-list">
+              {recommendations.map((d,index)=><button key={d.id} className={'design-option '+(selected.includes(d.id)?'picked':'')} onClick={()=>toggleStyle(d.id)} aria-pressed={selected.includes(d.id)}>
+                <span className={'color-orb '+d.id} aria-hidden="true"><span/></span>
+                <span className="design-description"><span className="design-rank">{String(index+1).padStart(2,'0')} / RECOMMENDED</span><strong>{d.name}</strong><small>{d.description}</small></span>
+                <span className="design-score">{d.match}% fit</span>
+                <span className="select-check">{selected.includes(d.id)?<Check size={13}/>:null}</span>
+              </button>)}
+            </div>
+            <div className="result-footer">
+              <button className="text-action" disabled={!selected.length} onClick={()=>{setViewPreview(v=>!v);setMobilePreview(false)}}><Layers3 size={15}/>{viewPreview?'Hide fusion preview':'Preview selected design'} <ChevronRight size={14}/></button>
+              <button className="text-action" disabled={!selected.length} onClick={copyPrompt}><Copy size={15}/> Copy build prompt</button>
+            </div>
+            {viewPreview&&<div className="design-preview">
+              <div className="preview-menu"><span>ORIGINAL UI CONCEPT · {selected.length===3?'FUSION':selected.map(s=>formats[s]).join(' + ')}</span><button onClick={()=>setMobilePreview(v=>!v)}>{mobilePreview?'Desktop':'Mobile'} view</button></div>
+              <div className={'preview-app '+(mobilePreview?'mobile':'')+' '+(selected.length>1?'fusion':selected[0])}>
+                <div className="preview-side"><span>✳</span><i/><i/><i/></div>
+                <div className="preview-content"><div className="preview-heading"><span>Workspace overview</span><span>•••</span></div><div className="preview-hero"><small>{project.recommendations.category} / CONCEPT</small><strong>Design with intention.</strong><p>{project.brief.slice(0,100)}</p></div><div className="preview-stats"><div><small>Experience</small><b>01</b><i/></div><div><small>Interface</small><b>02</b><i/></div></div></div>
+              </div><small>Illustrative composition only. Not exported working application code.</small>
+            </div>}
+            <div className="feedback-line">
+              <span>Help the advisor learn</span>
+              <div className="reaction-set" role="group" aria-label="Feedback reaction">
+                {['like','dislike','edit'].map(value=><button key={value} className={reaction===value?'reaction-current':''} aria-pressed={reaction===value} onClick={()=>setReaction(value)}>{value==='like'?'Like':value==='dislike'?'Dislike':'Improve'}</button>)}
+              </div>
+              <input value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Optional feedback on your selections" maxLength={500} aria-label="Feedback detail"/>
+              <button className="save-feedback" onClick={feedbackSave} disabled={!selected.length}>Save feedback <ArrowUp size={14}/></button>
+            </div>
+          </section>}
+          <div ref={endRef}/>
+        </div>
+      </section>}
+      <div className={'composer-position '+(active?'docked':'centered')+(rise&&!active?' scroll-rise':'')}>
+        <StarBorder as="div" theme={theme} backgroundColor={theme==='dark'?'#16171f':'#ffffff'} textColor={theme==='dark'?'#f6f6fa':'#20212b'} color={theme==='dark'?'#b0a3ff':'#775fe8'} trailColor={theme==='dark'?'#7ae0fa':'#c3a7ff'} radius={23} thickness={1.25} duration={4.2} stars={2} trailLength={0.32} glow={0.85} hover="lap" sparkle clickPulse className="chat-star">
+          <form className="composer" onSubmit={e=>{e.preventDefault();send();}}>
+            {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="YOUR DESIGN STARTS HERE" fontSize={43} fontWeight={650} reveal="letter" reach={110} labels={false} selection={false} draggable={false} specks={4} color="currentColor" accentColor={theme==='dark'?'#c7b5ff':'#7356e8'} /></div></div>}
+            <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the UI Compass design advisor" />
+            <div className="composer-toolbar">
+              <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?'AI advisor connected':'Design guidance ready'}</span>
+              <div className="composer-buttons">
+                <button type="button" className="tool-button" title="Explore tools" onClick={()=>showMenu('tools')} aria-label="Open design tools"><Plus size={19}/></button>
+                <button className="submit-button" type="submit" disabled={working||brief.trim().length<2} aria-label="Send message">{working?<RotateCcw size={18} className="spin"/>:<ArrowUp size={19}/>}</button>
+              </div>
+            </div>
+          </form>
+          </StarBorder>
+        {!active&&<div className="landing-hint">Scroll to explore the motion <span>↑</span> · Tap to start a conversation</div>}
+        {active&&<p className="composer-disclaimer">UI Compass can make mistakes. Validate recommendations before building.</p>}
+      </div>
+    </main>
+
+    {menuOpen&&<div className="menu-layer">
+      <button className="menu-shade" onClick={()=>setMenuOpen(false)} aria-label="Close menu"/>
+      <aside className="menu-panel" aria-label="Workspace navigation">
+        <div className="panel-head">
+          <div className="panel-head-title">{panel!=='menu'&&<button className="icon-back" onClick={()=>setPanel('menu')} aria-label="Back to menu"><ChevronLeft size={19}/></button>}<strong>{topTitle}</strong></div>
+          <button className="close-menu" onClick={()=>setMenuOpen(false)} aria-label="Close menu"><X size={19}/></button>
+        </div>
+        {panel==='menu'&&<div className="menu-group">
+          <p className="menu-eyebrow">DESIGN WORKSPACE</p>
+          <button className="nav-primary" onClick={newChat}><Plus size={17}/> New conversation <ArrowUp size={15}/></button>
+          <button onClick={()=>setPanel('tools')}><Sparkles size={17}/> Select / Generate / Fusion <ChevronRight size={15}/></button>
+          <button onClick={()=>{setPanel('projects');api('/api/projects').then(v=>setProjects(v.projects||[])).catch(e=>notice(e.message));}}><Layers3 size={17}/> My conversations <ChevronRight size={15}/></button>
+          <button onClick={()=>setPanel('references')}><Search size={17}/> UI/UX inspiration library <ChevronRight size={15}/></button>
+          <button onClick={()=>setPanel('learning')}><ShieldCheck size={17}/> Learning & privacy <ChevronRight size={15}/></button>
+          <div className="menu-bottom">
+            <p className="menu-eyebrow">APPEARANCE</p>
+            <button onClick={()=>setTheme(t=>t==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>} Switch to {theme==='dark'?'light':'dark'} theme <span className="theme-chip">{theme==='dark'?'Dark':'Light'}</span></button>
+            <p className="menu-fineprint">{config.persistent?'Project memory is connected':'Guest preview · project memory resets on server restart'}<br/>{config.aiEnabled?'AI provider connected':'Rule-based design guidance · AI generation not yet connected'}</p>
+          </div>
+        </div>}
+        {panel==='tools'&&<div className="menu-subcontent">
+          <p className="menu-intro">Choose your design workflow. All three share the same chat experience.</p>
+          {[
+            {key:'select',name:'Select UI/UX',description:'Compare three relevant design directions.'},
+            {key:'generate',name:'Generate UI/UX',description:'Shape an original direction from a brief; full model generation needs an AI key.'},
+            {key:'fusion',name:'Design Fusion',description:'Combine one, two, or all three design styles.'}
+          ].map(item=><button className={'tool-mode '+(designMode===item.key?'active':'')} key={item.key} onClick={()=>{setDesignMode(item.key);setSelected(item.key==='fusion'?styleKeys:selected);setMenuOpen(false);focusChat();notice(item.name+' ready. Describe your idea in chat.');}}>
+            <span className="mode-symbol">{item.key==='select'?'◈':item.key==='generate'?'✧':'✳'}</span>
+            <span><strong>{item.name}</strong><small>{item.description}</small></span>
+            {designMode===item.key&&<Check size={17}/>}
+          </button>)}
+          {project&&<button className="menu-copy" onClick={()=>{setMenuOpen(false);copyPrompt();}}><Copy size={16}/> Copy selected design build prompt</button>}
+        </div>}
+        {panel==='projects'&&<div className="menu-subcontent">
+          <p className="menu-intro">Continue an earlier design conversation in this browser.</p>
+          {projects.length===0?<p className="empty-panel">No conversations yet. Describe an idea to start one.</p>:projects.map(p=><button className="history-item" key={p.id} onClick={()=>openProject(p)}><span>{p.title}</span><small>{new Date(p.createdAt).toLocaleDateString()}</small><ChevronRight size={14}/></button>)}
+        </div>}
+        {panel==='references'&&<div className="menu-subcontent">
+          <p className="menu-intro">Explore credited reference sites. Patterns inspire original results, not exact reproductions.</p>
+          <label className="search-box"><Search size={15}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search award-winning designs"/></label>
+          <div className="refs-list">{references.map(r=><a key={r.id} href={r.site} target="_blank" rel="noreferrer noopener" className="reference-row"><span><strong>{r.name}</strong><small>{r.category} · {r.rank?'Leaderboard #'+r.rank:'Additional reference'}</small></span><ExternalLink size={14}/></a>)}</div>
+        </div>}
+        {panel==='learning'&&<div className="menu-subcontent">
+          <p className="menu-intro">Feedback helps tailor future recommendations. Your projects stay private.</p>
+          <div className="learning-box"><strong>Personal design preferences</strong>{styleKeys.map(s=><div className="learning-row" key={s}><span>{formats[s]}</span><strong>{profile.styleWeights?.[s]||0}</strong></div>)}</div>
+          <label className="opt-in"><input type="checkbox" checked={profile.globalOptIn===true} onChange={saveOptIn}/><span><strong>Contribute anonymous patterns</strong><small>Opt in to privacy-safe aggregated feedback, never raw private chats.</small></span></label>
+          <button className="danger-action" onClick={eraseEverything}>Delete all my projects and preferences</button>
+        </div>}
+      </aside>
+    </div>}
+    {toast&&<div className="toast" role="status">{toast}</div>}
+  </div>;
+}
+createRoot(document.getElementById('root')).render(<App/>);
