@@ -233,3 +233,12 @@
   .app.portal-opening .fl-world{transition:none;clip-path:none;transform:none;will-change:auto}
   .app.portal-done .topbar{animation:none}
 }
+
+/* The established .app.in-welcome brown canvas has higher precedence than
+   the generic portal phase selectors; the aperture must expose true black. */
+.app.in-welcome.portal-idle,
+.app.in-welcome.portal-charging,
+.app.in-welcome.portal-opening{
+  background:#000;
+  transition:none;
+}
