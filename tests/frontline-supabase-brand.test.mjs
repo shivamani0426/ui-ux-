@@ -32,6 +32,8 @@ test('Original WebGL layer degrades gracefully on mobile and reduced motion',()=
   assert.ok(landing.includes('cancelAnimationFrame(pointerFrame)'));
   assert.ok(css.includes('fl-reflect-transform'));
   assert.ok(css.includes('fl-content-fast'));
+  assert.ok(css.includes('fl-intro-fast'));
+  assert.ok(css.includes('transform:translate3d(-50%,0,0)'));
   assert.ok(css.includes('prefers-reduced-motion'));
 });
 
