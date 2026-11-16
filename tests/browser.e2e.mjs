@@ -48,6 +48,22 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     console.log(name+' body preview: '+body.slice(0,400));
     console.log(name+' errors:\n'+errors.join('\n'));
     assert.ok(body.trim().length>30,name+' BLANK PAGE: content missing. '+errors.join('\n'));
+    if(await page.locator('.fl-world').count()){
+      assert.equal(await page.locator('.composer textarea').count(),0,
+        name+' composer MUST be absent on the first screen');
+      await page.evaluate(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight)*.87,behavior:'instant'}));
+      await page.waitForFunction(()=>document.querySelector('.fl-chapter-4'),null,{timeout:8000});
+      await page.waitForTimeout(350);
+      assert.equal(await page.locator('.fl-spiral-art').count(),1,
+        name+' golden typographic spiral should be present at the final chapter');
+      await page.screenshot({path:'browser-artifacts/'+name+'-spiral-before-chat.png',fullPage:false});
+      await page.evaluate(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight),behavior:'instant'}));
+      await page.locator('.composer-position.spiral-emerging.is-ready textarea').waitFor({timeout:8500});
+      const reveal=await page.evaluate(()=>Number(getComputedStyle(document.documentElement).getPropertyValue('--fl-compose-reveal')));
+      assert.ok(reveal>.95,name+' composer must emerge progressively from the spiral');
+      await page.waitForTimeout(450);
+      await page.screenshot({path:'browser-artifacts/'+name+'-spiral-chat-reveal.png',fullPage:false});
+    }
     await page.locator('.composer textarea').waitFor({timeout:7000});
     if(!remote && await page.locator('.fl-world').count()){
       await page.locator('.composer textarea').focus();
@@ -113,7 +129,8 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
     await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
-    await mobile.locator('.composer textarea').waitFor();
+    if(await mobile.locator('.fl-world').count())
+      assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile composer must start absent');
     if(await mobile.locator('.fl-world').count()){
       await mobile.waitForTimeout(1500);
       await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-landing.png',fullPage:false});
@@ -123,6 +140,10 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
         name+' MOBILE INTRO TITLE OVERFLOW: '+JSON.stringify(mobileTitle));
       assert.equal(await mobile.evaluate(()=>[...document.querySelectorAll('.fl-fluid-canvas')].every(c=>c.width===300)),true,'Mobile should use lightweight CSS solar fallback');
       if(!remote){
+        await mobile.evaluate(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight),behavior:'instant'}));
+        await mobile.locator('.composer-position.spiral-emerging.is-ready textarea').waitFor({timeout:10000});
+        await mobile.waitForTimeout(450);
+        await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-spiral-chat.png',fullPage:false});
         await mobile.locator('.composer textarea').focus();
         await mobile.locator('.studio-title').waitFor({timeout:7000});
         await mobile.waitForTimeout(1300);
