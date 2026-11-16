@@ -203,3 +203,34 @@
 /* Five deliberate scroll chapters give each feature room to breathe. */
 .landing-scrollspace.scroll-story-space{height:560svh}
 @supports not (height:100svh){.landing-scrollspace.scroll-story-space{height:560vh}}
+
+/* Editorial polish after real desktop/mobile screenshot review. */
+.fl-story-scene-0 .fl-story-footnote{display:none}
+.fl-chapter-2 .fl-story-corner,.fl-chapter-3 .fl-story-corner,.fl-chapter-4 .fl-story-corner{display:none}
+.fl-chapter-4 .fl-story-scroll-guide{opacity:calc(1 - var(--fl-compose-reveal))}
+.fl-story-scene-4 .fl-story-accent{
+ opacity:calc(var(--fl-this-enter) * (1 - var(--fl-compose-reveal) * .82))
+}
+.fl-story-scene-4 .fl-story-description{
+ opacity:calc(var(--fl-this-enter) * (1 - var(--fl-compose-reveal) * .94))
+}
+.fl-story-scene-4 .fl-story-footnote{
+ opacity:calc(var(--fl-this-opacity) * (1 - var(--fl-compose-reveal) * .85))
+}
+.app.in-welcome .composer-position.spiral-emerging .landing-hint{display:none}
+@supports selector(:has(*)){
+ .app.in-welcome:has(.fl-chapter-2) .topbar,
+ .app.in-welcome:has(.fl-chapter-3) .topbar,
+ .app.in-welcome:has(.fl-chapter-4) .topbar{
+   background:linear-gradient(180deg,rgba(245,240,228,.97),rgba(245,240,228,.0));
+ }
+ .app.in-welcome:has(.fl-chapter-2) .topbar .brand,
+ .app.in-welcome:has(.fl-chapter-3) .topbar .brand,
+ .app.in-welcome:has(.fl-chapter-4) .topbar .brand{color:#533b31}
+ .app.in-welcome:has(.fl-chapter-2) .topbar .menu-button,
+ .app.in-welcome:has(.fl-chapter-3) .topbar .menu-button,
+ .app.in-welcome:has(.fl-chapter-4) .topbar .menu-button{
+   color:#533b31;background:rgba(255,249,237,.82);
+   border-color:rgba(145,95,64,.28)
+ }
+}
