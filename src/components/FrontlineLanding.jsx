@@ -1,86 +1,124 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUpRight } from 'lucide-react';
+import React, {useEffect,useRef,useState} from 'react';
+import {ArrowDown,ArrowUpRight} from 'lucide-react';
 import SolarFluidCanvas from './SolarFluidCanvas.jsx';
 import FrontlineMark from './FrontlineMark.jsx';
 import './FrontlineLanding.css';
+import './FrontlineScrollStory.css';
 
-// Original Frontline visual scene: no artwork, fonts or animation code copied from the reference.
-const CHAPTERS = [
-  { no: '00', overline: 'AN INTRODUCTION TO DESIGN INTELLIGENCE', title: 'FRONTLINE', accent: 'UX / UI', note: 'Every extraordinary interface starts with a direction.', action: 'Enter the studio', mode: null },
-  { no: '01', overline: 'DISCOVER / SELECT UI & UX', title: 'Find your', accent: 'direction.', note: 'Explore curated design references, see why they fit, and choose the visual language that feels right.', action: 'Explore design directions', mode: 'select' },
-  { no: '02', overline: 'IMAGINE / GENERATE UI & UX', title: 'Shape the', accent: 'unexpected.', note: 'Turn a plain-language brief into original design guidance, visual possibilities, and an inspired starting point.', action: 'Explore creative ideas', mode: 'generate' },
-  { no: '03', overline: 'COMBINE / DESIGN FUSION', title: 'Better', accent: 'together.', note: 'Select your favorite ideas, bring their strengths into one composition, and carry forward a unified build brief.', action: 'Try Design Fusion', mode: 'fusion' },
-  { no: '04', overline: 'REFINE / DESIGN PREFERENCES', title: 'Make it', accent: 'yours.', note: 'Compare concepts, shape your own design preferences, and continue where your last conversation left off.', action: 'Start designing', mode: null }
+/* Original Frontline composition: user-provided Solare recording informs pacing,
+ * oversized kinetic typography, golden sphere and editorial spiral, not source assets. */
+const CHAPTERS=[
+  {no:'00',overline:'A NEW ERA OF DESIGN INTELLIGENCE',headline:['FRONTLINE'],accent:'UX / UI',description:'A universe of extraordinary interfaces starts with one thought.',subtitle:'YOUR NEXT DESIGN BEGINS HERE',mode:null},
+  {no:'01',overline:'01 / SELECT UI & UX',headline:['FIND YOUR','DIRECTION.'],accent:'Discover what fits.',description:'Explore curated real-world references. Understand the visual ideas behind every match. Save the inspirations worth carrying forward.',subtitle:'REAL REFERENCES · PERSONAL CHOICES',mode:'select'},
+  {no:'02',overline:'02 / GENERATE UI & UX',headline:['A THOUGHT','BECOMES','A VISION.'],accent:'Words into wonder.',description:'Bring a simple brief. Shape an original, detailed design direction with structure, typography, interactions, and the human experience in mind.',subtitle:'FROM A BRIEF TO A CREATIVE BLUEPRINT',mode:'generate'},
+  {no:'03',overline:'03 / DESIGN FUSION',headline:['MANY IDEAS.','ONE VISION.'],accent:'Designed to belong.',description:'Select different references and styles. Combine their strongest ideas into one cohesive, original direction—without copying another website.',subtitle:'SELECT · COMBINE · REFINE',mode:'fusion'},
+  {no:'04',overline:'04 / THE CREATIVE SPIRAL',headline:['IMAGINE','WHAT’S NEXT.'],accent:'Your story begins here.',description:'Every direction, every possibility, one space to create. Keep scrolling to reveal your design studio.',subtitle:'SCROLL TO REVEAL YOUR CANVAS',mode:null}
 ];
+const clamp=(n,min=0,max=1)=>Math.max(min,Math.min(max,n));
+const ease=(a,b,p)=>{const t=clamp((p-a)/(b-a));return t*t*(3-2*t)};
+const SCENES=[
+  {inStart:-1,inEnd:0,outStart:.10,outEnd:.23},
+  {inStart:.14,inEnd:.26,outStart:.33,outEnd:.44},
+  {inStart:.34,inEnd:.45,outStart:.53,outEnd:.64},
+  {inStart:.54,inEnd:.66,outStart:.73,outEnd:.83},
+  {inStart:.77,inEnd:.87,outStart:2,outEnd:3}
+];
+function KineticText({value,base=0}){
+  const chars=Array.from(value);
+  return <span className="fl-kinetic-line" aria-label={value}>
+    {chars.map((c,i)=><span className="fl-kinetic-glyph" aria-hidden="true"
+      key={i} style={{'--fl-letter-i':i+base}}>{c===' '?'\u00a0':c}</span>)}
+  </span>;
+}
+function spiralPath(){
+  const out=[];
+  for(let i=0;i<=690;i++){
+    const theta=i/690*Math.PI*11.7;
+    const r=12+theta*10.9;
+    const x=450+r*Math.cos(theta-.6),y=450+r*Math.sin(theta-.6);
+    out.push((i?'L':'M')+x.toFixed(2)+' '+y.toFixed(2));
+  }
+  return out.join(' ');
+}
+const SPIRAL_PATH=spiralPath();
+const SPIRAL_WORDS=('FRONTLINE  ·  SELECT  ·  GENERATE  ·  FUSE  ·  DESIGN INTELLIGENCE  ·  ').repeat(24);
 
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
-  const root = useRef(null);
-  const frameRef = useRef(0);
-  const [frame, setFrame] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    let pointerFrame = 0;
-    let targetPointerX = 0, targetPointerY = 0;
-    let smoothPointerX = 0, smoothPointerY = 0;
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-    const update = () => {
-      raf = 0;
-      const available = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-      const p = clamp(window.scrollY / available, 0, 1);
-      root.current?.style.setProperty('--fl-progress', p.toFixed(5));
-      root.current?.style.setProperty('--fl-scroll-lift', (p * 15).toFixed(2) + 'vh');
-      root.current?.style.setProperty('--fl-cloud-drift', (p * 28).toFixed(2) + 'vw');
-      root.current?.style.setProperty('--fl-orb-scale', (1 - p * .37).toFixed(4));
-      const next = Math.min(4, Math.floor(p * 5));
-      if (next !== frameRef.current) {
-        frameRef.current = next;
+export default function FrontlineLanding({onBegin,onMode,onSceneChange}){
+  const root=useRef(null),frameRef=useRef(0);
+  const [frame,setFrame]=useState(0);
+  const [reduceMotion,setReduceMotion]=useState(false);
+  useEffect(()=>{
+    const query=window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    setReduceMotion(Boolean(query?.matches));
+    const onChange=()=>setReduceMotion(Boolean(query?.matches));
+    query?.addEventListener?.('change',onChange);
+    return()=>query?.removeEventListener?.('change',onChange);
+  },[]);
+  useEffect(()=>{
+    let raf=0,pointerRaf=0,tx=0,ty=0,sx=0,sy=0;
+    const update=()=>{
+      raf=0;
+      if(!root.current)return;
+      const available=Math.max(1,document.documentElement.scrollHeight-window.innerHeight);
+      const p=clamp(window.scrollY/available);
+      const el=root.current;
+      el.style.setProperty('--fl-progress',p.toFixed(5));
+      el.style.setProperty('--fl-paper-progress',ease(.11,.28,p).toFixed(5));
+      el.style.setProperty('--fl-scroll-lift',(p*15).toFixed(2)+'vh');
+      el.style.setProperty('--fl-cloud-drift',(p*28).toFixed(2)+'vw');
+      el.style.setProperty('--fl-orb-scale',(1-p*.35).toFixed(4));
+      el.style.setProperty('--fl-spiral-progress',ease(.75,.91,p).toFixed(5));
+      el.style.setProperty('--fl-spiral-turn',((p-.76)*270).toFixed(2)+'deg');
+      const reveal=ease(.86,.99,p);
+      document.documentElement.style.setProperty('--fl-compose-reveal',reveal.toFixed(5));
+      el.style.setProperty('--fl-compose-reveal',reveal.toFixed(5));
+      for(let i=0;i<SCENES.length;i++){
+        const s=SCENES[i];
+        const enter=i===0?1:ease(s.inStart,s.inEnd,p);
+        const exit=i===4?0:ease(s.outStart,s.outEnd,p);
+        el.style.setProperty('--fl-scene-enter-'+i,enter.toFixed(5));
+        el.style.setProperty('--fl-scene-opacity-'+i,((1-exit)*enter).toFixed(5));
+      }
+      const next=Math.min(4,Math.floor(p*5));
+      if(next!==frameRef.current){
+        frameRef.current=next;
         setFrame(next);
         onSceneChange?.(next);
       }
     };
-    const queue = () => { if (!raf) raf = window.requestAnimationFrame(update); };
-    const smoothPointer = () => {
-      pointerFrame = 0;
-      if(!root.current) return;
-      smoothPointerX += (targetPointerX - smoothPointerX) * .24;
-      smoothPointerY += (targetPointerY - smoothPointerY) * .24;
-      const x = smoothPointerX, y = smoothPointerY;
-      root.current.style.setProperty('--fl-pointer-x', x.toFixed(3));
-      root.current.style.setProperty('--fl-pointer-y', y.toFixed(3));
-      root.current.style.setProperty('--fl-mx', (x * 13).toFixed(2) + 'px');
-      root.current.style.setProperty('--fl-my', (y * 9).toFixed(2) + 'px');
-      root.current.style.setProperty('--fl-arch-x', (-x * 12).toFixed(2) + 'px');
-      root.current.style.setProperty('--fl-arch-y', (-y * 6).toFixed(2) + 'px');
-      if(Math.abs(targetPointerX-x) > .006 || Math.abs(targetPointerY-y) > .006){
-        pointerFrame = window.requestAnimationFrame(smoothPointer);
-      }
+    const queue=()=>{if(!raf)raf=window.requestAnimationFrame(update)};
+    const smoothPointer=()=>{
+      pointerRaf=0;
+      if(!root.current)return;
+      sx+=(tx-sx)*.24;sy+=(ty-sy)*.24;
+      root.current.style.setProperty('--fl-mx',(sx*13).toFixed(2)+'px');
+      root.current.style.setProperty('--fl-my',(sy*9).toFixed(2)+'px');
+      root.current.style.setProperty('--fl-arch-x',(-sx*12).toFixed(2)+'px');
+      root.current.style.setProperty('--fl-arch-y',(-sy*6).toFixed(2)+'px');
+      if(Math.abs(tx-sx)>.006||Math.abs(ty-sy)>.006)pointerRaf=requestAnimationFrame(smoothPointer);
     };
-    const move = event => {
-      if(reduce || !root.current || event.pointerType === 'touch') return;
-      targetPointerX = (event.clientX / Math.max(1,window.innerWidth) - .5) * 2;
-      targetPointerY = (event.clientY / Math.max(1,window.innerHeight) - .5) * 2;
-      if(!pointerFrame) pointerFrame = window.requestAnimationFrame(smoothPointer);
+    const move=event=>{
+      if(reduceMotion||event.pointerType==='touch'||!root.current)return;
+      tx=(event.clientX/Math.max(1,window.innerWidth)-.5)*2;
+      ty=(event.clientY/Math.max(1,window.innerHeight)-.5)*2;
+      if(!pointerRaf)pointerRaf=requestAnimationFrame(smoothPointer);
     };
-    window.addEventListener('scroll', queue, { passive: true });
-    window.addEventListener('resize', queue, { passive: true });
-    window.addEventListener('pointermove', move, { passive: true });
-    queue();
-    return () => {
-      window.removeEventListener('scroll', queue);
-      window.removeEventListener('resize', queue);
-      window.removeEventListener('pointermove', move);
-      if (raf) window.cancelAnimationFrame(raf);
-      if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
+    window.addEventListener('scroll',queue,{passive:true});
+    window.addEventListener('resize',queue,{passive:true});
+    window.addEventListener('pointermove',move,{passive:true});
+    update();
+    return()=>{
+      window.removeEventListener('scroll',queue);
+      window.removeEventListener('resize',queue);
+      window.removeEventListener('pointermove',move);
+      if(raf)cancelAnimationFrame(raf);
+      if(pointerRaf)cancelAnimationFrame(pointerRaf);
+      document.documentElement.style.removeProperty('--fl-compose-reveal');
     };
-  }, [onSceneChange]);
-  const chapter = CHAPTERS[frame];
-  const choose = (mode) => { if (mode) onMode?.(mode); else onBegin?.(); };
-  const goToChapter = n => {
-    const available = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    window.scrollTo({ top: n === 4 ? available : (n + .05) / 5 * available, behavior: 'smooth' });
-  };
-  return <section ref={root} className={`fl-world fl-chapter-${frame}`} aria-label="Frontline UX/UI immersive design introduction">
+  },[onSceneChange,reduceMotion]);
+  const available=()=>Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
+  const goToChapter=n=>window.scrollTo({top:available()*[0,.26,.46,.67,.875][n],behavior:reduceMotion?'instant':'smooth'});
+  return <section ref={root} className={'fl-world fl-scroll-story fl-chapter-'+frame} aria-label="Frontline UX/UI cinematic scroll introduction">
     <div className="fl-atmosphere" aria-hidden="true">
       <div className="fl-sky"/><div className="fl-grain"/><div className="fl-aura"/>
       <div className="fl-architecture">
@@ -93,33 +131,69 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
         <div className="fl-sun-halo"/><div className="fl-sun"><SolarFluidCanvas mode="sun"/></div>
       </div>
       <div className="fl-basin"><div className="fl-water">
-        <SolarFluidCanvas mode="water"/>
-        <div className="fl-sun-reflection"/>
+        <SolarFluidCanvas mode="water"/><div className="fl-sun-reflection"/>
         <div className="fl-ripple fl-ripple-a"/><div className="fl-ripple fl-ripple-b"/><div className="fl-ripple fl-ripple-c"/>
       </div></div>
-      <div className="fl-clouds"/>
-      <div className="fl-shimmer"/>
+      <div className="fl-clouds"/><div className="fl-shimmer"/>
     </div>
-    <div className="fl-corner-label fl-corner-left">AN INFINITE FIELD OF POSSIBILITY <span className="fl-corner-monogram"><FrontlineMark size={22}/></span></div>
-    <div className="fl-corner-label fl-corner-right">DESIGN INTELLIGENCE — EST. 2026</div>
-    <div className="fl-chapter-content" key={chapter.no} aria-live="off">
-      <p className="fl-overline"><span className="fl-overline-dot"/> {chapter.overline}</p>
-      <div className="fl-headline" aria-label={chapter.title + ' ' + chapter.accent}>
-        <span className="fl-headline-main">{chapter.title}</span>
-        <span className="fl-headline-accent">{chapter.accent}</span>
+    <div className="fl-story-paper" aria-hidden="true">
+      <div className="fl-story-paper-light"/>
+      <div className="fl-story-paper-grid"/>
+    </div>
+    <div className="fl-story-topline" aria-hidden="true"><span>FRONTLINE / AN ORIGINAL DESIGN EXPERIENCE</span><span>EST. MMXXVI</span></div>
+    {CHAPTERS.map((chapter,i)=><article key={chapter.no} className={'fl-story-scene fl-story-scene-'+i+(frame===i?' is-current':'')}
+      aria-hidden={frame!==i} style={{
+        '--fl-this-opacity':'var(--fl-scene-opacity-'+i+')',
+        '--fl-this-enter':'var(--fl-scene-enter-'+i+')'
+      }}>
+      <div className="fl-story-scene-inner">
+        <p className="fl-story-kicker"><span className="fl-overline-dot"/>{chapter.overline}</p>
+        <h1 className="fl-story-heading">
+          {chapter.headline.map((line,j)=><span className={'fl-story-heading-line'+(j===1?' fl-story-italic-line':'')} key={j}>
+            <KineticText value={line} base={j*4}/>
+          </span>)}
+          {i===0&&<span className="fl-story-first-accent"><KineticText value={chapter.accent} base={5}/></span>}
+        </h1>
+        <p className="fl-story-accent">{chapter.accent}</p>
+        <p className="fl-story-description">{chapter.description}</p>
+        {i>0&&i<4&&<button className="fl-story-action" type="button" tabIndex={frame===i?0:-1}
+          onClick={()=>onMode?.(chapter.mode)}>Explore {chapter.mode==='fusion'?'Design Fusion':chapter.mode==='select'?'Select UI/UX':'Generate UI/UX'}
+          <ArrowUpRight size={16} aria-hidden="true"/></button>}
       </div>
-      <p className="fl-note">{chapter.note}</p>
-      <button className="fl-cta" onClick={() => choose(chapter.mode)}>
-        <span>{chapter.action}</span><ArrowUpRight size={17} aria-hidden="true"/>
-      </button>
+      <div className="fl-story-footnote">{chapter.subtitle}<span>0{Math.min(i+1,5)} / 05</span></div>
+    </article>)}
+    <div className="fl-spiral-stage" aria-hidden="true">
+      <div className="fl-spiral-aura"/>
+      <svg className="fl-spiral-art" viewBox="0 0 900 900" role="img" aria-label="Rotating Frontline typographic golden spiral">
+        <defs>
+          <path id="fl-spiral-type-path" d={SPIRAL_PATH}/>
+          <radialGradient id="fl-spiral-centre" cx="33%" cy="27%" r="76%">
+            <stop offset="0%" stopColor="#fff8c5"/><stop offset="38%" stopColor="#ffda86"/>
+            <stop offset="76%" stopColor="#d99a5f"/><stop offset="100%" stopColor="#a86746"/>
+          </radialGradient>
+        </defs>
+        {[133,235,322,412].map(r=><circle key={r} cx="450" cy="450" r={r} fill="none"
+          stroke="#a57754" strokeOpacity={r===412?.20:.36} strokeWidth={r===412?1.5:1}/>)}
+        <path d={SPIRAL_PATH} stroke="#b58c6c" strokeOpacity=".14" strokeWidth="26" fill="none"/>
+        <text className="fl-spiral-type">
+          <textPath href="#fl-spiral-type-path" startOffset="0%">{SPIRAL_WORDS}</textPath>
+        </text>
+        <circle cx="450" cy="450" r="70" fill="url(#fl-spiral-centre)"/>
+        <circle cx="450" cy="450" r="83" stroke="#d8a16c" strokeOpacity=".5" strokeWidth="1" fill="none"/>
+        <circle cx="450" cy="450" r="4" fill="#fff1cb"/>
+      </svg>
     </div>
-    <div className="fl-edge-counter"><strong>{chapter.no}</strong><span>/ 04</span></div>
-    <nav className="fl-chapter-nav" aria-label="Landing page chapters">
-      {CHAPTERS.map((c,i) => <button type="button" key={c.no} onClick={() => goToChapter(i)}
-        className={frame===i?'is-current':''} title={c.overline} aria-label={'Go to '+c.overline} aria-current={frame===i?'step':undefined}>
+    <div className="fl-story-corner fl-story-corner-left">DESIGN, IN AN INFINITE FIELD <FrontlineMark size={21}/></div>
+    <div className="fl-story-corner fl-story-corner-right">THINK · CHOOSE · CREATE</div>
+    <nav className="fl-chapter-nav fl-story-nav" aria-label="Landing page chapters">
+      {CHAPTERS.map((c,i)=><button type="button" key={c.no} onClick={()=>goToChapter(i)}
+        className={frame===i?'is-current':''} title={c.overline}
+        aria-label={'Go to '+c.overline} aria-current={frame===i?'step':undefined}>
         <span className="fl-nav-line"/><span className="fl-nav-number">{c.no}</span>
       </button>)}
     </nav>
-    <div className="fl-scroll-guide" aria-hidden="true"><span>{frame===4?'YOUR IDEAS, IN MOTION':'SCROLL TO DISCOVER'}</span><ArrowDown size={15}/></div>
+    <div className="fl-story-scroll-guide" aria-hidden="true">
+      <span>{frame===4?'KEEP SCROLLING · YOUR STUDIO IS EMERGING':'SCROLL TO EXPLORE'}</span><ArrowDown size={14}/>
+    </div>
   </section>;
 }
