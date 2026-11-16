@@ -1,101 +1,169 @@
-/* FRONTLINE GOLDEN DOME — original architectural prelude.
- * Touch/hover triggers an inside-out aperture into the preserved solar story.
- * No images, shaders, third-party animation scripts or perpetual canvas loops. */
+/* FRONTLINE / BLACK DOME
+   A restrained black-on-black monument, deliberately awakened by click.
+   Two cinematic chapters: 2.7s white energy gathering, then 4.2s
+   center-out expansion into the existing golden Frontline scroll story.
+   Core timing lives in App.jsx to match these CSS phases exactly. */
 .fl-dome-portal{
- position:fixed;inset:0;z-index:1200;overflow:hidden;isolation:isolate;
- display:grid;place-items:center;
- background:
-   radial-gradient(ellipse 38% 48% at 50% 47%,rgba(184,107,69,.27),transparent 82%),
-   radial-gradient(ellipse 90% 60% at 50% 110%,rgba(139,76,63,.22),transparent 75%),
-   linear-gradient(135deg,#241c23 0%,#3b292c 52%,#251b23 100%);
- color:#fff0db;opacity:1;visibility:visible;
+  position:fixed;inset:0;z-index:1200;display:grid;place-items:center;
+  overflow:hidden;isolation:isolate;color:#f1f0ef;
+  background:#030303;opacity:1;visibility:visible;
 }
-.fl-dome-ambient{position:absolute;inset:0;z-index:-1;pointer-events:none;
- background:
-  radial-gradient(circle at 50% 52%,rgba(246,202,137,.13) 0,transparent 33%),
-  linear-gradient(90deg,transparent calc(50% - .5px),rgba(238,192,141,.10) 50%,transparent calc(50% + .5px));
+.fl-dome-ambient{position:absolute;inset:0;pointer-events:none;z-index:-1;
+  background:radial-gradient(ellipse 33% 35% at 50% 48%,#0d0d0e 0%,#060606 55%,#030303 100%);
 }
-.fl-dome-ambient:after{content:'';position:absolute;left:50%;top:52%;
- width:min(88vmin,660px);aspect-ratio:1;
- transform:translate(-50%,-50%);border:1px solid rgba(255,211,157,.12);
- border-radius:50%;box-shadow:0 0 0 58px rgba(240,198,141,.025),0 0 0 120px rgba(240,198,141,.016);
+.fl-dome-ambient::after{content:'';position:absolute;top:49%;left:50%;
+  width:min(83vmin,680px);aspect-ratio:1;transform:translate(-50%,-50%);
+  border-radius:50%;border:1px solid rgba(255,255,255,.045);
+  box-shadow:0 0 0 74px rgba(255,255,255,.008);
 }
-.fl-dome-gate-copy{position:absolute;left:clamp(24px,5vw,74px);right:clamp(24px,5vw,74px);top:clamp(30px,5vh,58px);
- display:flex;justify-content:space-between;align-items:center;gap:20px;
- color:rgba(255,235,202,.72);font:700 9px/1.5 Manrope,sans-serif;letter-spacing:.17em}
-.fl-dome-centre{display:flex;flex-direction:column;align-items:center;position:relative;z-index:2;
- transform:translateY(2vh);width:100%;padding:0 18px;text-align:center}
-.fl-dome-overline{font:750 9px/1.4 Manrope,sans-serif;letter-spacing:.20em;color:#e5b67d;margin-bottom:18px}
-.fl-dome-title{font:400 clamp(35px,4vw,63px)/1 'Cormorant Garamond',Georgia,serif;
- letter-spacing:-.048em;color:#fff3df;margin:0 0 8px;text-wrap:balance}
-.fl-dome-title em{font-weight:400;color:#f2c58e}
+.fl-dome-gate-copy,.fl-dome-bottom{
+  position:absolute;left:clamp(20px,5vw,78px);right:clamp(20px,5vw,78px);
+  display:flex;justify-content:space-between;align-items:center;gap:16px;
+  color:rgba(241,241,241,.47);font:700 9px/1.5 Manrope,sans-serif;letter-spacing:.20em;
+}
+.fl-dome-gate-copy{top:clamp(25px,5vh,55px)}
+.fl-dome-bottom{bottom:clamp(24px,5vh,58px)}
+.fl-dome-centre{
+  position:relative;z-index:2;display:flex;align-items:center;flex-direction:column;
+  text-align:center;justify-content:center;width:100%;padding:0 18px;
+  transform:translateY(1.4vh);
+}
+.fl-dome-overline{margin:0 0 18px;color:rgba(244,244,244,.59);
+  font:750 9px/1.5 Manrope,sans-serif;letter-spacing:.22em}
+.fl-dome-title{margin:0 0 13px;font:400 clamp(35px,4.2vw,67px)/.98 'Cormorant Garamond',Georgia,serif;
+  letter-spacing:-.056em;text-wrap:balance;color:#e8e8e8}
+.fl-dome-title em{font-weight:400;color:#d1d1d1}
 .fl-dome-trigger{
- width:clamp(220px,31vmin,365px);aspect-ratio:1;display:grid;place-items:center;
- padding:0;margin:clamp(8px,2vh,25px) auto 0;border:0;border-radius:50%;background:transparent;
- color:inherit;cursor:default;outline-offset:13px;position:relative;isolation:isolate;
- -webkit-tap-highlight-color:transparent;touch-action:manipulation}
-.fl-dome-trigger:focus-visible{outline:2px solid #ffdc9f}
-.fl-dome-trigger:disabled{opacity:1;cursor:default}
-.fl-dome-disc{display:block;width:100%;aspect-ratio:1;position:relative;isolation:isolate}
-.fl-dome-radial-lines{position:absolute;inset:-15%;z-index:-1;border-radius:50%;
- border:1px solid rgba(255,222,177,.17);
- background:repeating-conic-gradient(from -11deg,rgba(255,227,185,.05) 0deg 1deg,transparent 1deg 22.5deg);
- opacity:.64}
-.fl-dome-outer-ring{position:absolute;inset:-5%;border-radius:50%;
- border:1px solid rgba(255,224,180,.37);box-shadow:inset 0 0 24px rgba(251,216,166,.05),0 0 40px rgba(252,196,106,.13)}
+  width:clamp(220px,31vmin,365px);aspect-ratio:1;position:relative;
+  padding:0;margin:clamp(2px,1.4vh,18px) auto 0;
+  display:grid;place-items:center;border:0;border-radius:50%;
+  color:inherit;background:transparent;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+}
+.fl-dome-trigger:focus-visible{outline:2px solid #f9f9f9;outline-offset:8px}
+.fl-dome-trigger:disabled{cursor:default;opacity:1}
+.fl-dome-disc{position:relative;display:block;width:100%;aspect-ratio:1;isolation:isolate}
+.fl-dome-ring{position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  border:1px solid rgba(245,245,245,.055);
+}
+.fl-dome-ring-outer{inset:-9%;border-color:rgba(247,247,247,.08)}
+.fl-dome-ring-middle{inset:0;border-color:rgba(247,247,247,.10)}
+.fl-dome-ring-inner{inset:7%;border-color:rgba(247,247,247,.04)}
+.fl-dome-white-aura{position:absolute;inset:-22%;z-index:-1;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.38) 0%,rgba(255,255,255,.10) 35%,transparent 66%);
+  opacity:0;transform:scale(.65);pointer-events:none}
 .fl-dome-portal-orb{
- position:absolute;left:10%;right:10%;top:9%;height:77%;
- overflow:hidden;border-radius:50% 50% 38% 38% / 56% 56% 37% 37%;
- background:
-  radial-gradient(ellipse 39% 32% at 32% 21%,rgba(255,255,221,.95),transparent 90%),
-  radial-gradient(ellipse 65% 43% at 58% 39%,rgba(253,225,165,.95),transparent 85%),
-  linear-gradient(132deg,#d59d65 0%,#ffdf98 36%,#cd854f 77%,#714134 100%);
- box-shadow:
-   inset -24px -33px 34px rgba(110,51,38,.38),
-   inset 5px 5px 26px rgba(255,248,215,.65),
-   0 16px 65px rgba(230,152,86,.35),
-   0 0 0 1px rgba(255,242,215,.74);
- transform:translate3d(0,0,0);will-change:transform}
-.fl-dome-specular{position:absolute;inset:8% 17% 33% 18%;border-radius:50%;
- border-top:1.5px solid rgba(255,252,219,.85);transform:rotate(-21deg)}
-.fl-dome-contour{position:absolute;left:50%;top:50%;border:1px solid rgba(255,246,210,.34);
- border-radius:50%;transform:translate(-50%,-50%) rotate(-22deg)}
-.fl-dome-contour-one{width:72%;height:52%}
-.fl-dome-contour-two{width:90%;height:72%;border-color:rgba(120,62,44,.19)}
-.fl-dome-contour-three{width:121%;height:113%;border-color:rgba(255,235,178,.23)}
-.fl-dome-emblem{position:absolute;top:49%;left:50%;transform:translate(-50%,-50%);
- filter:drop-shadow(0 4px 8px rgba(98,43,27,.32));opacity:.90}
-.fl-dome-base{position:absolute;left:13%;right:13%;height:6%;bottom:19%;
- border-radius:100%;z-index:2;
- background:linear-gradient(180deg,#ffe8af,#d89d64 56%,#895137);
- box-shadow:0 0 0 1px rgba(255,218,172,.55),0 13px 30px rgba(27,15,18,.45)}
-.fl-dome-light{position:absolute;inset:57% 10% -5%;border-radius:50%;z-index:-1;
- background:radial-gradient(ellipse 55% 40% at 50% 50%,rgba(255,188,108,.30),transparent 79%)}
-.fl-dome-instruction{display:flex;gap:14px;align-items:center;justify-content:center;
- color:#ffe5bb;margin:6px 0 0;
- font:760 10px/1.5 Manrope,sans-serif;letter-spacing:.21em}
-.fl-dome-instruction-pulse{height:5px;width:5px;display:inline-block;border-radius:50%;background:#fcd398;
- box-shadow:0 0 10px rgba(253,204,127,.7)}
-.fl-dome-subline{color:rgba(250,223,185,.75);font:italic 21px/1.3 'Cormorant Garamond',Georgia,serif;margin:7px 0 0}
-.fl-dome-keyboard-hint{font:400 9px/1.5 'DM Sans',sans-serif;color:rgba(251,220,177,.54);margin-top:12px}
-.fl-dome-bottom{position:absolute;bottom:clamp(23px,5vh,58px);
- left:clamp(24px,5vw,74px);right:clamp(24px,5vw,74px);
- display:flex;justify-content:space-between;gap:12px;
- color:rgba(249,225,193,.70);font:750 9px/1.5 Manrope,sans-serif;letter-spacing:.18em}
-.fl-dome-aperture-flare{position:absolute;inset:0;pointer-events:none;
- background:radial-gradient(circle at 50% 50%,rgba(255,245,208,.22),transparent 43%);
- opacity:0;z-index:3}
-.fl-dome-portal:not(.is-opening) .fl-dome-trigger:is(:hover,:focus-visible) .fl-dome-outer-ring{
- border-color:rgba(255,236,195,.8)}
+  position:absolute;top:9%;left:11%;width:78%;height:77%;
+  overflow:hidden;border-radius:50% 50% 38% 38% / 55% 55% 34% 34%;
+  background:
+    radial-gradient(ellipse 61% 51% at 34% 17%,#242424 0%,#0e0e0e 57%,transparent 90%),
+    linear-gradient(145deg,#171717 0%,#070707 46%,#010101 82%,#000 100%);
+  box-shadow:
+    inset 9px 9px 16px rgba(90,90,90,.12),
+    inset -15px -26px 28px #000,
+    0 0 0 1px #202020,
+    0 18px 47px rgba(0,0,0,.9);
+  transform:translate3d(0,0,0);
+}
+.fl-dome-shell-shine{position:absolute;top:9%;left:21%;width:58%;height:36%;
+  border-radius:50% 50% 10% 10%;
+  border-top:1px solid rgba(255,255,255,.17);transform:rotate(-14deg);
+  opacity:.45}
+.fl-dome-embossed-mark{
+  position:absolute;left:50%;top:49%;transform:translate(-50%,-50%);
+  filter:grayscale(1) brightness(.13);opacity:.65}
+.fl-dome-floor-reflection{position:absolute;left:15%;right:15%;bottom:18%;height:4%;
+  border-radius:50%;
+  background:linear-gradient(180deg,#282828,#040404 70%,#000);
+  box-shadow:0 0 0 1px #141414,0 13px 27px rgba(0,0,0,.85);
+}
+.fl-dome-instruction{
+  color:#bdbdbd;font:760 10px/1.4 Manrope,sans-serif;
+  letter-spacing:.23em;margin:12px 0 0;min-height:15px}
+.fl-dome-subline{font:italic 20px/1.25 'Cormorant Garamond',Georgia,serif;
+  color:rgba(242,242,242,.48);margin:9px 0 0}
+.fl-dome-keyboard-hint{margin:13px 0 0;color:rgba(241,241,241,.32);
+  font:400 9px/1.4 'DM Sans',sans-serif}
+.fl-dome-aperture-flare{
+  position:absolute;inset:0;pointer-events:none;z-index:3;opacity:0;
+  background:radial-gradient(circle at 50% 53%,rgba(255,255,255,.20),transparent 44%);
+}
+.fl-dome-portal:not(.is-charging):not(.is-opening) .fl-dome-trigger:is(:focus-visible,:hover) .fl-dome-ring-middle{
+  border-color:rgba(250,250,250,.27);
+}
+.fl-dome-portal.is-charging .fl-dome-ring-outer{
+  animation:fl-dome-halo-outer 2700ms cubic-bezier(.2,.45,.25,1) both;
+}
+.fl-dome-portal.is-charging .fl-dome-ring-middle{
+  animation:fl-dome-halo-middle 2700ms cubic-bezier(.23,.52,.2,1) both;
+}
+.fl-dome-portal.is-charging .fl-dome-ring-inner{
+  animation:fl-dome-halo-inner 2700ms cubic-bezier(.23,.52,.2,1) both;
+}
+.fl-dome-portal.is-charging .fl-dome-portal-orb{
+  animation:fl-dome-white-ignite 2700ms ease-in-out both;
+}
+.fl-dome-portal.is-charging .fl-dome-white-aura{
+  animation:fl-dome-aura-bloom 2700ms cubic-bezier(.18,.7,.19,1) both;
+}
+.fl-dome-portal.is-charging .fl-dome-aperture-flare{
+  animation:fl-dome-charge-flare 2700ms ease-in-out both;
+}
+.fl-dome-portal.is-charging .fl-dome-embossed-mark{
+  filter:grayscale(1) brightness(.35);
+}
+@keyframes fl-dome-halo-outer{
+  0%{border-color:rgba(255,255,255,.07);transform:scale(1);box-shadow:none}
+  22%{border-color:rgba(255,255,255,.38);box-shadow:0 0 14px rgba(255,255,255,.25)}
+  57%{border-color:rgba(255,255,255,.97);box-shadow:0 0 20px rgba(255,255,255,.89),0 0 60px rgba(255,255,255,.54)}
+  100%{border-color:#fff;transform:scale(1.17);
+    box-shadow:0 0 18px rgba(255,255,255,.95),0 0 56px rgba(255,255,255,.66),0 0 105px rgba(255,255,255,.37)}
+}
+@keyframes fl-dome-halo-middle{
+  0%{border-color:rgba(255,255,255,.10);box-shadow:none}
+  45%{border-color:rgba(255,255,255,.67);box-shadow:0 0 22px rgba(255,255,255,.41)}
+  100%{border-color:#fff;box-shadow:0 0 17px #fff,0 0 47px rgba(255,255,255,.9)}
+}
+@keyframes fl-dome-halo-inner{
+  0%{border-color:rgba(255,255,255,.04)}
+  65%{border-color:rgba(255,255,255,.67)}
+  100%{border-color:#fff;box-shadow:0 0 24px rgba(255,255,255,.79)}
+}
+@keyframes fl-dome-white-ignite{
+  0%{box-shadow:inset 9px 9px 16px rgba(90,90,90,.12),inset -15px -26px 28px #000,0 0 0 1px #202020}
+  40%{box-shadow:inset 9px 9px 16px rgba(90,90,90,.12),inset -15px -26px 28px #000,0 0 0 2px #fff,0 0 42px rgba(255,255,255,.42)}
+  100%{box-shadow:inset 9px 9px 16px rgba(90,90,90,.12),inset -15px -26px 28px #000,
+    0 0 0 2px #fff,0 0 30px #fff,0 0 91px rgba(255,255,255,.7)}
+}
+@keyframes fl-dome-aura-bloom{
+  0%{opacity:0;transform:scale(.65)}
+  36%{opacity:.14}
+  76%{opacity:.55}
+  100%{opacity:1;transform:scale(1.37)}
+}
+@keyframes fl-dome-charge-flare{
+  0%{opacity:0}
+  55%{opacity:.07}
+  100%{opacity:.43}
+}
+/* The charge is complete. Keep a white corona around the black core for
+   the opening frames while the underlying landing scales out of that core. */
 .fl-dome-portal.is-opening{
- pointer-events:none;
- opacity:0;
- transition:opacity 1.18s cubic-bezier(.17,.72,.2,1) .1s;
+  pointer-events:none;
+  animation:fl-dome-veil-withdraw 1480ms ease-in-out both;
 }
 .fl-dome-portal.is-opening .fl-dome-trigger{
- animation:fl-dome-unfold 1.48s cubic-bezier(.16,.8,.19,1) both}
+  animation:fl-dome-slow-unfold 1700ms cubic-bezier(.16,.62,.16,1) both;
+}
+.fl-dome-portal.is-opening .fl-dome-ring{
+  border-color:#fff;box-shadow:0 0 17px #fff,0 0 55px rgba(255,255,255,.75);
+}
+.fl-dome-portal.is-opening .fl-dome-white-aura{opacity:.9;transform:scale(1.35)}
+.fl-dome-portal.is-opening .fl-dome-portal-orb{
+  box-shadow:inset -15px -26px 28px #000,0 0 0 2px #fff,0 0 35px #fff,0 0 95px rgba(255,255,255,.65)}
 .fl-dome-portal.is-opening .fl-dome-aperture-flare{
- animation:fl-dome-flare 1.22s ease-out both}
+  animation:fl-dome-opening-flash 1750ms ease-out both;
+}
 .fl-dome-portal.is-opening .fl-dome-title,
 .fl-dome-portal.is-opening .fl-dome-overline,
 .fl-dome-portal.is-opening .fl-dome-instruction,
@@ -103,49 +171,74 @@
 .fl-dome-portal.is-opening .fl-dome-keyboard-hint,
 .fl-dome-portal.is-opening .fl-dome-gate-copy,
 .fl-dome-portal.is-opening .fl-dome-bottom{
- opacity:0;transition:opacity .28s ease}
-@keyframes fl-dome-unfold{
- 0%{transform:scale(1);opacity:1}
- 32%{transform:scale(1.23);opacity:1}
- 100%{transform:scale(5.2);opacity:0}
+  opacity:0;transition:opacity 650ms ease-out;
 }
-@keyframes fl-dome-flare{0%{opacity:0}35%{opacity:.8}100%{opacity:0}}
-/* Reveal the original landing from the exact dome centre, inside out.
-   This rule does not affect the subsequent scroll-story or studio routes. */
-.app.portal-idle .fl-world{clip-path:circle(0% at 50% 50%)}
+@keyframes fl-dome-veil-withdraw{
+  0%,17%{opacity:1;visibility:visible}
+  100%{opacity:0;visibility:hidden}
+}
+@keyframes fl-dome-slow-unfold{
+  0%{transform:scale(1);opacity:1}
+  23%{transform:scale(1.22);opacity:1}
+  100%{transform:scale(4.8);opacity:0}
+}
+@keyframes fl-dome-opening-flash{
+  0%{opacity:.38}30%{opacity:.8}100%{opacity:0}
+}
+/* The landing starts as a small centre aperture and is revealed over 4.2s.
+   A 76vmax final radius fills every aspect ratio but not prematurely.\n   Outside the aperture remains true black, not the previous cream/gold.
+   This does NOT change the existing scroll story or spiral-born chat. */
+.app.portal-idle,.app.portal-charging,.app.portal-opening{background:#000}
+.app.portal-idle .fl-world,.app.portal-charging .fl-world{
+  clip-path:circle(0% at 50% 50%);transform:scale(.82);
+}
 .app.portal-opening .fl-world{
- clip-path:circle(160vmax at 50% 50%);
- transition:clip-path 1.72s cubic-bezier(.17,.78,.22,1);
- will-change:clip-path
+  clip-path:circle(76vmax at 50% 50%);transform:scale(1);
+  transition:clip-path 4200ms cubic-bezier(.46,.10,.56,.95),
+             transform 4200ms cubic-bezier(.40,.11,.57,.95);
+  will-change:clip-path,transform;
 }
-.app.portal-idle .topbar,.app.portal-opening .topbar{
- opacity:0;pointer-events:none
+.app.portal-idle .topbar,.app.portal-charging .topbar,.app.portal-opening .topbar{
+  opacity:0;pointer-events:none
 }
-.app.portal-done .topbar{animation:fl-portal-navbar .55s ease-out both}
-@keyframes fl-portal-navbar{from{opacity:0}to{opacity:1}}
+.app.portal-done .topbar{animation:fl-dome-navbar-enter 850ms ease-out both}
+@keyframes fl-dome-navbar-enter{from{opacity:0}to{opacity:1}}
 @media(max-width:700px){
- .fl-dome-centre{transform:translateY(1vh)}
- .fl-dome-gate-copy{font-size:7px;letter-spacing:.12em;top:30px}
- .fl-dome-edition{max-width:75%}.fl-dome-index{display:none}
- .fl-dome-overline{font-size:7.5px;letter-spacing:.12em;margin-bottom:14px}
- .fl-dome-title{font-size:clamp(33px,8.8vw,49px);max-width:320px}
- .fl-dome-trigger{width:min(77vw,335px);margin-top:17px}
- .fl-dome-instruction{font-size:9px;letter-spacing:.13em;gap:8px}
- .fl-dome-subline{font-size:18px}
- .fl-dome-keyboard-hint{display:none}
- .fl-dome-bottom{font-size:7px;letter-spacing:.09em;bottom:24px}
+  .fl-dome-centre{transform:translateY(0)}
+  .fl-dome-gate-copy{top:28px;letter-spacing:.11em;font-size:7px}
+  .fl-dome-gate-copy span:last-child{display:none}
+  .fl-dome-overline{font-size:8px;letter-spacing:.11em;margin-bottom:13px}
+  .fl-dome-title{font-size:clamp(39px,9.1vw,53px);max-width:345px}
+  .fl-dome-trigger{width:min(78vw,330px);margin-top:10px}
+  .fl-dome-instruction{font-size:9px;letter-spacing:.15em}
+  .fl-dome-subline{font-size:18px}
+  .fl-dome-keyboard-hint{display:none}
+  .fl-dome-bottom{font-size:7px;letter-spacing:.10em;bottom:24px}
 }
 @media(max-height:680px){
- .fl-dome-centre{transform:none}
- .fl-dome-trigger{width:min(38vh,225px);margin:7px auto 0}
- .fl-dome-overline{margin-bottom:8px}
- .fl-dome-instruction{margin-top:0}
- .fl-dome-gate-copy{top:17px}.fl-dome-bottom{bottom:14px}
+  .fl-dome-centre{transform:none}
+  .fl-dome-trigger{width:min(38vh,225px);margin:6px auto 0}
+  .fl-dome-overline{margin-bottom:6px}
+  .fl-dome-gate-copy{top:15px}.fl-dome-bottom{bottom:14px}
 }
 @media(prefers-reduced-motion:reduce){
- .fl-dome-portal.is-opening{transition:opacity .10s linear}
- .fl-dome-portal.is-opening .fl-dome-trigger,
- .fl-dome-portal.is-opening .fl-dome-aperture-flare{animation:none;opacity:0}
- .app.portal-opening .fl-world{transition:none;clip-path:none;will-change:auto}
- .app.portal-done .topbar{animation:none}
+  .fl-dome-portal.is-charging .fl-dome-ring,
+  .fl-dome-portal.is-charging .fl-dome-white-aura,
+  .fl-dome-portal.is-charging .fl-dome-aperture-flare,
+  .fl-dome-portal.is-charging .fl-dome-portal-orb{animation:none}
+  .fl-dome-portal.is-charging .fl-dome-ring{border-color:#fff;box-shadow:0 0 16px #fff}
+  .fl-dome-portal.is-opening{animation:fl-dome-veil-withdraw .20s linear both}
+  .fl-dome-portal.is-opening .fl-dome-trigger,
+  .fl-dome-portal.is-opening .fl-dome-aperture-flare{animation:none;opacity:0}
+  .app.portal-opening .fl-world{transition:none;clip-path:none;transform:none;will-change:auto}
+  .app.portal-done .topbar{animation:none}
+}
+
+/* The established .app.in-welcome brown canvas has higher precedence than
+   the generic portal phase selectors; the aperture must expose true black. */
+.app.in-welcome.portal-idle,
+.app.in-welcome.portal-charging,
+.app.in-welcome.portal-opening{
+  background:#000;
+  transition:none;
 }

@@ -21,7 +21,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
     await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
     await page.locator('.fl-dome-portal').waitFor({timeout:7000});
-    assert.equal(await page.locator('.fl-dome-trigger').count(),1,name+' should start at the central golden dome');
+    assert.equal(await page.locator('.fl-dome-trigger').count(),1,name+' should start at the central black dome');
     assert.equal(await page.locator('.composer textarea').count(),0,name+' chat must be absent while the portal is locked');
     assert.equal(await page.locator('.fl-world').getAttribute('inert'),'',
       name+' pre-landing story must be inert until the portal opens');
@@ -29,14 +29,55 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await page.mouse.wheel(0,420);
     await page.waitForTimeout(100);
     assert.equal(await page.evaluate(()=>window.scrollY),0,'Dome gate should lock user-initiated wheel scrolling');
-    await page.screenshot({path:'browser-artifacts/'+name+'-golden-dome-entry.png',fullPage:false});
-    await page.locator('.fl-dome-trigger').hover(); // No click: pointer-enter must open the portal.
-    await page.locator('.fl-dome-portal.is-opening').waitFor({timeout:4000});
-    await page.waitForTimeout(480);
-    assert.ok((await page.evaluate(()=>getComputedStyle(document.querySelector('.fl-world')).clipPath)).includes('circle('),
-      name+' landing must expand from a circular inside-out aperture');
+    await page.screenshot({path:'browser-artifacts/'+name+'-black-dome-entry.png',fullPage:false});
+    await page.locator('.fl-dome-trigger').hover();
+    await page.waitForTimeout(450);
+    assert.equal(await page.locator('.fl-dome-portal').getAttribute('data-phase'),'idle',
+      name+' hovering must NOT trigger the cinematic portal');
+    await page.locator('.fl-dome-trigger').click();
+    await page.locator('.fl-dome-portal.is-charging').waitFor({timeout:2500});
+    assert.equal(await page.locator('.fl-world').getAttribute('inert'),'',
+      name+' landing must remain locked while bright white energy gathers');
+    await page.waitForTimeout(1400);
+    const whiteCharge=await page.evaluate(()=>{
+      const dome=document.querySelector('.fl-dome-portal-orb');
+      const aura=document.querySelector('.fl-dome-white-aura');
+      return {background:getComputedStyle(document.querySelector('.fl-dome-portal')).backgroundColor,
+        aura:Number(getComputedStyle(aura).opacity),shadow:getComputedStyle(dome).boxShadow,
+        clip:getComputedStyle(document.querySelector('.fl-world')).clipPath};
+    });
+    assert.equal(whiteCharge.background,'rgb(3, 3, 3)',name+' charging background must stay black');
+    assert.ok(whiteCharge.aura>.1,name+' white halo must visibly build for seconds: '+JSON.stringify(whiteCharge));
+    assert.ok(whiteCharge.clip.includes('0%'),name+' landing must not appear before charge completes');
+    await page.screenshot({path:'browser-artifacts/'+name+'-white-dome-charge.png',fullPage:false});
+    await page.locator('.fl-dome-portal.is-opening').waitFor({timeout:3500});
+    await page.waitForTimeout(500);
+    const clipEarly=await page.locator('.fl-world').evaluate(el=>getComputedStyle(el).clipPath);
+    await page.waitForTimeout(1350);
+    const clipMiddle=await page.locator('.fl-world').evaluate(el=>getComputedStyle(el).clipPath);
+    assert.ok(clipEarly.includes('circle(')&&clipMiddle.includes('circle(')&&clipEarly!==clipMiddle,
+      name+' inside-out aperture should expand progressively over multiple seconds: '+JSON.stringify({clipEarly,clipMiddle}));
+    const aperture=await page.locator('.fl-world').evaluate(el=>{
+      const clip=getComputedStyle(el).clipPath;
+      const shape=clip.split(' at ')[0];
+      const parts=/([+-]?(?:\d+\.?\d*|\.\d+))(px|vmax|vmin|vw|vh|%)/g;
+      let radius=0, count=0;
+      for(const [,v,u] of shape.matchAll(parts)){
+        const n=Number(v);
+        radius+=u==='px'?n:u==='vmax'?n*Math.max(innerWidth,innerHeight)/100:
+          u==='vmin'?n*Math.min(innerWidth,innerHeight)/100:
+          u==='vw'?n*innerWidth/100:u==='vh'?n*innerHeight/100:
+          n*Math.hypot(innerWidth,innerHeight)/100;
+        count++;
+      }
+      return {radius:count?radius:NaN,needed:Math.hypot(innerWidth/2,innerHeight/2),clip};
+    });
+    assert.ok(Number.isFinite(aperture.radius)&&aperture.radius<aperture.needed,
+      name+' the circular aperture must still be growing halfway through the reveal: '+JSON.stringify(aperture));
+    assert.equal(await page.locator('.app').evaluate(el=>getComputedStyle(el).backgroundColor),
+      'rgb(0, 0, 0)',name+' outside the growing aperture must remain pure black');
     await page.screenshot({path:'browser-artifacts/'+name+'-dome-inside-out-reveal.png',fullPage:false});
-    await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8000});
+    await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:7000});
     assert.equal(await page.locator('.fl-world').getAttribute('inert'),null,
       name+' landing must become keyboard and pointer accessible after reveal');
     assert.notEqual(await page.evaluate(()=>getComputedStyle(document.documentElement).overflow),'hidden',
@@ -173,7 +214,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.locator('.inspiration-search input').fill('');
       await page.reload({waitUntil:'networkidle'});
       // A refresh starts a fresh site entry. Open the golden dome before navigating history.
-      await page.locator('.fl-dome-trigger').hover();
+      await page.locator('.fl-dome-trigger').click();
       await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8500});
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/My conversations/i}).click();
@@ -197,14 +238,19 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.equal(await page.locator('.reaction-set button').count(),3);
       await page.locator('.feedback-details > summary').click();
     }
-    const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+    const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,hasTouch:true});
     await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
     await mobile.locator('.fl-dome-portal').waitFor({timeout:7000});
     assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile portal should hide the chat');
     await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-dome.png',fullPage:false});
     await mobile.locator('.fl-dome-trigger').dispatchEvent('pointerdown',{pointerType:'touch'});
-    await mobile.locator('.fl-dome-portal.is-opening').waitFor({timeout:4000});
-    await mobile.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8000});
+    await mobile.waitForTimeout(120);
+    assert.equal(await mobile.locator('.fl-dome-portal').getAttribute('data-phase'),'idle',
+      'Touching without tapping/clicking must not start the portal');
+    await mobile.locator('.fl-dome-trigger').tap();
+    await mobile.locator('.fl-dome-portal.is-charging').waitFor({timeout:2500});
+    await mobile.locator('.fl-dome-portal.is-opening').waitFor({timeout:3500});
+    await mobile.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8500});
     if(await mobile.locator('.fl-world').count())
       assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile composer must start absent');
     if(await mobile.locator('.fl-world').count()){
