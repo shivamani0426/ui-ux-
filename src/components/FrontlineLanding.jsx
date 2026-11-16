@@ -43,8 +43,8 @@ function spiralPath(){
 const SPIRAL_PATH=spiralPath();
 const SPIRAL_WORDS=('FRONTLINE  ·  SELECT  ·  GENERATE  ·  FUSE  ·  DESIGN INTELLIGENCE  ·  ').repeat(24);
 
-export default function FrontlineLanding({onBegin,onMode,onSceneChange}){
-  const root=useRef(null),frameRef=useRef(0);
+export default function FrontlineLanding({onBegin,onMode,onSceneChange,onComposeReady}){
+  const root=useRef(null),frameRef=useRef(0),readyRef=useRef(false);
   const [frame,setFrame]=useState(0);
   const [reduceMotion,setReduceMotion]=useState(false);
   useEffect(()=>{
@@ -70,6 +70,8 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange}){
       el.style.setProperty('--fl-spiral-progress',ease(.75,.91,p).toFixed(5));
       el.style.setProperty('--fl-spiral-turn',((p-.76)*270).toFixed(2)+'deg');
       const reveal=ease(.86,.99,p);
+      const ready=reveal>=.75;
+      if(ready!==readyRef.current){readyRef.current=ready;onComposeReady?.(ready);}
       document.documentElement.style.setProperty('--fl-compose-reveal',reveal.toFixed(5));
       el.style.setProperty('--fl-compose-reveal',reveal.toFixed(5));
       for(let i=0;i<SCENES.length;i++){
@@ -115,7 +117,7 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange}){
       if(pointerRaf)cancelAnimationFrame(pointerRaf);
       document.documentElement.style.removeProperty('--fl-compose-reveal');
     };
-  },[onSceneChange,reduceMotion]);
+  },[onSceneChange,onComposeReady,reduceMotion]);
   const available=()=>Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
   const goToChapter=n=>window.scrollTo({top:available()*[0,.26,.46,.67,.875][n],behavior:reduceMotion?'instant':'smooth'});
   return <section ref={root} className={'fl-world fl-scroll-story fl-chapter-'+frame} aria-label="Frontline UX/UI cinematic scroll introduction">
@@ -149,7 +151,7 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange}){
       <div className="fl-story-scene-inner">
         <p className="fl-story-kicker"><span className="fl-overline-dot"/>{chapter.overline}</p>
         <h1 className="fl-story-heading">
-          {chapter.headline.map((line,j)=><span className={'fl-story-heading-line'+(j===1?' fl-story-italic-line':'')} key={j}>
+          {chapter.headline.map((line,j)=><span className={'fl-story-heading-line'+(i===0?' fl-headline-main':'')+(j===1?' fl-story-italic-line':'')} key={j}>
             <KineticText value={line} base={j*4}/>
           </span>)}
           {i===0&&<span className="fl-story-first-accent"><KineticText value={chapter.accent} base={5}/></span>}
