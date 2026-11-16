@@ -36,17 +36,17 @@ const contextMessage=(brief,styles)=>
 
 async function geminiReply({brief,messages,styles,env,request}){
   const model=modelId(env.GEMINI_MODEL,'gemini-2.5-flash-lite');
-  const contents=[
-    {role:'user',parts:[{text:contextMessage(brief,styles)}]},
-    ...cleanMessages(messages).map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]})),
-  ];
+  const contents=cleanMessages(messages).map(m=>({
+    role:m.role==='assistant'?'model':'user',parts:[{text:m.content}],
+  }));
+  if(!contents.length)contents.push({role:'user',parts:[{text:trimText(brief)}]});
   // The message history is already ordered and limited to the current owner's project.
   const r=await request('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{
     method:'POST',
     headers:{'x-goog-api-key':env.GEMINI_API_KEY,'Content-Type':'application/json'},
     signal:AbortSignal.timeout(12000),
     body:JSON.stringify({
-      systemInstruction:{parts:[{text:SYSTEM_PROMPT}]},
+      systemInstruction:{parts:[{text:SYSTEM_PROMPT+'\\n'+contextMessage(brief,styles)}]},
       contents,
       generationConfig:{temperature:0.65,maxOutputTokens:1100},
     }),
