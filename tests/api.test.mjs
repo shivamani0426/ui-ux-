@@ -31,6 +31,37 @@ test('project creation, all-three feedback, history isolation and deletion',asyn
     const chat=await call(0,`/api/projects/${id}/messages`,'POST',{message:'Plan the pages',styles:selection});
     assert.equal(chat.status,200);assert.equal(chat.data.messages.length,2);
     const after=await call(0,`/api/projects/${id}`);assert.equal(after.data.project.messages.length,2);
+    const generate=await call(0,`/api/projects/${id}/design-prompt`,'POST',{
+      mode:'generate',styles:['minimal'],refinement:'Focus on responsive accessibility'
+    });
+    assert.equal(generate.status,200);
+    assert.equal(generate.data.mode,'generate');
+    assert.equal(generate.data.source,'guide','Tests must not contact live AI providers');
+    assert.match(generate.data.prompt,/THREE ORIGINAL DESIGN DIRECTIONS/);
+    for(const title of ['Minimal SaaS','Glass UI','Creative UI'])assert.ok(generate.data.prompt.includes(title));
+    assert.ok(generate.data.prompt.length>1800);
+    const generatedAgain=await call(0,`/api/projects/${id}/design-prompt`,'POST',{
+      mode:'generate',styles:['minimal']
+    });
+    assert.equal(generatedAgain.status,200);
+    const fusion=await call(0,`/api/projects/${id}/design-prompt`,'POST',{
+      mode:'fusion',styles:['minimal','glass'],refinement:'Keep forms readable'
+    });
+    assert.equal(fusion.status,200);
+    assert.match(fusion.data.prompt,/FUSION STRATEGY/);
+    assert.match(fusion.data.prompt,/one cohesive result/i);
+    const learned=await call(0,'/api/profile');
+    assert.equal(learned.data.styleWeights.minimal,2,'Repeated Generate should only learn once');
+    assert.equal(learned.data.styleWeights.glass,2);
+    assert.equal(learned.data.globalOptIn,false,'Implicit learning must remain private');
+    const isolated=await call(1,`/api/projects/${id}/design-prompt`,'POST',{mode:'fusion',styles:selection});
+    assert.equal(isolated.status,404,'Another browser must never export private prompts');
+    const invalidMode=await call(0,`/api/projects/${id}/design-prompt`,'POST',{mode:'copy',styles:selection});
+    assert.equal(invalidMode.status,400);
+    const invalidStyle=await call(0,`/api/projects/${id}/design-prompt`,'POST',{mode:'generate',styles:['unknown']});
+    assert.equal(invalidStyle.status,400);
+    const invalidRefinement=await call(0,`/api/projects/${id}/design-prompt`,'POST',{mode:'fusion',styles:selection,refinement:'x'.repeat(601)});
+    assert.equal(invalidRefinement.status,400);
     const exportRes=await call(0,`/api/projects/${id}/export`,'POST',{styles:selection});
     assert.equal(exportRes.status,200);assert.ok(exportRes.data.prompt.includes('Glass UI'));
     const invalid=await call(0,'/api/feedback','POST',{projectId:id,styles:['unknown'],reaction:'like'});
