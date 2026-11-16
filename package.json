@@ -1,6 +1,6 @@
 {
   "name": "ui-compass",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "Adaptive design intelligence studio with React Bits chat-first interface",

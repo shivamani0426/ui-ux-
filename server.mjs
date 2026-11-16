@@ -123,7 +123,7 @@ const server=http.createServer(async(req,res)=>{
   try{
     if(req.url?.startsWith('/api/')){
       if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
-      if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{aiEnabled:!!process.env.OPENROUTER_API_KEY,persistent:!!pg,version:'0.3.0'});
+      if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{aiEnabled:!!process.env.OPENROUTER_API_KEY,persistent:!!pg,version:'0.3.1'});
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:REFERENCES,source:'https://www.webdesignawards.io/categories/ui-ux-design'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
