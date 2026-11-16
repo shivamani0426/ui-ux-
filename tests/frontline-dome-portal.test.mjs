@@ -18,7 +18,7 @@ test('The black dome enters only on click or tap, never on pointer contact or ho
   assert.ok(app.includes('setPortalState(\'opening\')'));
   assert.ok(app.includes('setPortalState(\'done\')'));
   assert.match(app,/reduced\?220:2700/);
-  assert.match(app,/reduced\?220:4200/);
+  assert.match(app,/reduced\?220:3000/);
   assert.match(app,/FrontlineLanding locked=/);
   assert.ok(app.includes('setMode(\'chat\')'),'Original studio entry must remain intact');
 });
@@ -30,7 +30,7 @@ test('White halo charges on an all-black screen before the slow centre-out revea
   assert.match(css,/linear-gradient\(145deg,#171717/);
   assert.match(css,/\.fl-dome-portal\.is-charging \.fl-dome-ring-outer/);
   assert.match(css,/2700ms/);
-  assert.match(css,/4200ms/);
+  assert.match(css,/3000ms/);
   assert.match(css,/rgba\(255,255,255/);
   assert.match(css,/\.app\.portal-idle \.fl-world,\.app\.portal-charging \.fl-world/);
   assert.match(css,/clip-path:circle\(0% at 50% 50%\)/);

@@ -1,6 +1,6 @@
 /* FRONTLINE / BLACK DOME
    A restrained black-on-black monument, deliberately awakened by click.
-   Two cinematic chapters: 2.7s white energy gathering, then 4.2s
+   Two cinematic chapters: 2.7s white energy gathering, then 3s
    center-out expansion into the existing golden Frontline scroll story.
    Core timing lives in App.jsx to match these CSS phases exactly. */
 .fl-dome-portal{
@@ -185,7 +185,7 @@
 @keyframes fl-dome-opening-flash{
   0%{opacity:.38}30%{opacity:.8}100%{opacity:0}
 }
-/* The landing starts as a small centre aperture and is revealed over 4.2s.
+/* The landing starts as a small centre aperture and is revealed over 3s.
    A 76vmax final radius fills every aspect ratio but not prematurely.\n   Outside the aperture remains true black, not the previous cream/gold.
    This does NOT change the existing scroll story or spiral-born chat. */
 .app.portal-idle,.app.portal-charging,.app.portal-opening{background:#000}
@@ -194,8 +194,8 @@
 }
 .app.portal-opening .fl-world{
   clip-path:circle(76vmax at 50% 50%);transform:scale(1);
-  transition:clip-path 4200ms cubic-bezier(.46,.10,.56,.95),
-             transform 4200ms cubic-bezier(.40,.11,.57,.95);
+  transition:clip-path 3000ms cubic-bezier(.46,.10,.56,.95),
+             transform 3000ms cubic-bezier(.40,.11,.57,.95);
   will-change:clip-path,transform;
 }
 .app.portal-idle .topbar,.app.portal-charging .topbar,.app.portal-opening .topbar{
@@ -245,7 +245,7 @@
 
 
 /* MINIMAL MONUMENT / F-dome. Replace round dome visuals only; keep the
-   tested click -> 2.7s charging -> 4.2s aperture choreography intact. */
+   tested click -> 2.7s charging -> 3s aperture choreography intact. */
 .fl-dome-portal{background:#030303}
 .fl-dome-ambient{
  background:radial-gradient(ellipse 32% 37% at 50% 50%,#08090a 0%,#040404 54%,#030303 100%)
