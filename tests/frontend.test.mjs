@@ -40,6 +40,7 @@ test('chat-first frontend uses upstream React Bits and keeps features accessible
   assert.match(app,/Switch to /);
   assert.match(app,/composer-position/);
   assert.match(app,/floating/);
-  assert.match(app,/Save feedback/);
+  assert.match(app,/Save refinement/);
+  assert.match(app,/Optional refinement notes/);
   for(const content of components){assert.match(content,/'use client'/);assert.match(content,/import React, \{ useEffect, useRef \} from 'react';/);}
 });
