@@ -425,3 +425,12 @@ input,textarea{accent-color:var(--lav)}
   .app.in-chat .chat-star.star-border::before,.app.in-chat .conversation-empty::before{animation:none}
   .app.in-chat .design-option,.menu-panel .tool-mode{transition:none}
 }
+
+/* Brand proportion in both experiences */
+.app.in-chat .brand-tech{width:auto;height:auto;flex-direction:column;align-items:flex-start;justify-content:center}
+.app.in-welcome .brand-sub{display:none}
+.app.in-welcome .brand-tech{flex-direction:row;align-items:center}
+@media(max-width:750px){
+ .app.in-chat .brand-mark{width:29px;height:29px;font-size:17px}
+ .app.in-chat .brand{gap:8px}
+}
