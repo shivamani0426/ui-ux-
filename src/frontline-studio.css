@@ -450,3 +450,17 @@ input,textarea{accent-color:var(--lav)}
  }
  .app.in-chat .conversation-empty{width:100%;padding:23px 5px 36px}
 }
+
+/* Frontline F — one visual mark across header, chat, studio and preview. */
+.fl-monogram{display:block;flex-shrink:0;max-width:100%;max-height:100%;vertical-align:middle;filter:drop-shadow(0 2px 4px rgba(148,82,46,.20))}
+.brand-mark .fl-monogram{width:100%;height:100%}
+.app.in-welcome .brand-mark{display:grid;place-items:center;width:35px;height:35px}
+.app.in-chat .brand-mark .fl-monogram{padding:2px}
+.app.in-chat .floating-symbol .fl-monogram{width:62%;height:62%;max-height:62%}
+.app.in-chat .message-avatar .fl-monogram{width:90%;height:90%}
+.preview-side span .fl-monogram{display:block;width:25px;height:25px}
+.menu-panel .mode-symbol .fl-monogram{width:27px;height:27px}
+.fl-corner-monogram{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle}
+.fl-corner-monogram .fl-monogram{width:22px;height:22px}
+.brand:hover .fl-monogram{transform:rotate(-5deg) scale(1.05);transition:transform .32s cubic-bezier(.25,.9,.2,1)}
+@media(prefers-reduced-motion:reduce){.brand:hover .fl-monogram{transform:none;transition:none}}

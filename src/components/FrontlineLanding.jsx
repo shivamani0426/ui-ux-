@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUpRight } from 'lucide-react';
 import SolarFluidCanvas from './SolarFluidCanvas.jsx';
+import FrontlineMark from './FrontlineMark.jsx';
 import './FrontlineLanding.css';
 
 // Original Frontline visual scene: no artwork, fonts or animation code copied from the reference.
@@ -19,7 +20,9 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     let raf = 0;
-    let lastPointerX = 0, lastPointerY = 0;
+    let pointerFrame = 0;
+    let targetPointerX = 0, targetPointerY = 0;
+    let smoothPointerX = 0, smoothPointerY = 0;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     const update = () => {
       raf = 0;
@@ -37,18 +40,27 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
       }
     };
     const queue = () => { if (!raf) raf = window.requestAnimationFrame(update); };
-    const move = event => {
-      if (reduce || !root.current || event.pointerType === 'touch') return;
-      const x = (event.clientX / window.innerWidth - .5) * 2;
-      const y = (event.clientY / window.innerHeight - .5) * 2;
-      if (Math.abs(x-lastPointerX) < .005 && Math.abs(y-lastPointerY) < .005) return;
-      lastPointerX = x; lastPointerY = y;
+    const smoothPointer = () => {
+      pointerFrame = 0;
+      if(!root.current) return;
+      smoothPointerX += (targetPointerX - smoothPointerX) * .24;
+      smoothPointerY += (targetPointerY - smoothPointerY) * .24;
+      const x = smoothPointerX, y = smoothPointerY;
       root.current.style.setProperty('--fl-pointer-x', x.toFixed(3));
       root.current.style.setProperty('--fl-pointer-y', y.toFixed(3));
       root.current.style.setProperty('--fl-mx', (x * 13).toFixed(2) + 'px');
       root.current.style.setProperty('--fl-my', (y * 9).toFixed(2) + 'px');
       root.current.style.setProperty('--fl-arch-x', (-x * 12).toFixed(2) + 'px');
       root.current.style.setProperty('--fl-arch-y', (-y * 6).toFixed(2) + 'px');
+      if(Math.abs(targetPointerX-x) > .006 || Math.abs(targetPointerY-y) > .006){
+        pointerFrame = window.requestAnimationFrame(smoothPointer);
+      }
+    };
+    const move = event => {
+      if(reduce || !root.current || event.pointerType === 'touch') return;
+      targetPointerX = (event.clientX / Math.max(1,window.innerWidth) - .5) * 2;
+      targetPointerY = (event.clientY / Math.max(1,window.innerHeight) - .5) * 2;
+      if(!pointerFrame) pointerFrame = window.requestAnimationFrame(smoothPointer);
     };
     window.addEventListener('scroll', queue, { passive: true });
     window.addEventListener('resize', queue, { passive: true });
@@ -59,6 +71,7 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
       window.removeEventListener('resize', queue);
       window.removeEventListener('pointermove', move);
       if (raf) window.cancelAnimationFrame(raf);
+      if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
     };
   }, [onSceneChange]);
   const chapter = CHAPTERS[frame];
@@ -87,7 +100,7 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
       <div className="fl-clouds"/>
       <div className="fl-shimmer"/>
     </div>
-    <div className="fl-corner-label fl-corner-left">AN INFINITE FIELD OF POSSIBILITY <span>✳</span></div>
+    <div className="fl-corner-label fl-corner-left">AN INFINITE FIELD OF POSSIBILITY <span className="fl-corner-monogram"><FrontlineMark size={22}/></span></div>
     <div className="fl-corner-label fl-corner-right">DESIGN INTELLIGENCE — EST. 2026</div>
     <div className="fl-chapter-content" key={chapter.no} aria-live="off">
       <p className="fl-overline"><span className="fl-overline-dot"/> {chapter.overline}</p>

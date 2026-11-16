@@ -4,6 +4,7 @@ import {ArrowUp, Check, CheckCheck, ChevronLeft, ChevronRight, Copy, ExternalLin
 import TechText from './components/TechText.jsx';
 import StarBorder from './components/StarBorder.jsx';
 import FrontlineLanding from './components/FrontlineLanding.jsx';
+import FrontlineMark from './components/FrontlineMark.jsx';
 import './styles.css';
 import './frontline-studio.css';
 
@@ -153,7 +154,7 @@ function App(){
   return <div className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')}>
     <header className="topbar">
       <button className="brand" onClick={newChat} title="New chat" aria-label="Frontline UX/UI — new chat">
-        <span className="brand-mark">✦</span>
+        <span className="brand-mark"><FrontlineMark size={29}/></span>
         <span className="brand-tech"><span className="brand-word">FRONTLINE</span><span className="brand-sub">UX / UI STUDIO</span></span>
       </button>
       <div className="top-right">
@@ -170,7 +171,7 @@ function App(){
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
           {!messages.length&&<div className="conversation-empty">
-            <span className="floating-symbol">✳</span>
+            <span className="floating-symbol"><FrontlineMark size={53}/></span>
             <span className="studio-eyebrow">THE FRONTLINE DESIGN ATELIER</span>
             <h1 className="studio-title">Design beyond <em>the ordinary.</em></h1>
             <p>Every extraordinary interface begins with a thought. Tell me what you imagine, and we’ll find its visual direction together.</p>
@@ -183,13 +184,13 @@ function App(){
             <span>Select. Generate. Fuse. Your vision leads the way.</span>
           </div>}
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
-            {message.role!=='user'&&<div className="message-avatar">✳</div>}
+            {message.role!=='user'&&<div className="message-avatar"><FrontlineMark size={25}/></div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
               {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations':message.source==='error'?'Error':config.aiEnabled?'AI design consultant':'Design advisor'}</span></div>}
               <p>{message.content}</p>
             </div>
           </div>)}
-          {working&&<div className="message-row incoming"><div className="message-avatar">✳</div><div className="bubble ai-bubble thinking" aria-label="Analyzing your request"><i/><i/><i/></div></div>}
+          {working&&<div className="message-row incoming"><div className="message-avatar"><FrontlineMark size={25}/></div><div className="bubble ai-bubble thinking" aria-label="Analyzing your request"><i/><i/><i/></div></div>}
           {project&&<section className="result-message">
             <div className="result-header">
               <span className="small-eyebrow">DESIGN EXPLORER / {project.recommendations.category?.toUpperCase()}</span>
@@ -216,7 +217,7 @@ function App(){
             {viewPreview&&<div className="design-preview">
               <div className="preview-menu"><span>ORIGINAL UI CONCEPT · {selected.length===3?'FUSION':selected.map(s=>formats[s]).join(' + ')}</span><button onClick={()=>setMobilePreview(v=>!v)}>{mobilePreview?'Desktop':'Mobile'} view</button></div>
               <div className={'preview-app '+(mobilePreview?'mobile':'')+' '+(selected.length>1?'fusion':selected[0])}>
-                <div className="preview-side"><span>✳</span><i/><i/><i/></div>
+                <div className="preview-side"><span><FrontlineMark size={24}/></span><i/><i/><i/></div>
                 <div className="preview-content"><div className="preview-heading"><span>Workspace overview</span><span>•••</span></div><div className="preview-hero"><small>{project.recommendations.category} / CONCEPT</small><strong>Design with intention.</strong><p>{project.brief.slice(0,100)}</p></div><div className="preview-stats"><div><small>Experience</small><b>01</b><i/></div><div><small>Interface</small><b>02</b><i/></div></div></div>
               </div><small>Illustrative composition only. Not exported working application code.</small>
             </div>}
@@ -288,7 +289,7 @@ function App(){
             {key:'generate',name:'Generate UI/UX',description:'Shape an original direction from a brief; full model generation needs an AI key.'},
             {key:'fusion',name:'Design Fusion',description:'Combine one, two, or all three design styles.'}
           ].map(item=><button className={'tool-mode '+(designMode===item.key?'active':'')} key={item.key} onClick={()=>{setDesignMode(item.key);setSelected(item.key==='fusion'?styleKeys:selected);setMenuOpen(false);focusChat();notice(item.name+' ready. Describe your idea in chat.');}}>
-            <span className="mode-symbol">{item.key==='select'?'◈':item.key==='generate'?'✧':'✳'}</span>
+            <span className="mode-symbol">{item.key==='select'?'◈':item.key==='generate'?'✧':<FrontlineMark size={23}/>}</span>
             <span><strong>{item.name}</strong><small>{item.description}</small></span>
             {designMode===item.key&&<Check size={17}/>}
           </button>)}
