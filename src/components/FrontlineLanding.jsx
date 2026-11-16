@@ -12,7 +12,7 @@ const CHAPTERS=[
   {no:'01',overline:'01 / SELECT UI & UX',headline:['FIND YOUR','DIRECTION.'],accent:'Discover what fits.',description:'Explore curated real-world references. Understand the visual ideas behind every match. Save the inspirations worth carrying forward.',subtitle:'REAL REFERENCES · PERSONAL CHOICES',mode:'select'},
   {no:'02',overline:'02 / GENERATE UI & UX',headline:['A THOUGHT','BECOMES','A VISION.'],accent:'Words into wonder.',description:'Bring a simple brief. Shape an original, detailed design direction with structure, typography, interactions, and the human experience in mind.',subtitle:'FROM A BRIEF TO A CREATIVE BLUEPRINT',mode:'generate'},
   {no:'03',overline:'03 / DESIGN FUSION',headline:['MANY IDEAS.','ONE VISION.'],accent:'Designed to belong.',description:'Select different references and styles. Combine their strongest ideas into one cohesive, original direction—without copying another website.',subtitle:'SELECT · COMBINE · REFINE',mode:'fusion'},
-  {no:'04',overline:'04 / THE CREATIVE SPIRAL',headline:['IMAGINE','WHAT’S NEXT.'],accent:'Your story begins here.',description:'Every direction, every possibility, one space to create. Keep scrolling to reveal your design studio.',subtitle:'SCROLL TO REVEAL YOUR CANVAS',mode:null}
+  {no:'04',overline:'04 / DESIGN PREFERENCES · THE CREATIVE SPIRAL',headline:['IMAGINE','WHAT’S NEXT.'],accent:'Your story begins here.',description:'Every direction, every possibility, one space to create. Keep scrolling to reveal your design studio.',subtitle:'SCROLL TO REVEAL YOUR CANVAS',mode:null}
 ];
 const clamp=(n,min=0,max=1)=>Math.max(min,Math.min(max,n));
 const ease=(a,b,p)=>{const t=clamp((p-a)/(b-a));return t*t*(3-2*t)};
@@ -55,7 +55,7 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
     return()=>query?.removeEventListener?.('change',onChange);
   },[]);
   useEffect(()=>{
-    let raf=0,pointerRaf=0,tx=0,ty=0,sx=0,sy=0;
+    let raf=0,pointerFrame=0,tx=0,ty=0,sx=0,sy=0;
     const update=()=>{
       raf=0;
       if(!root.current)return;
@@ -90,20 +90,20 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
     };
     const queue=()=>{if(!raf)raf=window.requestAnimationFrame(update)};
     const smoothPointer=()=>{
-      pointerRaf=0;
+      pointerFrame=0;
       if(!root.current)return;
       sx+=(tx-sx)*.24;sy+=(ty-sy)*.24;
       root.current.style.setProperty('--fl-mx',(sx*13).toFixed(2)+'px');
       root.current.style.setProperty('--fl-my',(sy*9).toFixed(2)+'px');
       root.current.style.setProperty('--fl-arch-x',(-sx*12).toFixed(2)+'px');
       root.current.style.setProperty('--fl-arch-y',(-sy*6).toFixed(2)+'px');
-      if(Math.abs(tx-sx)>.006||Math.abs(ty-sy)>.006)pointerRaf=requestAnimationFrame(smoothPointer);
+      if(Math.abs(tx-sx)>.006||Math.abs(ty-sy)>.006)pointerFrame=requestAnimationFrame(smoothPointer);
     };
     const move=event=>{
       if(reduceMotion||event.pointerType==='touch'||!root.current)return;
       tx=(event.clientX/Math.max(1,window.innerWidth)-.5)*2;
       ty=(event.clientY/Math.max(1,window.innerHeight)-.5)*2;
-      if(!pointerRaf)pointerRaf=requestAnimationFrame(smoothPointer);
+      if(!pointerFrame)pointerFrame=requestAnimationFrame(smoothPointer);
     };
     window.addEventListener('scroll',queue,{passive:true});
     window.addEventListener('resize',queue,{passive:true});
@@ -114,7 +114,7 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
       window.removeEventListener('resize',queue);
       window.removeEventListener('pointermove',move);
       if(raf)cancelAnimationFrame(raf);
-      if(pointerRaf)cancelAnimationFrame(pointerRaf);
+      if(pointerFrame)cancelAnimationFrame(pointerFrame);
       document.documentElement.style.removeProperty('--fl-compose-reveal');
     };
   },[onSceneChange,onComposeReady,reduceMotion]);
@@ -185,7 +185,7 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
         <circle cx="450" cy="450" r="4" fill="#fff1cb"/>
       </svg>
     </div>
-    <div className="fl-story-corner fl-story-corner-left">DESIGN, IN AN INFINITE FIELD <FrontlineMark size={21}/></div>
+    <div className="fl-story-corner fl-story-corner-left">DESIGN, IN AN INFINITE FIELD <span className="fl-corner-monogram"><FrontlineMark size={21}/></span></div>
     <div className="fl-story-corner fl-story-corner-right">THINK · CHOOSE · CREATE</div>
     <nav className="fl-chapter-nav fl-story-nav" aria-label="Landing page chapters">
       {CHAPTERS.map((c,i)=><button type="button" key={c.no} onClick={()=>goToChapter(i)}
