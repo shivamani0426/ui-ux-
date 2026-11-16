@@ -4,8 +4,9 @@ import {server} from '../server.mjs';
 import fs from 'node:fs/promises';
 
 await fs.mkdir('browser-artifacts',{recursive:true});
-await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-const url='http://127.0.0.1:'+server.address().port;
+const remote=process.env.TARGET_URL;
+if(!remote)await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const url=remote||'http://127.0.0.1:'+server.address().port;
 console.log('Testing UI Compass at '+url);
 
 let failed=false;
@@ -18,7 +19,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('pageerror',error=>errors.push('PAGEERROR '+error.stack));
     page.on('console',message=>{if(message.type()==='error')errors.push('CONSOLE '+message.text())});
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
-    await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:30000});
+    await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
     await page.screenshot({path:'browser-artifacts/'+name+'-landing.png',fullPage:false});
     const doc=await page.title();
     const body=await page.locator('body').innerText();
@@ -44,5 +45,5 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     console.error(name+' FAILED: '+error.stack);
   }finally{await browser?.close();}
 }
-await new Promise(resolve=>server.close(resolve));
+if(!remote)await new Promise(resolve=>server.close(resolve));
 if(failed)process.exitCode=1;
