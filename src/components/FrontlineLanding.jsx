@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUpRight, ArrowRight, Compass, Layers3, Sparkles, WandSparkles } from 'lucide-react';
+import { ArrowDown, ArrowUpRight } from 'lucide-react';
 import './FrontlineLanding.css';
 
 // Original Frontline visual scene: no artwork, fonts or animation code copied from the reference.
@@ -25,6 +25,9 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
       const available = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
       const p = clamp(window.scrollY / available, 0, 1);
       root.current?.style.setProperty('--fl-progress', p.toFixed(5));
+      root.current?.style.setProperty('--fl-scroll-lift', (p * 15).toFixed(2) + 'vh');
+      root.current?.style.setProperty('--fl-cloud-drift', (p * 28).toFixed(2) + 'vw');
+      root.current?.style.setProperty('--fl-orb-scale', (1 - p * .37).toFixed(4));
       const next = Math.min(4, Math.floor(p * 5));
       if (next !== frameRef.current) {
         frameRef.current = next;
@@ -41,6 +44,10 @@ export default function FrontlineLanding({ onBegin, onMode, onSceneChange }) {
       lastPointerX = x; lastPointerY = y;
       root.current.style.setProperty('--fl-pointer-x', x.toFixed(3));
       root.current.style.setProperty('--fl-pointer-y', y.toFixed(3));
+      root.current.style.setProperty('--fl-mx', (x * 13).toFixed(2) + 'px');
+      root.current.style.setProperty('--fl-my', (y * 9).toFixed(2) + 'px');
+      root.current.style.setProperty('--fl-arch-x', (-x * 12).toFixed(2) + 'px');
+      root.current.style.setProperty('--fl-arch-y', (-y * 6).toFixed(2) + 'px');
     };
     window.addEventListener('scroll', queue, { passive: true });
     window.addEventListener('resize', queue, { passive: true });
