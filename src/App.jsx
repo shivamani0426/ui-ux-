@@ -93,7 +93,7 @@ function App(){
     clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);
     portalTimer.current=setTimeout(()=>{
       setPortalState('opening');
-      portalFinishTimer.current=setTimeout(()=>setPortalState('done'),reduced?220:4200);
+      portalFinishTimer.current=setTimeout(()=>setPortalState('done'),reduced?220:3000);
     },reduced?220:2700);
   };
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth',block:'end'});},[messages,working,viewPreview]);
