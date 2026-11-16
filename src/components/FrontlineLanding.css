@@ -129,3 +129,23 @@
  .fl-chapter-2 .fl-sun-wrap,.fl-chapter-4 .fl-sun-wrap{left:53%;top:54%;opacity:.78}
  .fl-chapter-1 .fl-note,.fl-chapter-2 .fl-note,.fl-chapter-3 .fl-note,.fl-chapter-4 .fl-note{padding:9px 11px;background:rgba(51,34,36,.45);border-radius:12px;backdrop-filter:blur(7px);text-shadow:0 2px 8px rgba(20,10,15,.55)}
 }
+
+/* GPU-friendly movement: avoid animating large paint filters. */
+.fl-sun{animation:none!important}
+.fl-sun-reflection{animation:fl-reflect-transform 5.3s ease-in-out infinite alternate!important;filter:blur(14px)!important;will-change:transform,opacity}
+@keyframes fl-reflect-transform{
+ from{transform:scaleY(.32) scaleX(.95);opacity:.53}
+ to{transform:scaleY(.40) scaleX(1.07);opacity:.73}
+}
+.fl-chapter-content{animation:fl-content-fast .72s cubic-bezier(.16,.85,.25,1) both!important}
+@keyframes fl-content-fast{from{opacity:0;transform:translate3d(0,20px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+.fl-architecture{transition:none!important;will-change:transform}
+.fl-sun-wrap{will-change:transform}
+.fl-water .fl-ripple{will-change:transform,opacity}
+@media (max-width:700px),(pointer:coarse){
+ .fl-architecture{will-change:auto}
+ .fl-sun-wrap{will-change:auto}
+ .fl-grain{opacity:.08}
+ .fl-sun-reflection{animation:none!important;will-change:auto}
+}
+@media(prefers-reduced-motion:reduce){.fl-sun-reflection{animation:none!important}.fl-chapter-content{animation:none!important}}
