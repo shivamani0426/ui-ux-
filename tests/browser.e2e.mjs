@@ -59,13 +59,18 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       name+' inside-out aperture should expand progressively over multiple seconds: '+JSON.stringify({clipEarly,clipMiddle}));
     const aperture=await page.locator('.fl-world').evaluate(el=>{
       const clip=getComputedStyle(el).clipPath;
-      const match=clip.match(/circle\\(([\\d.]+)(px|vmax|vmin|vw|vh|%)/);
-      const unit=match?.[2],n=Number(match?.[1]||NaN);
-      const radius=unit==='px'?n:unit==='vmax'?n*Math.max(innerWidth,innerHeight)/100:
-        unit==='vmin'?n*Math.min(innerWidth,innerHeight)/100:
-        unit==='vw'?n*innerWidth/100:unit==='vh'?n*innerHeight/100:
-        unit==='%'?n*Math.hypot(innerWidth,innerHeight)/100:NaN;
-      return {radius,needed:Math.hypot(innerWidth/2,innerHeight/2),clip};
+      const shape=clip.split(' at ')[0];
+      const parts=/([+-]?(?:\d+\.?\d*|\.\d+))(px|vmax|vmin|vw|vh|%)/g;
+      let radius=0, count=0;
+      for(const [,v,u] of shape.matchAll(parts)){
+        const n=Number(v);
+        radius+=u==='px'?n:u==='vmax'?n*Math.max(innerWidth,innerHeight)/100:
+          u==='vmin'?n*Math.min(innerWidth,innerHeight)/100:
+          u==='vw'?n*innerWidth/100:u==='vh'?n*innerHeight/100:
+          n*Math.hypot(innerWidth,innerHeight)/100;
+        count++;
+      }
+      return {radius:count?radius:NaN,needed:Math.hypot(innerWidth/2,innerHeight/2),clip};
     });
     assert.ok(Number.isFinite(aperture.radius)&&aperture.radius<aperture.needed,
       name+' the circular aperture must still be growing halfway through the reveal: '+JSON.stringify(aperture));
