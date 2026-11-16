@@ -27,7 +27,7 @@ function KineticText({value,base=0}){
   const chars=Array.from(value);
   return <span className="fl-kinetic-line" aria-label={value}>
     {chars.map((c,i)=><span className="fl-kinetic-glyph" aria-hidden="true"
-      key={i} style={{'--fl-letter-i':i+base}}>{c===' '?'\u00a0':c}</span>)}
+      key={i} style={{transitionDelay:Math.min(450,(i+base)*18)+'ms'}}>{c===' '?'\u00a0':c}</span>)}
   </span>;
 }
 function spiralPath(){
@@ -80,6 +80,9 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
         const exit=i===4?0:ease(s.outStart,s.outEnd,p);
         el.style.setProperty('--fl-scene-enter-'+i,enter.toFixed(5));
         el.style.setProperty('--fl-scene-opacity-'+i,((1-exit)*enter).toFixed(5));
+        el.style.setProperty('--fl-scene-shift-'+i,((1-enter)*108).toFixed(2)+'px');
+        el.style.setProperty('--fl-letter-shift-'+i,((1-enter)*112).toFixed(2)+'%');
+        el.style.setProperty('--fl-scene-scale-'+i,(0.966+enter*.034).toFixed(5));
       }
       const next=Math.min(4,Math.floor(p*5));
       if(next!==frameRef.current){
@@ -146,7 +149,10 @@ export default function FrontlineLanding({onBegin,onMode,onSceneChange,onCompose
     {CHAPTERS.map((chapter,i)=><article key={chapter.no} className={'fl-story-scene fl-story-scene-'+i+(frame===i?' is-current':'')}
       aria-hidden={frame!==i} style={{
         '--fl-this-opacity':'var(--fl-scene-opacity-'+i+')',
-        '--fl-this-enter':'var(--fl-scene-enter-'+i+')'
+        '--fl-this-enter':'var(--fl-scene-enter-'+i+')',
+        '--fl-this-rise':'var(--fl-scene-shift-'+i+')',
+        '--fl-this-scale':'var(--fl-scene-scale-'+i+')',
+        '--fl-this-letter-shift':'var(--fl-letter-shift-'+i+')'
       }}>
       <div className="fl-story-scene-inner">
         <p className="fl-story-kicker"><span className="fl-overline-dot"/>{chapter.overline}</p>
