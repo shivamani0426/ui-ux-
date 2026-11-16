@@ -2,6 +2,8 @@ name: Browser smoke test (Chromium + Firefox)
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   browser:
@@ -21,6 +23,7 @@ jobs:
       - name: Verify frontend in real browsers
         run: NODE_ENV=test node tests/browser.e2e.mjs
       - name: Verify live Render site in real browsers
+        if: github.event_name == 'push'
         env:
           TARGET_URL: https://ui-compass-studio.onrender.com
         run: NODE_ENV=test node tests/browser.e2e.mjs
