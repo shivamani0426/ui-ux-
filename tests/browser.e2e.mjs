@@ -74,6 +74,8 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     });
     assert.ok(Number.isFinite(aperture.radius)&&aperture.radius<aperture.needed,
       name+' the circular aperture must still be growing halfway through the reveal: '+JSON.stringify(aperture));
+    assert.equal(await page.locator('.app').evaluate(el=>getComputedStyle(el).backgroundColor),
+      'rgb(0, 0, 0)',name+' outside the growing aperture must remain pure black');
     await page.screenshot({path:'browser-artifacts/'+name+'-dome-inside-out-reveal.png',fullPage:false});
     await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:7000});
     assert.equal(await page.locator('.fl-world').getAttribute('inert'),null,
