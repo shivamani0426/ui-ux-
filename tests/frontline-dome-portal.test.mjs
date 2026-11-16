@@ -43,3 +43,18 @@ test('White halo charges on an all-black screen before the slow centre-out revea
   assert.ok(app.includes('spiral-emerging'));
   assert.ok(app.includes('InspirationExplorer'));
 });
+
+test('Intro has no visible text and uses a custom sculpted F, not a font glyph',()=>{
+  const component=read('src/components/FrontlineDomePortal.jsx');
+  const css=read('src/components/FrontlineDomePortal.css');
+  assert.match(component,/className="fl-dome-f-sculpture"/);
+  assert.match(component,/const F_PATH=/);
+  assert.match(component,/path d=\{F_PATH\}/);
+  assert.match(component,/aria-label="Click the black F sculpture to enter Frontline"/);
+  for(const old of ['<h1','<p ','fl-dome-title','fl-dome-instruction','fl-dome-subline',
+    'fl-dome-gate-copy','fl-dome-bottom','<text']){
+    assert.ok(!component.includes(old),'Old visible entrance item: '+old);
+  }
+  assert.match(css,/fl-f-white-charge/);
+  assert.match(css,/background:transparent!important/);
+});
