@@ -51,7 +51,7 @@ function App(){
   const [landingFrame,setLandingFrame]=useState(0);
   const [landingComposerReady,setLandingComposerReady]=useState(false);
   const [portalState,setPortalState]=useState('idle');
-  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null);
+  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null);
 
   const notice=(message)=>{
     setToast(message);clearTimeout(toastTimer.current);
@@ -69,7 +69,7 @@ function App(){
       api('/api/profile').then(setProfile),
       api('/api/config').then(setConfig)
     ]).then(results=>{if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded.');});
-    return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);};
+    return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);};
   },[]);
   // The pre-landing portal locks scrolling only until the inside-out reveal ends.
   // It doesn't change saved projects, user preferences, the studio or any APIs.
@@ -86,10 +86,15 @@ function App(){
   },[mode,portalState]);
   const enterPortal=()=>{
     if(portalState!=='idle')return;
-    setPortalState('opening');
+    // A deliberate click starts a real, separate white-light charge.
+    // Only after that hold does the existing landing expand from its centre.
+    setPortalState('charging');
     const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-    clearTimeout(portalTimer.current);
-    portalTimer.current=setTimeout(()=>setPortalState('done'),reduced?160:1840);
+    clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);
+    portalTimer.current=setTimeout(()=>{
+      setPortalState('opening');
+      portalFinishTimer.current=setTimeout(()=>setPortalState('done'),reduced?220:4200);
+    },reduced?220:2700);
   };
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth',block:'end'});},[messages,working,viewPreview]);
   const active=mode==='chat';
@@ -192,7 +197,7 @@ function App(){
 
     {!active&&<FrontlineLanding locked={portalState!=='done'} onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
     {!active&&<div className="landing-scrollspace scroll-story-space" aria-hidden="true"/>}
-    {!active&&portalState!=='done'&&<FrontlineDomePortal opening={portalState==='opening'} onEnter={enterPortal}/>}
+    {!active&&portalState!=='done'&&<FrontlineDomePortal phase={portalState} onEnter={enterPortal}/>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
