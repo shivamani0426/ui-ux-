@@ -153,7 +153,7 @@ function App(){
     <header className="topbar">
       <button className="brand" onClick={newChat} title="New chat" aria-label="Frontline UX/UI — new chat">
         <span className="brand-mark">✦</span>
-        <span className="brand-tech"><TechText text="FRONTLINE" fontSize={50} fontWeight={750} reach={70} softness={0.55} labels={false} selection={false} draggable={false} specks={3} color="currentColor" accentColor={theme==='dark'?'#bcb8ff':'#7963e8'} /></span>
+        <span className="brand-tech"><span className="brand-word">FRONTLINE</span></span>
       </button>
       <div className="top-right">
         {active&&<button className="top-new" onClick={newChat}><Plus size={15}/> New chat</button>}
@@ -226,7 +226,7 @@ function App(){
       <div className={'composer-position '+(active?'docked':'centered')+(landingFrame===4&&!active?' scroll-rise':'')}>
         <StarBorder as="div" theme={theme} backgroundColor={theme==='dark'?'#16171f':'#ffffff'} textColor={theme==='dark'?'#f6f6fa':'#20212b'} color={theme==='dark'?'#b0a3ff':'#775fe8'} trailColor={theme==='dark'?'#7ae0fa':'#c3a7ff'} radius={23} thickness={1.25} duration={4.2} stars={2} trailLength={0.32} glow={0.85} hover="lap" sparkle clickPulse className="chat-star">
           <form className="composer" onSubmit={e=>{e.preventDefault();send();}}>
-            {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="YOUR NEXT IDEA STARTS HERE" fontSize={43} fontWeight={650} reveal="letter" reach={110} labels={false} selection={false} draggable={false} specks={4} color="currentColor" accentColor={theme==='dark'?'#c7b5ff':'#7356e8'} /></div></div>}
+            {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="YOUR NEXT IDEA STARTS HERE" fontSize={43} fontWeight={650} reveal="letter" reach={110} labels={false} selection={false} draggable={false} specks={0} reach={0} sweep={false} clickKick={false} color="currentColor" accentColor={theme==='dark'?'#c7b5ff':'#7356e8'} /></div></div>}
             <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
               <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?'AI advisor connected':'Design guidance ready'}</span>
