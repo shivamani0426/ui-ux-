@@ -73,6 +73,11 @@
 @keyframes fl-fade{to{opacity:1}}
 .fl-chapter-1 .fl-sun-wrap,.fl-chapter-3 .fl-sun-wrap{filter:saturate(1.11)}
 .fl-chapter-2 .fl-architecture,.fl-chapter-4 .fl-architecture{transform:perspective(1200px) translate3d(var(--fl-arch-x,0px),var(--fl-arch-y,0px),0) scale(1.045)}
+/* Camera-style horizontal solar drift keeps feature typography readable. */
+.fl-sun-wrap{transition:left 1.25s cubic-bezier(.18,.75,.22,1),filter .4s}
+.fl-chapter-2 .fl-sun-wrap,.fl-chapter-4 .fl-sun-wrap{left:30%}
+.fl-chapter-2 .fl-note,.fl-chapter-4 .fl-note{text-shadow:0 2px 18px rgba(34,18,19,.65)}
+.fl-chapter-2 .fl-cta,.fl-chapter-4 .fl-cta{background:rgba(54,35,36,.60)}
 .fl-chapter-3 .fl-sky{filter:hue-rotate(-5deg) saturate(1.3)}
 .fl-chapter-4 .fl-sky{filter:brightness(1.18) saturate(.88)}
 @media (max-width:980px){
@@ -119,3 +124,8 @@
 @media(max-width:420px){.fl-chapter-0 .fl-headline-main{font-size:13.7vw!important}.fl-headline-main{font-size:13.8vw!important}.fl-headline-accent{font-size:14vw!important}}
 @media(max-height:700px){.fl-chapter-0 .fl-chapter-content{top:12vh!important}.fl-chapter-content{top:12vh!important}.fl-overline{margin-bottom:14px}.fl-chapter-0 .fl-overline{margin-bottom:12px}.fl-note{margin:12px 0}.fl-cta{padding:10px 12px}.fl-sun-wrap{top:47%}}
 @media(prefers-reduced-motion:reduce){.fl-sun,.fl-sun-reflection,.fl-ripple,.fl-scroll-guide,.fl-chapter-content,.fl-note{animation:none!important}.fl-architecture,.fl-sun-wrap{transition:none!important}.fl-chapter-0 .fl-note{opacity:1}}
+
+@media(max-width:600px){
+ .fl-chapter-2 .fl-sun-wrap,.fl-chapter-4 .fl-sun-wrap{left:53%;top:54%;opacity:.78}
+ .fl-chapter-1 .fl-note,.fl-chapter-2 .fl-note,.fl-chapter-3 .fl-note,.fl-chapter-4 .fl-note{padding:9px 11px;background:rgba(51,34,36,.45);border-radius:12px;backdrop-filter:blur(7px);text-shadow:0 2px 8px rgba(20,10,15,.55)}
+}
