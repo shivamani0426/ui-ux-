@@ -35,3 +35,17 @@ test('Frontline document metadata and loading fallback are branded', () => {
   assert.ok(html.includes('Frontline UX/UI'));
   assert.ok(html.includes('/src/App.jsx'));
 });
+
+test('Fluid shading preserves CSS fallback, reduced motion and safe resource cleanup', () => {
+  const component=read('src/components/SolarFluidCanvas.jsx');
+  const scene=read('src/components/FrontlineLanding.jsx');
+  const css=read('src/styles.css');
+  for(const item of ["getContext('webgl'",'uPointer','uScroll','gl_FragColor','IntersectionObserver','gl.deleteBuffer','cancelAnimationFrame','prefers-reduced-motion']) {
+    assert.ok(component.includes(item),'missing renderer behavior: '+item);
+  }
+  assert.ok(scene.includes('<SolarFluidCanvas mode="sun"/>'));
+  assert.ok(scene.includes('<SolarFluidCanvas mode="water"/>'));
+  assert.ok(css.includes('.fl-fluid-canvas'));
+  assert.ok(css.includes('.fl-fluid-sun'));
+  assert.ok(css.includes('.fl-fluid-water'));
+});
