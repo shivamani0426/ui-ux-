@@ -48,6 +48,7 @@ function App(){
   const [search,setSearch]=useState('');
   const [rise,setRise]=useState(false);
   const [landingFrame,setLandingFrame]=useState(0);
+  const [landingComposerReady,setLandingComposerReady]=useState(false);
   const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null);
 
   const notice=(message)=>{
@@ -102,7 +103,7 @@ function App(){
   };
   const newChat=()=>{
     setProject(null);setMessages([]);setBrief('');setSelected(styleKeys);setMode('welcome');setPanel('menu');
-    setMenuOpen(false);setViewPreview(false);setFeedback('');setRise(false);
+    setMenuOpen(false);setViewPreview(false);setFeedback('');setRise(false);setLandingFrame(0);setLandingComposerReady(false);
     window.scrollTo({top:0,behavior:'smooth'});
     setTimeout(()=>textareaRef.current?.focus({preventScroll:true}),150);
   };
@@ -167,8 +168,8 @@ function App(){
       </div>
     </header>
 
-    {!active&&<FrontlineLanding onSceneChange={setLandingFrame} onBegin={focusChat} onMode={enterLandingMode}/>}
-    {!active&&<div className="landing-scrollspace" aria-hidden="true"/>}
+    {!active&&<FrontlineLanding onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
+    {!active&&<div className="landing-scrollspace scroll-story-space" aria-hidden="true"/>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
@@ -239,7 +240,7 @@ function App(){
           <div ref={endRef}/>
         </div>
       </section>}
-      <div className={'composer-position '+(active?'docked':'centered')+(landingFrame===4&&!active?' scroll-rise':'')}>
+      {(active||landingFrame===4)&&<div inert={!active&&!landingComposerReady} className={'composer-position '+(active?'docked':'spiral-emerging'+(landingComposerReady?' is-ready':''))}>
         <StarBorder as="div" theme={theme}
           backgroundColor={active?(theme==='dark'?'#382a2b':'#fff8ec'):'#fff8eb'}
           textColor={active?(theme==='dark'?'#f9e7ce':'#4b312b'):'#45302a'}
@@ -262,7 +263,7 @@ function App(){
           </StarBorder>
         {!active&&<div className="landing-hint">A design universe, shaped by you. Tap to begin.</div>}
         {active&&<p className="composer-disclaimer">Frontline UX/UI can make mistakes. Validate recommendations before building.</p>}
-      </div>
+      </div>}
     </main>
 
     {menuOpen&&<div className="menu-layer">
