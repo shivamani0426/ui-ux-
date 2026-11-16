@@ -57,6 +57,18 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     const clipMiddle=await page.locator('.fl-world').evaluate(el=>getComputedStyle(el).clipPath);
     assert.ok(clipEarly.includes('circle(')&&clipMiddle.includes('circle(')&&clipEarly!==clipMiddle,
       name+' inside-out aperture should expand progressively over multiple seconds: '+JSON.stringify({clipEarly,clipMiddle}));
+    const aperture=await page.locator('.fl-world').evaluate(el=>{
+      const clip=getComputedStyle(el).clipPath;
+      const match=clip.match(/circle\\(([\\d.]+)(px|vmax|vmin|vw|vh|%)/);
+      const unit=match?.[2],n=Number(match?.[1]||NaN);
+      const radius=unit==='px'?n:unit==='vmax'?n*Math.max(innerWidth,innerHeight)/100:
+        unit==='vmin'?n*Math.min(innerWidth,innerHeight)/100:
+        unit==='vw'?n*innerWidth/100:unit==='vh'?n*innerHeight/100:
+        unit==='%'?n*Math.hypot(innerWidth,innerHeight)/100:NaN;
+      return {radius,needed:Math.hypot(innerWidth/2,innerHeight/2),clip};
+    });
+    assert.ok(Number.isFinite(aperture.radius)&&aperture.radius<aperture.needed,
+      name+' the circular aperture must still be growing halfway through the reveal: '+JSON.stringify(aperture));
     await page.screenshot({path:'browser-artifacts/'+name+'-dome-inside-out-reveal.png',fullPage:false});
     await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:7000});
     assert.equal(await page.locator('.fl-world').getAttribute('inert'),null,
