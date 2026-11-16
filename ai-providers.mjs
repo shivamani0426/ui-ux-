@@ -36,7 +36,11 @@ const contextMessage=(brief,styles)=>
 
 async function geminiReply({brief,messages,styles,env,request}){
   const model=modelId(env.GEMINI_MODEL,'gemini-2.5-flash-lite');
-  const contents=cleanMessages(messages).map(m=>({
+  const recent=cleanMessages(messages);
+  // Gemini's REST chat should begin with a user turn; truncated histories
+  // can otherwise begin with an assistant message.
+  while(recent.length&&recent[0].role==='assistant')recent.shift();
+  const contents=recent.map(m=>({
     role:m.role==='assistant'?'model':'user',parts:[{text:m.content}],
   }));
   if(!contents.length)contents.push({role:'user',parts:[{text:trimText(brief)}]});
