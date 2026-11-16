@@ -1,6 +1,6 @@
 /* FRONTLINE / Golden scroll story, inspired by user-provided motion pacing.
  * Every shape, type treatment and spiral is original CSS/SVG, no Solare font/assets. */
-.fl-scroll-story{--fl-paper-progress:0;--fl-spiral-progress:0;--fl-compose-reveal:0;
+.fl-scroll-story{--fl-paper-progress:0;--fl-spiral-progress:0;--fl-spiral-opacity:0;--fl-compose-reveal:0;
   color:#fff4e3;contain:layout style;overscroll-behavior:none}
 .fl-scroll-story .fl-atmosphere{z-index:0;opacity:calc(1 - var(--fl-paper-progress) * .12)}
 .fl-scroll-story .fl-sun-wrap{top:43%;width:min(31vw,415px)}
@@ -44,7 +44,7 @@
 .fl-kinetic-line{display:inline-flex;max-width:100%;overflow:hidden;white-space:pre;vertical-align:top;padding:0 4px .09em 0}
 .fl-kinetic-glyph{display:inline-block;transform:translate3d(0,var(--fl-this-letter-shift,112%),0);
   opacity:var(--fl-this-enter,0);
-  transition:transform .44s cubic-bezier(.17,.77,.23,1),opacity .32s ease-out;will-change:transform}
+  transition:transform .36s cubic-bezier(.17,.77,.23,1),opacity .28s ease-out}
 .fl-story-scene:not(.is-current) .fl-story-action{pointer-events:none}
 .fl-story-italic-line{font-style:italic;font-weight:400;color:#bd8255}
 .fl-story-accent{font:italic 400 clamp(23px,3vw,43px)/1.1 'Cormorant Garamond',Georgia,serif;
@@ -89,12 +89,11 @@
 .fl-story-scene-4 .fl-story-description{max-width:410px;margin-top:10px;text-align:center}
 .fl-story-scene-4 .fl-story-footnote{bottom:46px}
 .fl-spiral-stage{position:absolute;left:50%;top:55%;width:min(88vmin,850px);aspect-ratio:1;
-  z-index:3;pointer-events:none;opacity:calc(var(--fl-spiral-progress) * (1 - var(--fl-compose-reveal) * .47));
+  z-index:3;pointer-events:none;opacity:calc(var(--fl-spiral-opacity) * (1 - var(--fl-compose-reveal) * .47));
   transform:translate3d(-50%,-50%,0) rotate(var(--fl-spiral-turn))
-    scale(calc(.26 + var(--fl-spiral-progress) * .86));
+    scale(calc(.025 + var(--fl-spiral-progress) * 1.035));
   will-change:transform,opacity}
-.fl-spiral-art{width:100%;height:100%;display:block;overflow:visible;
-  filter:drop-shadow(0 0 40px rgba(230,173,100,.14))}
+.fl-spiral-art{width:100%;height:100%;display:block;overflow:visible}
 .fl-spiral-type{font:500 26px 'Cormorant Garamond',Georgia,serif;letter-spacing:7px;fill:#8e6046;
   text-transform:uppercase}
 .fl-spiral-aura{position:absolute;inset:9%;border-radius:50%;
@@ -125,7 +124,7 @@
   z-index:24;top:55svh;bottom:auto;width:min(730px,calc(100vw - 36px));
   opacity:var(--fl-compose-reveal,0);
   transform:translate3d(-50%,-50%,0)
-    scale(calc(.1 + var(--fl-compose-reveal,0) * .9));
+    scale(calc(.035 + var(--fl-compose-reveal,0) * .965));
   transform-origin:50% 50%;transition:none!important;pointer-events:none;
   filter:none!important}
 .app.in-welcome .composer-position.spiral-emerging.is-ready{
@@ -198,9 +197,11 @@
  .fl-scroll-story .fl-sun-reflection,.fl-scroll-story .fl-ripple{animation:none!important}
 }
 
-/* Five deliberate scroll chapters give each feature room to breathe. */
-.landing-scrollspace.scroll-story-space{height:560svh}
-@supports not (height:100svh){.landing-scrollspace.scroll-story-space{height:560vh}}
+/* Slower cinematic timeline: ~9 viewport heights of intentional scroll,
+   with separate entrance, reading hold, exit, spiral growth and chat birth.
+   Longer than the former 560svh story without time-based animation loops. */
+.landing-scrollspace.scroll-story-space{height:1040svh}
+@supports not (height:100svh){.landing-scrollspace.scroll-story-space{height:1040vh}}
 
 /* Editorial polish after real desktop/mobile screenshot review. */
 .fl-story-scene-0 .fl-story-footnote{display:none}
