@@ -208,7 +208,7 @@ export default function FrontlineLanding({locked=false,effectsReady=false,onBegi
       </div>
       <div className="fl-story-footnote">{chapter.subtitle}<span>0{Math.min(i+1,5)} / 05</span></div>
     </article>)}
-    <div className="fl-spiral-stage" aria-hidden="true">
+    {frame>=3&&<div className="fl-spiral-stage" aria-hidden="true">
       <div className="fl-spiral-aura"/>
       <svg className="fl-spiral-art" viewBox="0 0 900 900" role="img" aria-label="Rotating Frontline typographic golden spiral">
         <defs>
@@ -228,7 +228,7 @@ export default function FrontlineLanding({locked=false,effectsReady=false,onBegi
         <circle cx="450" cy="450" r="83" stroke="#d8a16c" strokeOpacity=".5" strokeWidth="1" fill="none"/>
         <circle cx="450" cy="450" r="4" fill="#fff1cb"/>
       </svg>
-    </div>
+    </div>}
     <div className="fl-story-corner fl-story-corner-left">DESIGN, IN AN INFINITE FIELD <span className="fl-corner-monogram"><FrontlineMark size={21}/></span></div>
     <div className="fl-story-corner fl-story-corner-right">THINK · CHOOSE · CREATE</div>
     <nav className="fl-chapter-nav fl-story-nav" aria-label="Landing page chapters">
