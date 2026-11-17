@@ -152,13 +152,92 @@ async function getProject(owner,id){
   return r.rows[0]||null;
 }
 async function updateMessages(owner,id,messages){
-  if(!pg){const p=live.get(id);if(p?.owner===owner){p.messages=messages;live.set(id,p);}return;}
+  if(!pg){const p=live.get(id);if(p?.owner===owner){p.messages=messages;p.updatedAt=new Date().toISOString();live.set(id,p);}return;}
   await pg.query('UPDATE frontline.uic_projects SET messages=$1,updated_at=NOW() WHERE id=$2 AND visitor_id=$3',[JSON.stringify(messages),id,owner]);
 }
-async function listProjects(owner){
-  if(!pg)return [...live.values()].filter(x=>x.owner===owner).reverse().slice(0,50).map(({owner:_,...p})=>p);
-  const r=await pg.query('SELECT id,title,brief,recommendation AS recommendations,created_at AS "createdAt" FROM frontline.uic_projects WHERE visitor_id=$1 ORDER BY updated_at DESC LIMIT 50',[owner]);
-  return r.rows;
+// Paginate owner-scoped history so accounts with more than 50 conversations
+// can actually reach their full history without fetching every chat message.
+const PROJECT_PAGE_SIZE=50;
+async function listProjects(owner,offset=0){
+  if(!pg){
+    const mine=[...live.values()].filter(x=>x.owner===owner).reverse().map(({owner:_,...p})=>({
+      ...p,updatedAt:p.updatedAt||p.createdAt,
+      messageCount:p.messages?.length||0,
+      inspirationCount:memorySelections.get(owner+':'+p.id)?.size||0,
+      promptCount:[...finalizedModes].filter(k=>k.startsWith(owner+':'+p.id+':')).length
+    }));
+    return {projects:mine.slice(offset,offset+PROJECT_PAGE_SIZE),
+      nextOffset:offset+PROJECT_PAGE_SIZE<mine.length?offset+PROJECT_PAGE_SIZE:null};
+  }
+  const r=await pg.query(`SELECT p.id,p.title,p.brief,p.recommendation AS recommendations,
+    p.created_at AS "createdAt",p.updated_at AS "updatedAt",
+    jsonb_array_length(p.messages)::int AS "messageCount",
+    (SELECT COUNT(*)::int FROM frontline.reference_selections s
+      WHERE s.project_id=p.id AND s.visitor_id=$1 AND s.selected=true) AS "inspirationCount",
+    (SELECT COUNT(*)::int FROM frontline.generated_prompts g
+      WHERE g.project_id=p.id AND g.visitor_id=$1) AS "promptCount"
+    FROM frontline.uic_projects p WHERE p.visitor_id=$1
+    ORDER BY p.updated_at DESC,p.id DESC LIMIT $2 OFFSET $3`,
+    [owner,PROJECT_PAGE_SIZE+1,offset]);
+  return {projects:r.rows.slice(0,PROJECT_PAGE_SIZE),
+    nextOffset:r.rows.length>PROJECT_PAGE_SIZE?offset+PROJECT_PAGE_SIZE:null};
+}
+// Only private, owner-scoped counts leave the server; no other users'
+ // projects or AI conversation content is exposed in this summary.
+async function workspaceOverview(owner){
+  if(!pg){
+    const mine=[...live.values()].filter(x=>x.owner===owner);
+    return {projectCount:mine.length,
+      inspirationCount:[...memorySelections].filter(([k])=>k.startsWith(owner+':')).reduce((n,[,v])=>n+v.size,0),
+      promptCount:[...finalizedModes].filter(k=>k.startsWith(owner+':')).length,
+      feedbackCount:votes.filter(v=>v.owner===owner).length,
+      lastUpdatedAt:mine.map(p=>p.updatedAt||p.createdAt).filter(Boolean).sort().at(-1)||null};
+  }
+  const r=await pg.query(`SELECT
+    (SELECT COUNT(*)::int FROM frontline.uic_projects WHERE visitor_id=$1) AS "projectCount",
+    (SELECT COUNT(*)::int FROM frontline.reference_selections WHERE visitor_id=$1 AND selected=true) AS "inspirationCount",
+    (SELECT COUNT(*)::int FROM frontline.generated_prompts WHERE visitor_id=$1) AS "promptCount",
+    (SELECT COUNT(*)::int FROM frontline.uic_feedback WHERE visitor_id=$1) AS "feedbackCount",
+    (SELECT MAX(updated_at) FROM frontline.uic_projects WHERE visitor_id=$1) AS "lastUpdatedAt"`,[owner]);
+  return r.rows[0];
+}
+async function workspaceExport(owner,authenticated){
+  if(!pg){
+    const projects=[...live.values()].filter(p=>p.owner===owner).map(({owner:_,...p})=>p);
+    const inspirations=[...memorySelections].filter(([k])=>k.startsWith(owner+':'))
+      .flatMap(([key,sources])=>[...sources].map(sourceId=>({projectId:key.slice(owner.length+1),sourceId})));
+    const feedback=votes.filter(v=>v.owner===owner).map(({owner:_,...v})=>v);
+    return {version:1,exportedAt:new Date().toISOString(),identity:authenticated?'account':'guest',
+      profile:await profile(owner),projects,inspirations,prompts:[],feedback,events:[],
+      note:'Development memory store: only records held in memory can be exported.'};
+  }
+  // Read all project details and related personal history, never a global
+  // dataset. A downloadable export is accessible only through owner's cookie.
+  const queries=[
+    `SELECT id,title,brief,recommendation AS recommendations,messages,
+      created_at AS "createdAt",updated_at AS "updatedAt"
+      FROM frontline.uic_projects WHERE visitor_id=$1 ORDER BY created_at`,
+    `SELECT project_id AS "projectId",source_id AS "sourceId",selected,final_choice AS "finalChoice",created_at AS "createdAt"
+      FROM frontline.reference_selections WHERE visitor_id=$1 ORDER BY created_at`,
+    `SELECT project_id AS "projectId",prompt_type AS "type",prompt_text AS "prompt",styles,created_at AS "createdAt"
+      FROM frontline.generated_prompts WHERE visitor_id=$1 ORDER BY created_at`,
+    `SELECT project_id AS "projectId",style_id AS "style",reaction,detail,eligible_global AS "sharedInAggregate",created_at AS "createdAt"
+      FROM frontline.uic_feedback WHERE visitor_id=$1 ORDER BY created_at`,
+    `SELECT project_id AS "projectId",source_id AS "sourceId",event_type AS "eventType",metadata,created_at AS "createdAt"
+      FROM frontline.interaction_events WHERE visitor_id=$1 ORDER BY created_at`
+  ];
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const results=[];
+    for(const query of queries)results.push((await client.query(query,[owner])).rows);
+    const pref=(await client.query('SELECT style_weights,global_opt_in FROM frontline.uic_profiles WHERE visitor_id=$1',[owner])).rows[0];
+    await client.query('COMMIT');
+    return {version:1,exportedAt:new Date().toISOString(),identity:authenticated?'account':'guest',
+      profile:normalizeProfile(pref?{styleWeights:pref.style_weights,globalOptIn:pref.global_opt_in}:{}),
+      projects:results[0],inspirations:results[1],prompts:results[2],feedback:results[3],events:results[4]};
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}
+  finally{client.release();}
 }
 // Serialize feedback per visitor so concurrent clicks cannot award duplicate
 // learning points. PostgreSQL advisory locks work across Render instances.
@@ -258,8 +337,22 @@ async function insights(){
 }
 async function eraseProfile(owner){
   if(!pg){guests.delete(owner);for(const [id,p] of live){if(p.owner===owner)live.delete(id)}for(const key of memorySelections.keys())if(key.startsWith(owner+':'))memorySelections.delete(key);for(const key of finalizedModes)if(key.startsWith(owner+':'))finalizedModes.delete(key);for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
-  await pg.query('DELETE FROM frontline.interaction_events WHERE visitor_id=$1',[owner]);
-  await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_projects WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
+  // Previously this used several independent DELETEs. A failure midway could
+  // leave old private data behind, so delete every owner-scoped table in ONE
+  // transaction, with no effect on other visitors or the Google identity.
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1),916)',[owner]);
+    await client.query('DELETE FROM frontline.interaction_events WHERE visitor_id=$1',[owner]);
+    await client.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);
+    await client.query('DELETE FROM frontline.reference_selections WHERE visitor_id=$1',[owner]);
+    await client.query('DELETE FROM frontline.generated_prompts WHERE visitor_id=$1',[owner]);
+    await client.query('DELETE FROM frontline.uic_projects WHERE visitor_id=$1',[owner]);
+    await client.query('DELETE FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
+    await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}
+  finally{client.release();}
 }
 // A user may already have a private collection on this browser before Google
 // sign-in. Move ALL owner-scoped data atomically into the verified account.
@@ -328,6 +421,17 @@ function trustedMutationOrigin(req){
   }catch{return false}
 }
 function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(obj));}
+// Profile pictures are display-only. Google user_metadata is editable and
+// must never influence authorization. Permit only a Google-controlled HTTPS
+// image origin to prevent arbitrary third-party tracking URL injection.
+function googleProfileImage(value){
+  if(typeof value!=='string'||value.length>1800)return null;
+  try{
+    const url=new URL(value);
+    return url.protocol==='https:'&&url.hostname.endsWith('.googleusercontent.com')
+      &&!url.username&&!url.password?url.toString():null;
+  }catch{return null;}
+}
 function validateText(text,min,max){return typeof text==='string'&&text.trim().length>=min&&text.trim().length<=max;}
 async function chatReply(brief,messages,styleIds,preferences={}){
   const latest=messages.at(-1)?.content||'';
@@ -415,7 +519,7 @@ const deployedRevision=()=>{
 };
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
-  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
+  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
   if(req.method==='GET'&&req.url==='/api/health')return json(res,200,{status:'ok',database:pg?'connected':'demo-memory',ai:aiConfig().aiEnabled,revision:deployedRevision()});
   let owner=cookie(req,res);
   const guestOwner=owner;
@@ -434,7 +538,8 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&pathname==='/api/auth/me')return json(res,200,{
         authenticated:!!signedIn,googleEnabled:authGateway.ready,
         user:signedIn?{id:signedIn.id,email:signedIn.email||null,
-          name:String(signedIn.user_metadata?.full_name||'').slice(0,120)}:null
+          name:String(signedIn.user_metadata?.full_name||'').slice(0,120),
+          picture:googleProfileImage(signedIn.user_metadata?.avatar_url||signedIn.user_metadata?.picture)}:null
       });
       if(req.method==='POST'&&pathname==='/api/auth/logout'){
         await readBody(req);
@@ -485,8 +590,17 @@ const server=http.createServer(async(req,res)=>{
         contributorUnit:'distinct guest visitor IDs, not verified people',
         counts:'privacy bands only; not precise totals or statistical findings',
       });
-      if(req.method==='GET'&&req.url==='/api/projects')return json(res,200,{projects:await listProjects(owner)});
-      if(req.method==='POST'&&req.url==='/api/projects'){
+      if(req.method==='GET'&&pathname==='/api/workspace/overview')
+        return json(res,200,{identity:signedIn?'account':'guest',...(await workspaceOverview(owner))});
+      if(req.method==='GET'&&pathname==='/api/workspace/export')
+        return json(res,200,await workspaceExport(owner,!!signedIn));
+      if(req.method==='GET'&&pathname==='/api/projects'){
+        const offsetText=new URL(req.url,'http://localhost').searchParams.get('offset');
+        if(offsetText!==null&&(!/^(0|[1-9][0-9]{0,4})$/.test(offsetText)||Number(offsetText)>10000))
+          return json(res,400,{error:'Invalid project offset'});
+        return json(res,200,await listProjects(owner,Number(offsetText||0)));
+      }
+      if(req.method==='POST'&&pathname==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
         const prefs=effectivePreferences(await profile(owner));const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
