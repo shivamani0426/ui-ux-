@@ -89,7 +89,7 @@ test('OpenRouter-only setup continues to work without Gemini credentials',async(
 test('Provider order can be reversed without dropping Gemini failover',async()=>{
   const calls=[];
   const answer=await designAiReply({
-    brief,messages,env:{AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_PROVIDER:'gemini',AI_FALLBACK_ENABLED:'true',GEMINI_API_KEY:'gemini',OPENROUTER_API_KEY:'openrouter'},
+    brief,messages,env:{AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_PROVIDER:'gemini',AI_FALLBACK_ENABLED:'true',OPENROUTER_MAX_ATTEMPTS:'2',GEMINI_API_KEY:'gemini',OPENROUTER_API_KEY:'openrouter'},
     request:async(url)=>{calls.push(url);return url.includes('openrouter.ai')?response(502,{}):geminiOk('A useful result from Gemini')},
   });
   assert.equal(answer.provider,'gemini');
@@ -175,7 +175,7 @@ test('Groq receives a brief only if enabled backup after OpenRouter failure',asy
   const calls=[];
   const env={OPENROUTER_API_KEY:'primary-secret',GROQ_API_KEY:'groq-secret',
     GEMINI_API_KEY:'unused-gemini-secret',AI_PRIMARY_PROVIDER:'openrouter',
-    AI_FALLBACK_PROVIDER:'groq',AI_FALLBACK_ENABLED:'true'};
+    AI_FALLBACK_PROVIDER:'groq',AI_FALLBACK_ENABLED:'true',OPENROUTER_MAX_ATTEMPTS:'2'};
   const answer=await designAiReply({brief,messages,styles,env,request:async(url,init)=>{
     calls.push({url,init});
     return url.includes('openrouter.ai')?response(503,{error:'Unavailable'}):
@@ -242,7 +242,7 @@ test('OpenRouter recovers a reasoning-only first completion using its own provid
   const requests=[];
   const env={OPENROUTER_API_KEY:'primary-secret',GEMINI_API_KEY:'unused-secret',
     GROQ_API_KEY:'unused-groq',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_PROVIDER:'groq',
-    AI_FALLBACK_ENABLED:'false',OPENROUTER_MODEL:'openrouter/free'};
+    AI_FALLBACK_ENABLED:'false',OPENROUTER_MODEL:'openrouter/free',OPENROUTER_MAX_ATTEMPTS:'2'};
   const answer=await designAiReply({brief,messages,styles,env,request:async(url,init)=>{
     requests.push({url,body:JSON.parse(init.body)});
     if(requests.length===1)return response(200,{
@@ -255,7 +255,7 @@ test('OpenRouter recovers a reasoning-only first completion using its own provid
   assert.match(answer.text,/readable dashboard/);
   assert.equal(requests.length,2,'retry a blank visible answer once');
   assert.ok(requests.every(r=>new URL(r.url).host==='openrouter.ai'),'no second provider');
-  assert.deepEqual(requests.map(r=>r.body.max_tokens),[3100,4400]);
+  assert.deepEqual(requests.map(r=>r.body.max_tokens),[2400,4400]);
   assert.ok(requests.every(r=>r.body.reasoning.effort==='low'));
   assert.ok(requests.every(r=>!JSON.stringify(r.body).includes('primary-secret')));
 });
@@ -277,7 +277,7 @@ test('OpenRouter never retries a filtered or refused completion',async()=>{
 test('OpenRouter exhausted visible-text retry retains deterministic guidance',async()=>{
   let count=0;
   const result=await designAiReply({brief,messages,env:{
-    OPENROUTER_API_KEY:'key',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'
+    OPENROUTER_API_KEY:'key',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false',OPENROUTER_MAX_ATTEMPTS:'2'
   },request:async()=>{count++;return response(200,{choices:[{finish_reason:'length',message:{content:''}}]})}});
   assert.equal(result,null);
   assert.equal(count,2);
@@ -288,7 +288,7 @@ test('OpenRouter retries one transport timeout against the same primary only',as
   const result=await designAiReply({brief,messages,env:{
     OPENROUTER_API_KEY:'test-primary',GEMINI_API_KEY:'unused-gemini',
     GROQ_API_KEY:'unused-groq',AI_PRIMARY_PROVIDER:'openrouter',
-    AI_FALLBACK_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'
+    AI_FALLBACK_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false',OPENROUTER_MAX_ATTEMPTS:'2'
   },request:async(url,init)=>{
     seen.push({url,body:JSON.parse(init.body),signal:init.signal});
     if(seen.length===1){const e=new Error('upstream timeout');e.name='TimeoutError';throw e}
@@ -309,7 +309,7 @@ test('Repeated OpenRouter timeouts fail safely without changing provider',async(
   try{
     const result=await designAiReply({brief,messages,env:{
       OPENROUTER_API_KEY:'private-secret',GROQ_API_KEY:'never-used',
-      AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'
+      AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false',OPENROUTER_MAX_ATTEMPTS:'2'
     },request:async(url)=>{
       seen.push(url);
       const e=new Error('private-secret must not appear in logs');e.name='TimeoutError';
@@ -350,7 +350,7 @@ test('OpenRouter chat retains complete answers beyond previous 2,500-character d
 test('length-limited OpenRouter chat retries with a larger budget and preserves the better completion',async()=>{
  const seen=[];
  const answer=await designAiReply({brief,messages,env:{
-   OPENROUTER_API_KEY:'test',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'
+   OPENROUTER_API_KEY:'test',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false',OPENROUTER_MAX_ATTEMPTS:'2'
  },request:async(url,init)=>{
    seen.push({url,max:JSON.parse(init.body).max_tokens});
    return response(200,seen.length===1
@@ -358,12 +358,12 @@ test('length-limited OpenRouter chat retries with a larger budget and preserves 
     :{choices:[{finish_reason:'stop',message:{content:'## Complete\n\nColor: #102A43. All details explained.'}}]});
  }});
  assert.equal(answer.text,'## Complete\n\nColor: #102A43. All details explained.');
- assert.deepEqual(seen.map(x=>x.max),[3100,4400]);
+ assert.deepEqual(seen.map(x=>x.max),[2400,4400]);
  assert.ok(seen.every(x=>new URL(x.url).host==='openrouter.ai'));
 });
 test('OpenRouter transient HTTP 503 retries once without switching providers; 429 is not retried',async()=>{
  let count=0;
- const env={OPENROUTER_API_KEY:'test',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'};
+ const env={OPENROUTER_API_KEY:'test',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false',OPENROUTER_MAX_ATTEMPTS:'2'};
  const answer=await designAiReply({brief,messages,env,request:async()=>{
    count++;
    return count===1?response(503,{error:{status:'SERVICE_UNAVAILABLE'}}):openRouterOk('Original dashboard directions.');
@@ -374,4 +374,73 @@ test('OpenRouter transient HTTP 503 retries once without switching providers; 42
    const response429=await designAiReply({brief,messages,env,request:async()=>{limited++;return response(429,{error:{status:'RESOURCE_EXHAUSTED'}})}});
    assert.equal(response429,null);assert.equal(limited,1);
  }finally{console.warn=originalWarn}
+});
+
+
+test('OpenRouter free default uses only one compact chat request and never sends other providers private content',async()=>{
+  const calls=[], failures=[];
+  const env={OPENROUTER_API_KEY:'private-key',GROQ_API_KEY:'unused',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'};
+  const longMessages=[...Array.from({length:6},(_,i)=>({
+    role:i%2?'assistant':'user',content:'v'.repeat(2200)+i
+  })),{role:'user',content:'Please compare three styles for accessible coursework.'}];
+  const result=await designAiReply({brief,messages:longMessages,env,
+    onFailure:failure=>failures.push(failure),
+    request:async(url,init)=>{
+      calls.push({url,body:JSON.parse(init.body)});
+      return response(200,{choices:[{finish_reason:'length',message:{content:'Avoid'}}]});
+    }});
+  assert.equal(result,null,'Do not present a clipped answer as complete');
+  assert.equal(calls.length,1,'Never spend a second free request on length retry by default');
+  assert.equal(calls[0].body.max_tokens,2400);
+  assert.ok(calls[0].body.messages.length<=6,'Limit conversation context');
+  assert.ok(calls[0].body.messages[1].content.length<=1550,'Keep explicit project context concise');
+  assert.ok(calls[0].body.messages.slice(2).every(m=>m.content.length<=1300));
+  assert.ok(calls.every(c=>new URL(c.url).host==='openrouter.ai'));
+  assert.equal(failures[0].reason,'incomplete-output');
+  assert.ok(!JSON.stringify(calls).includes('private-key'));
+});
+test('429 provides a safe reason and cooldown hint without exposing provider body',async()=>{
+  const failures=[];
+  const originalWarn=console.warn;const recorded=[];console.warn=(...items)=>recorded.push(items.join(' '));
+  try{
+    const result=await designAiReply({brief,messages,env:{
+      OPENROUTER_API_KEY:'top-secret',AI_PRIMARY_PROVIDER:'openrouter',
+      AI_FALLBACK_ENABLED:'false'
+    },onFailure:e=>failures.push(e),request:async()=>response(429,{
+      error:{status:'RESOURCE_EXHAUSTED',message:'private response body'}
+    })});
+    assert.equal(result,null);
+    assert.equal(failures[0].reason,'rate-limited');
+    assert.ok(failures[0].retryAfterSeconds>=30);
+    assert.doesNotMatch(JSON.stringify(failures)+recorded.join(' '),/top-secret|private response body/);
+  }finally{console.warn=originalWarn}
+});
+test('A normal complete chat reply is accepted with exactly one free-model request',async()=>{
+  let count=0;
+  const result=await designAiReply({brief,messages,env:{OPENROUTER_API_KEY:'key',AI_PRIMARY_PROVIDER:'openrouter'},
+    request:async()=>{count++;return response(200,{choices:[{finish_reason:'stop',message:{content:'Keep navigation concise, accessible, and responsive.'}}]})}
+  });
+  assert.equal(result.provider,'openrouter');
+  assert.equal(count,1);
+});
+
+
+test('real shared free key enters a brief 429 cooldown without another upstream request',async()=>{
+  const nativeFetch=globalThis.fetch;
+  const originalWarn=console.warn;
+  let calls=0;
+  const failures=[];
+  globalThis.fetch=async()=>{
+    calls++;
+    return response(429,{error:{status:'RESOURCE_EXHAUSTED',message:'Rate limit exceeded'}});
+  };
+  console.warn=()=>{};
+  try{
+    const env={OPENROUTER_API_KEY:'test-only',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'};
+    assert.equal(await designAiReply({brief,messages,env,onFailure:x=>failures.push(x)}),null);
+    assert.equal(await designAiReply({brief,messages,env,onFailure:x=>failures.push(x)}),null);
+    assert.equal(calls,1,'During a shared 429 cooldown, do not waste another free request');
+    assert.equal(failures.length,2);
+    assert.ok(failures.every(x=>x.reason==='rate-limited'&&x.retryAfterSeconds>0));
+  }finally{globalThis.fetch=nativeFetch;console.warn=originalWarn;}
 });

@@ -37,6 +37,7 @@ function App(){
   const [brief,setBrief]=useState('');
   const [project,setProject]=useState(null);
   const [messages,setMessages]=useState([]);
+  const [retryClock,setRetryClock]=useState(()=>Date.now());
   const [catalog,setCatalog]=useState({styles:[],references:[]});
   const [projects,setProjects]=useState([]);
   const [profile,setProfile]=useState({styleWeights:{},globalOptIn:false});
@@ -74,6 +75,13 @@ function App(){
     ]).then(results=>{if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded.');});
     return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);};
   },[]);
+  // Only tick while a user-visible, rate-limited retry button is cooling down.
+  // This does not make network requests or persist any API credentials.
+  useEffect(()=>{
+    if(!messages.some(m=>m.retryAfterUntil&&Date.parse(m.retryAfterUntil)>Date.now()))return;
+    const ticker=setInterval(()=>setRetryClock(Date.now()),15000);
+    return ()=>clearInterval(ticker);
+  },[messages]);
   // The pre-landing portal locks scrolling only until the inside-out reveal ends.
   // It doesn't change saved projects, user preferences, the studio or any APIs.
   useEffect(()=>{
@@ -224,14 +232,17 @@ function App(){
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
             {message.role!=='user'&&<div className="message-avatar"><FrontlineMark size={25}/></div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
-              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations · AI fallback':message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
+              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?(message.failureReason==='rate-limited'?'OpenRouter rate-limited · guided response':message.failureReason==='timeout'?'OpenRouter timeout · guided response':message.failureReason==='incomplete-output'?'Incomplete AI reply · complete guidance':'Guided recommendations · AI fallback'):message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
               {message.role==='user'?<p>{message.content}</p>:<MessageMarkdown content={message.content}/>}
               {message.source==='guide'&&<button type="button" className="message-retry"
-                disabled={working} onClick={()=>{
+                disabled={working||(message.failureReason==='rate-limited'&&!!message.retryAfterUntil&&Date.parse(message.retryAfterUntil)>retryClock)}
+                onClick={()=>{
                   const prior=messages.slice(0,i).reverse().find(m=>m.role==='user');
                   if(prior?.content)send(prior.content);
-                }} title="Make another OpenRouter attempt in this conversation">
-                <RotateCcw size={13} aria-hidden="true"/> Retry with OpenRouter
+                }} title={message.failureReason==='rate-limited'?'Wait for the free provider rate-limit cooldown before retrying':'Make another OpenRouter attempt in this conversation'}>
+                <RotateCcw size={13} aria-hidden="true"/>
+                {message.failureReason==='rate-limited'&&message.retryAfterUntil&&Date.parse(message.retryAfterUntil)>retryClock
+                  ?'OpenRouter rate-limited · retry later':'Retry with OpenRouter'}
               </button>}
             </div>
           </div>)}

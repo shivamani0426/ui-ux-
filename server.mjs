@@ -146,7 +146,11 @@ async function chatReply(brief,messages,styleIds){
   const latest=messages.at(-1)?.content||'';
   const chosen=styleIds.map(i=>STYLES.find(s=>s.id===i)).filter(Boolean);
   // Tests never consume real API quotas or send content to model providers.
-  const ai=process.env.NODE_ENV==='test'?null:await designAiReply({brief,messages,styles:chosen});
+  let failure={reason:'provider-unavailable',retryAfterSeconds:0};
+  const ai=process.env.NODE_ENV==='test'?null:await designAiReply({
+    brief,messages,styles:chosen,
+    onFailure:info=>{failure=info}
+  });
   if(ai)return ai;
   const analysis=analyzeProject(brief);
   const audience=analysis.audienceSource==='explicit'
@@ -167,6 +171,13 @@ async function chatReply(brief,messages,styleIds){
   }else{
     focus='Start with entry point → main task → progress/feedback → error recovery. Design real content and empty states before decorative treatments.';
   }
+  const unavailableNote=failure.reason==='rate-limited'
+    ?'OpenRouter is currently rate-limited. Repeated requests can consume the free allowance; try again after the cooldown (about '+Math.max(1,Math.ceil((failure.retryAfterSeconds||90)/60))+' minute(s)).'
+    :failure.reason==='timeout'
+      ?'OpenRouter timed out on this request. Free models can be slow or overloaded; the structured guidance below remains available.'
+      :failure.reason==='incomplete-output'
+        ?'OpenRouter stopped before its answer was complete. An unfinished AI answer was not passed off as a final design.'
+        :'OpenRouter did not provide an answer for this request.';
   const lines=[
     '## Project understanding',
     '**Audience:** '+audience,
@@ -184,9 +195,12 @@ async function chatReply(brief,messages,styleIds){
     '## Practical next step',
     focus,
     '',
-    '*OpenRouter did not return a usable reply this time. This is brief-based guidance, not a live model answer. Use “Retry with OpenRouter” to try again; Generate UI/UX can still produce a complete copyable design specification.*'
+    '*'+unavailableNote+' This is brief-based guidance, not a live model answer. Generate UI/UX can still produce a complete copyable specification.*',
+    ...(failure.reason==='rate-limited'?['*Do not repeatedly press Retry while the provider is rate-limited.*']:
+      ['*You may use Retry with OpenRouter to try again.*'])
   ];
-  return {text:lines.join('\n'),source:'guide'};
+  return {text:lines.join('\n'),source:'guide',
+    failureReason:failure.reason,retryAfterSeconds:failure.retryAfterSeconds||0};
 }
 async function serveFile(req,res){
   const pathname=new URL(req.url,'http://localhost').pathname;
@@ -328,7 +342,11 @@ const server=http.createServer(async(req,res)=>{
           if(!Array.isArray(b.styles)||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Invalid styles'});
           const messages=(Array.isArray(p.messages)?p.messages:[]).slice(-24);
           messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
-          const response=await chatReply(p.brief,messages,b.styles);messages.push({role:'assistant',content:response.text,source:response.source,...(response.provider?{provider:response.provider}:{}),time:new Date().toISOString()});
+          const response=await chatReply(p.brief,messages,b.styles);messages.push({role:'assistant',content:response.text,source:response.source,
+            ...(response.provider?{provider:response.provider}:{}),
+            ...(response.failureReason?{failureReason:response.failureReason}:{}),
+            ...(response.retryAfterSeconds?{retryAfterUntil:new Date(Date.now()+response.retryAfterSeconds*1000).toISOString()}:{}),
+            time:new Date().toISOString()});
           await updateMessages(owner,id,messages);return json(res,200,{messages,answer:response});
         }
         if(req.method==='POST'&&action==='/export'){

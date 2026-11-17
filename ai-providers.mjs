@@ -8,7 +8,9 @@ const SYSTEM_PROMPT=[
   'You are Frontline UX/UI, a practical expert UI/UX design advisor.',
   'Provide original, actionable, accessible design guidance in simple English.',
   'Prioritize hierarchy, responsive components, real user flows and user needs.',
-  'Usually be concise, but when asked for a complete design comparison provide up to 600 words when useful.',
+  'Give a focused, complete answer of roughly 120–220 words in chat; no more than 280 words.',
+  'For large specifications, summarize the direction and point to Generate UI/UX for the full copyable prompt.',
+  'Never assert WCAG contrast, performance, or usability has been tested unless verified evidence is provided.',
   'Use clear Markdown headings, real tables, short lists, and complete sections where they help.',
   'Never stop mid-sentence or mid-color token; condense details or suggest Generate UI/UX for a full specification.',
   'Ground the answer in the user brief, identified modules, and current user request.',
@@ -56,6 +58,19 @@ const cleanMessages=messages=>(Array.isArray(messages)?messages:[]).slice(-8)
   .map(m=>({role:m.role,content:m.content.slice(0,7000)}));
 const trimText=value=>String(value||'').slice(0,2500);
 const configured=env=>({gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_API_KEY,groq:!!env.GROQ_API_KEY});
+// The free OpenRouter key is shared by the deployed service. A brief process-local
+// cooldown after HTTP 429 prevents a retry storm. It contains no user data.
+let openRouterCooldownUntil=0;
+const freeRetryBudget=(env,model)=>{
+  const value=Number(env.OPENROUTER_MAX_ATTEMPTS);
+  if(Number.isInteger(value)&&value>=1&&value<=3)return value;
+  return model==='openrouter/free'||model.endsWith(':free')?1:2;
+};
+const safeFailureKind=error=>error?.httpStatus===429?'rate-limited':
+  ['TimeoutError','AbortError'].includes(error?.name)?'timeout':
+  [502,503,504].includes(error?.httpStatus)?'upstream-busy':
+  error?.message==='provider-incomplete-content'?'incomplete-output':
+  error?.message==='provider-empty-content'?'empty-output':'provider-unavailable';
 const networkTimeout=env=>{
   const proposed=Number(env.AI_REQUEST_TIMEOUT_MS);
   return Number.isFinite(proposed)&&proposed>=3000&&proposed<=45000?proposed:28000;
@@ -80,6 +95,17 @@ export function aiConfig(env=process.env){
   };
 }
 
+const compactChatContext=(brief,styles)=>{
+  const analysis=analyzeProject(brief);
+  return [
+    'Project: '+trimText(brief).slice(0,850),
+    'Audience: '+analysis.audience.slice(0,4).join(', '),
+    'Modules: '+analysis.features.slice(0,8).map(f=>f.label).join(', '),
+    'Constraints: '+analysis.constraints.slice(0,5).join('; '),
+    'Selected design styles: '+(styles||[]).map(s=>s.name).join(', '),
+    'Answer the most recent question; no invented audits or completed tests.'
+  ].join('\n').slice(0,1550);
+};
 const contextMessage=(brief,styles)=>{
   const analysis=analyzeProject(brief);
   const named=(styles||[]).map(s=>s.name).filter(Boolean);
@@ -102,6 +128,10 @@ const safeNetworkCode=value=>typeof value==='string'&&/^[A-Z][A-Z0-9_]{2,32}$/.t
 const errorFor=async(provider,response)=>{
   const error=new Error('provider-http-error');
   error.provider=provider;error.httpStatus=Number(response.status)||0;
+  if(error.httpStatus===429){
+    const header=Number(response.headers?.get?.('retry-after'));
+    error.retryAfterSeconds=Number.isFinite(header)&&header>=1?Math.min(300,Math.max(30,Math.ceil(header))):90;
+  }
   try{
     const parsed=await response.json();
     error.apiStatus=safeEnum(parsed?.error?.status);
@@ -123,6 +153,7 @@ const errorKind=err=>{
   if(err?.httpStatus)return ['HTTP',err.httpStatus,err.apiStatus,err.reason,err.category].filter(Boolean).join(' ');
   if(['TimeoutError','AbortError'].includes(err?.name))return 'timeout';
   if(err?.message==='provider-empty-content')return 'empty-content';
+  if(err?.message==='provider-incomplete-content')return 'incomplete-output';
   if(err instanceof SyntaxError)return 'invalid-json';
   const code=safeNetworkCode(err?.cause?.code)||safeNetworkCode(err?.code);
   if(code)return 'network '+code;
@@ -161,11 +192,15 @@ async function geminiReply({brief,messages,styles,task,env,request}){
 async function openRouterReply({brief,messages,styles,task,env,request}){
   const model=env.OPENROUTER_MODEL||'openrouter/free';
   const isPrompt=task==='prompt',isInsight=task==='insight';
-  const outputLimit=isPrompt?5400:isInsight?1700:3100;
+  const outputLimit=isPrompt?5400:isInsight?1700:2400;
+  const maxAttempts=freeRetryBudget(env,model);
+  const recent=task==='chat'
+    ?cleanMessages(messages).slice(-4).map(m=>({...m,content:m.content.slice(0,m.role==='user'?1300:950)}))
+    :cleanMessages(messages);
   const messagesForModel=[
     {role:'system',content:isPrompt?DESIGN_PROMPT_SYSTEM:isInsight?DESIGN_INSIGHT_SYSTEM:SYSTEM_PROMPT},
-    {role:'user',content:contextMessage(brief,styles)},
-    ...cleanMessages(messages),
+    {role:'user',content:task==='chat'?compactChatContext(brief,styles):contextMessage(brief,styles)},
+    ...recent,
   ];
   // The free router may select a thinking model. A 650-token completion could
   // spend its entire budget reasoning and return an empty visible answer.
@@ -198,7 +233,7 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
       return await requestOnce(Math.max(35000,networkTimeout(env)));
     }catch(error){
       const transient=['TimeoutError','AbortError'].includes(error?.name)||[502,503,504].includes(error?.httpStatus);
-      if(!transient||attempts>=3)throw error;
+      if(!transient||attempts>=maxAttempts)throw error;
       // One shorter retry avoids making an already slow first response
       // wait another full request window. The global request cap is three.
       return requestOnce(25000);
@@ -217,7 +252,7 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
   // Retry on the SAME OpenRouter provider, with a larger visible-output budget.
   // Retain any useful first answer if the retry itself times out.
   const unfinished=()=>task==='chat'&&choice?.finish_reason==='length';
-  const shouldRetry=(!answer||unfinished())&&attempts<3&&
+  const shouldRetry=(!answer||unfinished())&&attempts<maxAttempts&&
     choice?.finish_reason!=='content_filter'&&!choice?.message?.refusal;
   if(shouldRetry){
     const first=answer,wasIncomplete=unfinished();
@@ -236,8 +271,9 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
     }
   }
   if(!answer)throw new Error('provider-empty-content');
-  if(task==='chat'&&choice?.finish_reason==='length')
-    answer+='\n\n*The model reached its response limit. Ask for the remaining details.*';
+  // A clipped answer is never misrepresented as a completed design.
+  if(['chat','insight'].includes(task)&&(['length','error'].includes(choice?.finish_reason)||answer.includes('The model reached its response limit')))
+    throw new Error('provider-incomplete-content');
   return {text:answer,source:'ai',provider:'openrouter'};
 }
 
@@ -284,7 +320,7 @@ async function groqReply({brief,messages,styles,task,env,request}){
  * AI_FALLBACK_ENABLED=true, except when the primary has no key at all.
  * Logs include safe provider/status metadata only, never prompts or keys.
  */
-export async function designAiReply({brief,messages,styles=[],task='chat',env=process.env,request=fetch}){
+export async function designAiReply({brief,messages,styles=[],task='chat',env=process.env,request=fetch,onFailure=null}){
   const settings=aiConfig(env);
   if(!settings.aiEnabled)return null;
   const first=settings.aiPrimary;
@@ -298,9 +334,19 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
   });
   const handlers={gemini:geminiReply,openrouter:openRouterReply,groq:groqReply};
   for(const provider of order){
+    if(provider==='openrouter'&&request===fetch&&openRouterCooldownUntil>Date.now()){
+      onFailure?.({reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((openRouterCooldownUntil-Date.now())/1000))});
+      continue;
+    }
     try{
       return await handlers[provider]({brief,messages,styles,task,env,request});
     }catch(err){
+      const reason=safeFailureKind(err);
+      if(provider==='openrouter'&&request===fetch&&reason==='rate-limited'){
+        const seconds=err.retryAfterSeconds||90;
+        openRouterCooldownUntil=Math.max(openRouterCooldownUntil,Date.now()+seconds*1000);
+      }
+      onFailure?.({reason,retryAfterSeconds:reason==='rate-limited'?err.retryAfterSeconds||90:0});
       console.warn('Frontline AI provider unavailable:',provider,errorKind(err));
     }
   }

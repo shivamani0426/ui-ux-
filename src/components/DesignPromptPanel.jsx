@@ -60,7 +60,10 @@ export default function DesignPromptPanel({project,mode,styles,api,notice}){
       </div>
       <pre tabIndex={0} aria-label="Complete generated copyable UI/UX design prompt">{result.prompt}</pre>
       {result.review&&<p className="di-coverage" role="status">{result.review.usedFallback
-        ?'Complete structured specification preserved; AI refinement was unavailable or did not pass validation.'
+        ?'Complete structured specification preserved. '+(result.review.reason?.includes('rate-limited')
+          ?'OpenRouter is rate-limited; repeated retries can waste the free quota.'
+          :result.review.reason?.includes('timeout')?'OpenRouter timed out; AI enhancement is optional.'
+          :'AI refinement was unavailable or did not pass validation.')
         :'Quality gate: full specification validated and original AI refinements added ('+Object.values(result.review.checks).filter(Boolean).length+' coverage checks).'} This checks section coverage, not real-world usability.</p>}
       <p>Prompt only: no application code or working site has been generated. Referenced sites contribute curated metadata, not copied visual layouts.</p>
     </div>}
