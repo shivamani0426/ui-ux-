@@ -50,15 +50,39 @@ export function aiConfig(env=process.env){
 
 const contextMessage=(brief,styles)=>
   'Project brief: '+trimText(brief)+'\nSelected directions: '+(styles||[]).map(s=>s.name).join(', ');
-const errorFor=(provider,status)=>{
+// Diagnostics are bounded enums/status codes only. NEVER log provider error bodies,
+// request content, keys, response headers or upstream human-readable messages.
+const safeEnum=value=>typeof value==='string'&&/^[A-Z][A-Z0-9_]{2,50}$/.test(value)?value:'';
+const safeNetworkCode=value=>typeof value==='string'&&/^[A-Z][A-Z0-9_]{2,32}$/.test(value)?value:'';
+const errorFor=async(provider,response)=>{
   const error=new Error('provider-http-error');
-  error.provider=provider;error.httpStatus=Number(status)||0;
+  error.provider=provider;error.httpStatus=Number(response.status)||0;
+  try{
+    const parsed=await response.json();
+    error.apiStatus=safeEnum(parsed?.error?.status);
+    error.reason=safeEnum((parsed?.error?.details||[]).find(d=>safeEnum(d?.reason))?.reason);
+    const msg=typeof parsed?.error?.message==='string'?parsed.error.message.toLowerCase():'';
+    // This safe classification never copies the upstream message verbatim.
+    error.category=/free tier.{0,60}(not available|unsupported)|country.{0,50}(not supported|unavailable)|region.{0,50}(not supported|unavailable)/.test(msg)?'free-tier-region':
+      /billing|payment method|upgrade to paid/.test(msg)?'billing-required':
+      /api key.{0,30}(not valid|invalid)|invalid api key/.test(msg)?'invalid-key':
+      /model.{0,70}(not found|not supported|not available)/.test(msg)?'model-unavailable':
+      /no endpoints found|no providers available/.test(msg)?'no-provider':
+      /quota|rate limit|too many requests/.test(msg)?'quota-limit':'';
+  }catch{
+    error.category='unparseable-error-response';
+  }
   return error;
 };
 const errorKind=err=>{
-  if(err?.httpStatus)return 'HTTP '+err.httpStatus;
+  if(err?.httpStatus)return ['HTTP',err.httpStatus,err.apiStatus,err.reason,err.category].filter(Boolean).join(' ');
   if(['TimeoutError','AbortError'].includes(err?.name))return 'timeout';
-  return 'invalid-response-or-network';
+  if(err?.message==='provider-empty-content')return 'empty-content';
+  if(err instanceof SyntaxError)return 'invalid-json';
+  const code=safeNetworkCode(err?.cause?.code)||safeNetworkCode(err?.code);
+  if(code)return 'network '+code;
+  if(err?.name==='TypeError')return 'network-fetch-failed';
+  return 'unknown-provider-error';
 };
 async function geminiReply({brief,messages,styles,task,env,request}){
   const model=modelId(env.GEMINI_MODEL,'gemini-3.5-flash-lite');
@@ -77,10 +101,12 @@ async function geminiReply({brief,messages,styles,task,env,request}){
     body:JSON.stringify({
       systemInstruction:{parts:[{text:task==='prompt'?DESIGN_PROMPT_SYSTEM:SYSTEM_PROMPT}]},
       contents,
-      generationConfig:{temperature:task==='prompt'?0.75:0.65,maxOutputTokens:task==='prompt'?3600:1100},
+      // Modern Gemini 3+ ignores custom temperatures. Omit them to keep
+      // the REST request as minimal and interoperable as possible.
+      generationConfig:{maxOutputTokens:task==='prompt'?3600:1100},
     }),
   });
-  if(!r.ok)throw errorFor('gemini',r.status);
+  if(!r.ok)throw await errorFor('gemini',r);
   const data=await r.json();
   const answer=extractText(data?.candidates?.[0]?.content?.parts,task==='prompt'?13000:2500);
   if(!answer)throw new Error('provider-empty-content');
@@ -106,10 +132,12 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
       ],
     }),
   });
-  if(!r.ok)throw errorFor('openrouter',r.status);
+  if(!r.ok)throw await errorFor('openrouter',r);
   const data=await r.json();
-  const answer=typeof data?.choices?.[0]?.message?.content==='string'
-    ?data.choices[0].message.content.trim().slice(0,task==='prompt'?13000:2500):'';
+  const message=data?.choices?.[0]?.message;
+  const answer=typeof message?.content==='string'
+    ?message.content.trim().slice(0,task==='prompt'?13000:2500)
+    :extractText(message?.content,task==='prompt'?13000:2500);
   if(!answer)throw new Error('provider-empty-content');
   return {text:answer,source:'ai',provider:'openrouter'};
 }
