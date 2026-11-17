@@ -8,6 +8,7 @@ import FrontlineDomePortal from './components/FrontlineDomePortal.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
 import DesignPromptPanel from './components/DesignPromptPanel.jsx';
+import ProjectIntelligencePanel from './components/ProjectIntelligencePanel.jsx';
 import './styles.css';
 import './frontline-studio.css';
 import './inspiration-explorer.css';
@@ -233,6 +234,7 @@ function App(){
               <strong>Explore. Select. Make it yours.</strong>
               <p>Explore real inspiration sites first, then combine complementary style directions. We never copy other websites.</p>
             </div>
+            <ProjectIntelligencePanel project={project}/>
             {(designMode==='select'||designMode==='fusion')&&<InspirationExplorer key={project.id} project={project} api={api} notice={notice}/>}
             <div className="result-actions">
               <button className={selected.length===3?'quiet-active':''} onClick={()=>setSelected(styleKeys)}><CheckCheck size={15}/> Select all three</button>
@@ -243,7 +245,7 @@ function App(){
               {recommendations.map((d,index)=><button key={d.id} className={'design-option '+(selected.includes(d.id)?'picked':'')} onClick={()=>toggleStyle(d.id)} aria-pressed={selected.includes(d.id)}>
                 <span className={'color-orb '+d.id} aria-hidden="true"><span/></span>
                 <span className="design-description"><span className="design-rank">{String(index+1).padStart(2,'0')} / RECOMMENDED</span><strong>{d.name}</strong><small>{d.description}</small></span>
-                <span className="design-score">{d.match}% fit</span>
+                <span className="design-score" title="Heuristic match indicator; not a measured usability score">{d.match}/100 match</span>
                 <span className="select-check">{selected.includes(d.id)?<Check size={13}/>:null}</span>
               </button>)}
             </div>
