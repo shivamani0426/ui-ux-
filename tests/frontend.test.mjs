@@ -46,8 +46,13 @@ test('chat-first frontend uses upstream React Bits and keeps features accessible
   assert.match(app,/Save refinement/);
   // Milestone 09: a one-click project restore uses the existing scoped API path.
   assert.match(app,/Continue recent conversation/);
-  assert.match(app,/aria-label="Search saved conversations"/);
-  assert.match(app,/filteredProjects\.length===0/);
+  // The Milestone 10C archive moved search/filter presentation into its own
+  // reusable component without changing private project ownership or API paths.
+  const library=await fs.readFile(new URL('../src/components/FrontlineProjectLibrary.jsx',import.meta.url),'utf8');
+  assert.match(library,/aria-label="Search saved conversations"/);
+  assert.match(library,/No matching designs/);
+  assert.match(library,/String\(p.brief\|\|''\)/);
+  assert.match(app,/FrontlineProjectLibrary/);
   assert.match(app,/String\(p\.brief\|\|''\)/);
   assert.match(app,/projects\.length>0&&<button className="nav-resume" onClick=\{\(\)=>openProject\(projects\[0\]\)\}/);
   assert.match(app,/api\('\/api\/projects\/'\+encodeURIComponent\(p\.id\)\)/);
