@@ -7,7 +7,7 @@ export default function ProjectIntelligencePanel({project}){
   const analysis=project?.recommendations?.analysis;
   const comparisons=project?.recommendations?.comparison;
   if(!analysis)return null;
-  const features=(analysis.features||[]).slice(0,7);
+  const features=(analysis.features||[]).slice(0,12);
   const questions=(analysis.openQuestions||[]).slice(0,3);
   const ranked=(Array.isArray(comparisons)?comparisons:[]).slice(0,3);
   return <section className="pi-panel" aria-label="Project understanding and explainable design comparison">
@@ -23,7 +23,7 @@ export default function ProjectIntelligencePanel({project}){
       </div>
       <div>
         <span className="pi-label">TARGET AUDIENCE</span>
-        <strong>{(analysis.audience||[]).slice(0,2).join(', ')}</strong>
+        <strong>{(analysis.audience||[]).join(', ')}</strong>
         <small>{analysis.audienceSource==='suggested'?'Needs confirmation':'Mentioned in brief'}</small>
       </div>
       <div>
@@ -39,7 +39,7 @@ export default function ProjectIntelligencePanel({project}){
       <div className="pi-details-body">
         <div>
           <strong>Suggested pages</strong>
-          <ol>{(analysis.pages||[]).slice(0,10).map(page=><li key={page}>{page}</li>)}</ol>
+          <ol>{(analysis.pages||[]).slice(0,15).map(page=><li key={page}>{page}</li>)}</ol>
         </div>
         <div>
           <strong>Constraints and open decisions</strong>
