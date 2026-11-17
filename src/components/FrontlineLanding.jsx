@@ -5,6 +5,7 @@ import SolarFluidCanvas from './SolarFluidCanvas.jsx';
 import FrontlineMark from './FrontlineMark.jsx';
 import './FrontlineLanding.css';
 import './FrontlineScrollStory.css';
+import './FrontlineCinematicTour.css';
 
 /* Original Frontline composition: user-provided Solare recording informs pacing,
  * oversized kinetic typography, golden sphere and editorial spiral, not source assets. */
