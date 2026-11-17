@@ -44,3 +44,9 @@
 @media(prefers-reduced-motion:reduce){.di-actions button{transition:none!important}}
 
 .di-coverage{padding:10px 12px;margin:12px 0;border:1px solid var(--fl-surface-edge);border-radius:9px;background:var(--soft);font-size:11px;line-height:1.6;color:var(--text)}
+
+/* Make the Generate / Fusion call-to-action visible before optional settings. */
+.di-start-hint{font:500 12px/1.7 'DM Sans',sans-serif;color:inherit;opacity:.82;margin:14px 0 11px}
+.di-head+.di-start-hint{margin-top:17px}
+.di-actions{margin-bottom:12px}
+.di-refine{margin-top:13px}
