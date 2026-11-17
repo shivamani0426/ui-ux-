@@ -93,7 +93,9 @@ test('Provider order can be reversed without dropping Gemini failover',async()=>
     request:async(url)=>{calls.push(url);return url.includes('openrouter.ai')?response(502,{}):geminiOk('A useful result from Gemini')},
   });
   assert.equal(answer.provider,'gemini');
-  assert.equal(calls.length,2);
+  assert.deepEqual(calls.map(url=>new URL(url).host),
+    ['openrouter.ai','openrouter.ai','generativelanguage.googleapis.com'],
+    'Transient 502 is retried only at OpenRouter before explicitly approved Gemini fallback');
 });
 
 test('Unsuccessful or empty provider responses leave the deterministic guide available',async()=>{
@@ -181,10 +183,10 @@ test('Groq receives a brief only if enabled backup after OpenRouter failure',asy
   }});
   assert.equal(answer.provider,'groq');
   assert.equal(answer.text,'Groq generated an original design response');
-  assert.deepEqual(calls.map(x=>new URL(x.url).host),['openrouter.ai','api.groq.com']);
-  assert.equal(calls[1].init.headers.Authorization,'Bearer groq-secret');
-  assert.ok(!calls[1].init.body.includes('groq-secret'));
-  const body=JSON.parse(calls[1].init.body);
+  assert.deepEqual(calls.map(x=>new URL(x.url).host),['openrouter.ai','openrouter.ai','api.groq.com']);
+  assert.equal(calls[2].init.headers.Authorization,'Bearer groq-secret');
+  assert.ok(!calls[2].init.body.includes('groq-secret'));
+  const body=JSON.parse(calls[2].init.body);
   assert.equal(body.model,'openai/gpt-oss-20b');
   assert.equal(body.max_completion_tokens,1100);
   assert.equal(body.reasoning_effort,'low');
@@ -253,7 +255,7 @@ test('OpenRouter recovers a reasoning-only first completion using its own provid
   assert.match(answer.text,/readable dashboard/);
   assert.equal(requests.length,2,'retry a blank visible answer once');
   assert.ok(requests.every(r=>new URL(r.url).host==='openrouter.ai'),'no second provider');
-  assert.deepEqual(requests.map(r=>r.body.max_tokens),[1800,2800]);
+  assert.deepEqual(requests.map(r=>r.body.max_tokens),[3100,4400]);
   assert.ok(requests.every(r=>r.body.reasoning.effort==='low'));
   assert.ok(requests.every(r=>!JSON.stringify(r.body).includes('primary-secret')));
 });
@@ -335,4 +337,41 @@ test('OpenRouter creative insight uses a compact bounded completion and never se
   assert.equal(request.body.max_tokens,1700);
   assert.match(request.body.messages[0].content,/creative enhancements/i);
   assert.ok(!JSON.stringify(request.body).includes('insight-secret'));
+});
+
+test('OpenRouter chat retains complete answers beyond previous 2,500-character display cap',async()=>{
+ const long='A complete accessible design explanation with responsive detail. '.repeat(58);
+ const answer=await designAiReply({brief,messages,env:{
+   OPENROUTER_API_KEY:'test',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'
+ },request:async()=>response(200,{choices:[{finish_reason:'stop',message:{content:long}}]})});
+ assert.ok(long.length>2500);
+ assert.equal(answer.text,long.trim());
+});
+test('length-limited OpenRouter chat retries with a larger budget and preserves the better completion',async()=>{
+ const seen=[];
+ const answer=await designAiReply({brief,messages,env:{
+   OPENROUTER_API_KEY:'test',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'
+ },request:async(url,init)=>{
+   seen.push({url,max:JSON.parse(init.body).max_tokens});
+   return response(200,seen.length===1
+    ?{choices:[{finish_reason:'length',message:{content:'## Incomplete\n\nColor: #10'}}]}
+    :{choices:[{finish_reason:'stop',message:{content:'## Complete\n\nColor: #102A43. All details explained.'}}]});
+ }});
+ assert.equal(answer.text,'## Complete\n\nColor: #102A43. All details explained.');
+ assert.deepEqual(seen.map(x=>x.max),[3100,4400]);
+ assert.ok(seen.every(x=>new URL(x.url).host==='openrouter.ai'));
+});
+test('OpenRouter transient HTTP 503 retries once without switching providers; 429 is not retried',async()=>{
+ let count=0;
+ const env={OPENROUTER_API_KEY:'test',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'};
+ const answer=await designAiReply({brief,messages,env,request:async()=>{
+   count++;
+   return count===1?response(503,{error:{status:'SERVICE_UNAVAILABLE'}}):openRouterOk('Original dashboard directions.');
+ }});
+ assert.equal(answer.provider,'openrouter');assert.equal(count,2);
+ let limited=0;const originalWarn=console.warn;console.warn=()=>{};
+ try{
+   const response429=await designAiReply({brief,messages,env,request:async()=>{limited++;return response(429,{error:{status:'RESOURCE_EXHAUSTED'}})}});
+   assert.equal(response429,null);assert.equal(limited,1);
+ }finally{console.warn=originalWarn}
 });

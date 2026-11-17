@@ -238,6 +238,11 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.locator('.inspiration-save.selected').first().waitFor({timeout:10000});
       assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Inspiration pick should survive refresh');
     }
+    assert.equal(await page.locator('.pi-panel').count(),1,'Project Intelligence must render once, not repeat');
+    assert.equal(await page.locator('.pi-comparisons').count(),1,'Comparison must render once');
+    assert.ok(await page.locator('.message-markdown').count()>=1,'Advisor messages should use safe Markdown renderer');
+    const fallbackRetry=page.getByRole('button',{name:/Retry with OpenRouter/i});
+    if(!remote&&await fallbackRetry.count())assert.ok(await fallbackRetry.first().isEnabled(),'Offline fallback must offer a usable retry action');
     const selectAll=page.getByRole('button',{name:/Select all three/i});
     await selectAll.click();
     const count=await page.locator('.design-option.picked').count();
