@@ -22,6 +22,11 @@ jobs:
         run: npx playwright install --with-deps chromium firefox
       - name: Verify frontend in real browsers
         run: NODE_ENV=test node tests/browser.e2e.mjs
+      - name: Test live AI providers with isolated fictional guest (diagnostic release only)
+        if: (github.event_name == 'pull_request' && github.head_ref == 'fix/live-ai-provider-diagnostics-and-recovery') || (github.event_name == 'push' && contains(github.event.head_commit.message, 'AI provider diagnostics'))
+        env:
+          AI_LIVE_CHECK: '1'
+        run: node tests/live-ai-smoke.mjs
       - name: Verify live Render site in real browsers
         if: github.event_name == 'push'
         env:
