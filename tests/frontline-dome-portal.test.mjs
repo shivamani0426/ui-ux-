@@ -40,7 +40,8 @@ test('White halo charges on an all-black screen before the slow centre-out revea
   assert.match(app,/document\.documentElement\.style\.overflow='hidden'/);
   assert.match(app,/document\.documentElement\.style\.overflow=oldHTML/);
   assert.ok(app.includes('<FrontlineLanding'));
-  assert.ok(app.includes('spiral-emerging'));
+  assert.ok(app.includes('fl-landing-gateway'),'Spiral must reveal the new login gateway');
+  assert.ok(!app.includes('spiral-emerging'),'Former spiral chatbox must stay removed');
   assert.ok(app.includes('InspirationExplorer'));
 });
 
