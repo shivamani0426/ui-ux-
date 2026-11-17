@@ -202,7 +202,14 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.getByRole('button',{name:/Switch to dark theme/i}).click();
       await page.locator('.close-menu').click();
     }
-    await page.locator('.composer textarea').fill('A modern student learning platform with a study dashboard and AI tutor');
+    // Focus switches the landing composer into studio mode. Wait for that
+    // transition before typing so a rerender cannot consume the first input.
+    await page.locator('.composer textarea').focus();
+    await page.locator('.conversation-scene').waitFor({timeout:8000});
+    const firstPrompt='A modern student learning platform with a study dashboard and AI tutor';
+    await page.locator('.composer textarea').fill(firstPrompt);
+    assert.equal(await page.locator('.composer textarea').inputValue(),firstPrompt,
+      name+' first message should remain in the composer after mode transition');
     await page.locator('.composer textarea').press('Enter');
     await page.locator('.message-row.outgoing').first().waitFor({timeout:12000});
     await page.locator('.message-row.incoming').first().waitFor({timeout:12000});
