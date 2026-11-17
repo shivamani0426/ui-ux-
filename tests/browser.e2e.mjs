@@ -91,6 +91,24 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       name+' landing must become keyboard and pointer accessible after reveal');
     assert.notEqual(await page.evaluate(()=>getComputedStyle(document.documentElement).overflow),'hidden',
       name+' scroll should unlock after dome reveal');
+    // User-requested slow cinematic autoplay: it starts only after the dome
+    // opens, progresses visibly, and can be paused, replayed or interrupted.
+    await page.locator('.fl-tour-ui[data-tour-state="playing"]').waitFor({timeout:4500});
+    await page.waitForFunction(()=>window.scrollY>75,null,{timeout:10000});
+    const autoPosition=await page.evaluate(()=>window.scrollY);
+    assert.ok(autoPosition>75,'Guided tour should move naturally after the opening reveal');
+    await page.screenshot({path:'browser-artifacts/'+name+'-guided-cinematic-tour.png',fullPage:false});
+    await page.getByRole('button',{name:'Pause cinematic tour'}).click();
+    await page.locator('.fl-tour-ui[data-tour-state="paused"]').waitFor({timeout:2500});
+    const holdPosition=await page.evaluate(()=>window.scrollY);
+    await page.waitForTimeout(350);
+    assert.ok(Math.abs((await page.evaluate(()=>window.scrollY))-holdPosition)<12,
+      'Pause must stop native scrolling rather than fighting user navigation');
+    await page.getByRole('button',{name:'Replay cinematic tour from beginning'}).click();
+    await page.waitForFunction(()=>window.scrollY<12,null,{timeout:2200});
+    await page.mouse.wheel(0,360);
+    await page.locator('.fl-tour-ui[data-tour-state="paused"]').waitFor({timeout:2500});
+    await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
     await page.waitForTimeout(650);
     assert.equal(await page.locator('.brand-mark .fl-monogram').count(),1,'Header must show branded F');
     await page.screenshot({path:'browser-artifacts/'+name+'-landing.png',fullPage:false});
@@ -324,6 +342,9 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await mobile.locator('.fl-dome-portal.is-charging').waitFor({timeout:2500});
     await mobile.locator('.fl-dome-portal.is-opening').waitFor({timeout:3500});
     await mobile.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8500});
+    await mobile.locator('.fl-tour-ui[data-tour-state="playing"]').waitFor({timeout:4000});
+    await mobile.getByRole('button',{name:'Pause cinematic tour'}).tap();
+    await mobile.locator('.fl-tour-ui[data-tour-state="paused"]').waitFor({timeout:2500});
     if(await mobile.locator('.fl-world').count())
       assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile composer must start absent');
     if(await mobile.locator('.fl-world').count()){
@@ -351,6 +372,18 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       }
     }
     await mobile.close();
+    // Respect people who explicitly request a reduced-motion experience:
+    // no automatic scroll, and no motion controls that suggest otherwise.
+    const reducedPage=await browser.newPage({viewport:{width:1024,height:720},reducedMotion:'reduce'});
+    await reducedPage.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
+    await reducedPage.locator('.fl-dome-trigger').click();
+    await reducedPage.locator('.fl-dome-portal').waitFor({state:'detached',timeout:3500});
+    await reducedPage.waitForTimeout(650);
+    assert.equal(await reducedPage.locator('.fl-tour-ui').count(),0,
+      'Reduced motion must not automatically play the cinematic journey');
+    assert.equal(await reducedPage.evaluate(()=>window.scrollY),0,
+      'Reduced-motion experience must retain manual scroll control');
+    await reducedPage.close();
     if(errors.length)console.log(name+' had nonfatal errors: '+errors.join('\n'));
   }catch(error){
     failed=true;
