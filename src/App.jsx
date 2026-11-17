@@ -224,14 +224,14 @@ function App(){
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
             {message.role!=='user'&&<div className="message-avatar"><FrontlineMark size={25}/></div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
-              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations · AI fallback':message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
+              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?(message.failureReason==='rate-limited'?'OpenRouter rate-limited · guided response':message.failureReason==='timeout'?'OpenRouter timeout · guided response':message.failureReason==='incomplete-output'?'Incomplete AI reply · complete guidance':'Guided recommendations · AI fallback'):message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
               {message.role==='user'?<p>{message.content}</p>:<MessageMarkdown content={message.content}/>}
               {message.source==='guide'&&<button type="button" className="message-retry"
                 disabled={working} onClick={()=>{
                   const prior=messages.slice(0,i).reverse().find(m=>m.role==='user');
                   if(prior?.content)send(prior.content);
                 }} title="Make another OpenRouter attempt in this conversation">
-                <RotateCcw size={13} aria-hidden="true"/> Retry with OpenRouter
+                <RotateCcw size={13} aria-hidden="true"/> {message.failureReason==='rate-limited'?'Retry later with OpenRouter':'Retry with OpenRouter'}
               </button>}
             </div>
           </div>)}
