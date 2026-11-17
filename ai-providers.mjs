@@ -153,9 +153,12 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
 
 /** GroqCloud uses an OpenAI-compatible chat endpoint, not OpenRouter. */
 async function groqReply({brief,messages,styles,task,env,request}){
-  const model=typeof env.GROQ_MODEL==='string'&&/^[a-zA-Z0-9_.\\/-]{1,100}$/.test(env.GROQ_MODEL)
-    ?env.GROQ_MODEL:'openai/gpt-oss-20b';
-  const isGptOss=/^openai\\/gpt-oss-(20b|120b)$/.test(model);
+  const configuredModel=env.GROQ_MODEL;
+  const validModel=typeof configuredModel==='string'&&configuredModel.length<=100
+    && configuredModel.split('/').length<=2
+    && configuredModel.split('/').every(part=>/^[a-zA-Z0-9_.-]{1,80}$/.test(part));
+  const model=validModel?configuredModel:'openai/gpt-oss-20b';
+  const isGptOss=['openai/gpt-oss-20b','openai/gpt-oss-120b'].includes(model);
   const r=await request('https://api.groq.com/openai/v1/chat/completions',{
     method:'POST',
     headers:{
