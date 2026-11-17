@@ -119,7 +119,7 @@ const FEATURE_ALIASES={
  tutor:['ai tutor','ai assistant','tutor','study assistant'],
  calendar:['calendar','scheduling','schedule'],
  progress:['progress','analytics','insights','metrics'],
- courses:['courses','lessons','curriculum'],
+ courses:['course','lesson','curriculum'],
  messages:['messages','conversation','inbox'],
  commerce:['product','shopping','checkout'],
  payments:['payment','transaction','invoice'],
