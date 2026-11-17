@@ -280,3 +280,43 @@ test('OpenRouter exhausted visible-text retry retains deterministic guidance',as
   assert.equal(result,null);
   assert.equal(count,2);
 });
+
+test('OpenRouter retries one transport timeout against the same primary only',async()=>{
+  const seen=[];
+  const result=await designAiReply({brief,messages,env:{
+    OPENROUTER_API_KEY:'test-primary',GEMINI_API_KEY:'unused-gemini',
+    GROQ_API_KEY:'unused-groq',AI_PRIMARY_PROVIDER:'openrouter',
+    AI_FALLBACK_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'
+  },request:async(url,init)=>{
+    seen.push({url,body:JSON.parse(init.body),signal:init.signal});
+    if(seen.length===1){const e=new Error('upstream timeout');e.name='TimeoutError';throw e}
+    return openRouterOk('Original accessible design guidance from OpenRouter.');
+  }});
+  assert.equal(result.provider,'openrouter');
+  assert.equal(result.source,'ai');
+  assert.equal(seen.length,2);
+  assert.ok(seen.every(v=>new URL(v.url).host==='openrouter.ai'));
+  assert.ok(seen.every(v=>v.body.messages.at(-1).content==='Use a calming blue color system'));
+  assert.ok(!JSON.stringify(seen.map(x=>x.body)).includes('test-primary'));
+});
+
+test('Repeated OpenRouter timeouts fail safely without changing provider',async()=>{
+  const seen=[];
+  const originalWarn=console.warn;
+  const logged=[];console.warn=(...args)=>logged.push(args.join(' '));
+  try{
+    const result=await designAiReply({brief,messages,env:{
+      OPENROUTER_API_KEY:'private-secret',GROQ_API_KEY:'never-used',
+      AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'
+    },request:async(url)=>{
+      seen.push(url);
+      const e=new Error('private-secret must not appear in logs');e.name='TimeoutError';
+      throw e;
+    }});
+    assert.equal(result,null);
+    assert.equal(seen.length,2);
+    assert.ok(seen.every(url=>url.includes('openrouter.ai')));
+    assert.match(logged[0],/openrouter timeout/);
+    assert.doesNotMatch(logged.join(' '),/private-secret/);
+  }finally{console.warn=originalWarn}
+});
