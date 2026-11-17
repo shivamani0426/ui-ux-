@@ -102,47 +102,80 @@ export default function SolarFluidCanvas({mode='sun'}){
     const uTime=gl.getUniformLocation(program,'uTime');
     const uPointer=gl.getUniformLocation(program,'uPointer');
     const uScroll=gl.getUniformLocation(program,'uScroll');
-    let raf=0, running=true, visible=true, lastDraw=0;
+    let raf=0, running=true, visible=true, lastDraw=0, resizeNeeded=true;
+    let currentWidth=0,currentHeight=0;
+    let scrollRange=Math.max(1,document.documentElement.scrollHeight-innerHeight);
     const pointer={x:0,y:0};
     const onPointer=e=>{
-      pointer.x = (e.clientX / Math.max(1,window.innerWidth)-.5)*2;
-      pointer.y = (e.clientY / Math.max(1,window.innerHeight)-.5)*2;
+      if(!visible)return;
+      pointer.x=(e.clientX/Math.max(1,window.innerWidth)-.5)*2;
+      pointer.y=(e.clientY/Math.max(1,window.innerHeight)-.5)*2;
     };
-    const observer=typeof IntersectionObserver==='undefined'?null:new IntersectionObserver(entries=>{visible=Boolean(entries[0]?.isIntersecting)},{threshold:0.01});
-    observer?.observe(canvas);
-    window.addEventListener('pointermove',onPointer,{passive:true});
-    canvas.style.opacity='1';
-    const paint=(time)=>{
-      if(!running)return;
-      raf=requestAnimationFrame(paint);
-      if(!visible || document.hidden || time-lastDraw<40)return;
-      lastDraw=time;
+    const measure=()=>{
       const rect=canvas.getBoundingClientRect();
-      if(rect.width<2||rect.height<2)return;
       const dpr=Math.min(window.devicePixelRatio||1,1.25);
-      const width=Math.max(1,Math.min(900,Math.round(rect.width*dpr)));
-      const height=Math.max(1,Math.min(620,Math.round(rect.height*dpr)));
-      if(canvas.width!==width||canvas.height!==height){
-        canvas.width=width;canvas.height=height;
-        gl.viewport(0,0,width,height);
+      currentWidth=Math.max(1,Math.min(900,Math.round(rect.width*dpr)));
+      currentHeight=Math.max(1,Math.min(620,Math.round(rect.height*dpr)));
+      scrollRange=Math.max(1,document.documentElement.scrollHeight-innerHeight);
+      resizeNeeded=false;
+      if(canvas.width!==currentWidth||canvas.height!==currentHeight){
+        canvas.width=currentWidth;canvas.height=currentHeight;
+        gl.viewport(0,0,currentWidth,currentHeight);
       }
-      gl.useProgram(program);
-      gl.uniform1f(uTime,time/1000);
-      gl.uniform2f(uPointer,pointer.x,pointer.y);
-      const maxScroll=Math.max(1,document.documentElement.scrollHeight-innerHeight);
-      gl.uniform1f(uScroll,Math.max(0,Math.min(1,scrollY/maxScroll)));
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-      gl.clearColor(0,0,0,0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.drawArrays(gl.TRIANGLES,0,6);
     };
-    raf=requestAnimationFrame(paint);
+    const paint=time=>{
+      raf=0;
+      if(!running||!visible||document.hidden)return;
+      if(resizeNeeded)measure();
+      if(time-lastDraw>=40&&currentWidth>2&&currentHeight>2){
+        lastDraw=time;
+        gl.useProgram(program);
+        gl.uniform1f(uTime,time/1000);
+        gl.uniform2f(uPointer,pointer.x,pointer.y);
+        gl.uniform1f(uScroll,Math.max(0,Math.min(1,window.scrollY/scrollRange)));
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+        gl.clearColor(0,0,0,0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES,0,6);
+      }
+      wake();
+    };
+    const wake=()=>{
+      // A hidden canvas must not keep a hot requestAnimationFrame loop alive.
+      if(raf||!running||!visible||document.hidden)return;
+      raf=requestAnimationFrame(paint);
+    };
+    const suspend=()=>{
+      if(raf)cancelAnimationFrame(raf);
+      raf=0;
+    };
+    const observer=typeof IntersectionObserver==='undefined'?null:
+      new IntersectionObserver(entries=>{
+        visible=Boolean(entries[0]?.isIntersecting);
+        if(visible){resizeNeeded=true;wake()}
+        else suspend();
+      },{threshold:0.01});
+    const resizeObserver=typeof ResizeObserver==='undefined'?null:new ResizeObserver(()=>{
+      resizeNeeded=true;wake();
+    });
+    const onResize=()=>{resizeNeeded=true;wake()};
+    const onVisibility=()=>document.hidden?suspend():wake();
+    observer?.observe(canvas);
+    resizeObserver?.observe(canvas);
+    window.addEventListener('pointermove',onPointer,{passive:true});
+    window.addEventListener('resize',onResize,{passive:true});
+    document.addEventListener('visibilitychange',onVisibility);
+    document.fonts?.ready?.then(()=>{if(running)onResize()}).catch(()=>{});
+    canvas.style.opacity='1';
+    wake();
     return ()=>{
-      running=false;
-      cancelAnimationFrame(raf);
+      running=false;suspend();
       observer?.disconnect();
+      resizeObserver?.disconnect();
       window.removeEventListener('pointermove',onPointer);
+      window.removeEventListener('resize',onResize);
+      document.removeEventListener('visibilitychange',onVisibility);
       gl.deleteBuffer(buffer);
       gl.deleteProgram(program);
     };
