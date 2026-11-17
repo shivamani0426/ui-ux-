@@ -1,3 +1,4 @@
+import {analyzeProject} from './project-intelligence.mjs';
 /**
  * Frontline Select UI/UX: explainable, deterministic inspiration matching.
  * Uses curated Supabase metadata; no scraping and no invented screenshot/LLM claims.
@@ -61,6 +62,7 @@ export function rankInspirations(brief,library,{styleWeights={},favoriteTags=[]}
 export function makeSelectionPrompt(project,sourceRows){
   const refs=(Array.isArray(sourceRows)?sourceRows:[]).slice(0,8);
   if(!refs.length)throw new Error('Select at least one inspiration before copying a prompt.');
+  const analysis=analyzeProject(project.brief);
   const referenceLines=refs.map((r,i)=>{
     const tags=cleanArray(r.tags).slice(0,6).join(', ')||'thoughtful design';
     return `${i+1}. ${r.name} (${r.site}) — ${r.category}. Study these qualities: ${tags}.`;
@@ -69,6 +71,15 @@ export function makeSelectionPrompt(project,sourceRows){
 
 PROJECT BRIEF
 ${String(project.brief||'').slice(0,2500)}
+
+PROJECT UNDERSTANDING (CONFIRMED AND PROPOSED)
+Audience: ${analysis.audience.join(', ')} (${analysis.audienceSource}).
+Explicit modules: ${analysis.features.map(x=>x.label).join('; ')||'none confirmed'}.
+User goals: ${analysis.goals.join('; ')}.
+Constraints: ${analysis.constraints.join('; ')||'none specified'}.
+Suggested pages: ${analysis.pages.join(' | ')}.
+Preserve approved decisions: ${analysis.explicitDecisions.join('; ')||'none explicitly stated'}.
+Unresolved questions: ${analysis.openQuestions.join(' | ')||'validate proposed layout with the product owner'}.
 
 SELECTED INSPIRATIONS (for direction, NOT duplication)
 ${referenceLines}
