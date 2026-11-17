@@ -51,7 +51,7 @@ export function deterministicDesignPrompt(input){
   const directions=b.selected.map((style,index)=>{
     const match=b.comparisons.find(c=>c.id===style.id);
     return [
-      'DIRECTION '+(index+1)+': '+style.name,
+      (isFusion?'FUSION INGREDIENT ':'DIRECTION ')+(index+1)+': '+style.name,
       '  Intent: '+style.description,
       '  Structural layout: '+style.layout,
       '  Suggested palette: '+style.colors.join(', '),
