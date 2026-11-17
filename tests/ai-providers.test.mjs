@@ -93,7 +93,9 @@ test('Provider order can be reversed without dropping Gemini failover',async()=>
     request:async(url)=>{calls.push(url);return url.includes('openrouter.ai')?response(502,{}):geminiOk('A useful result from Gemini')},
   });
   assert.equal(answer.provider,'gemini');
-  assert.equal(calls.length,2);
+  assert.deepEqual(calls.map(url=>new URL(url).host),
+    ['openrouter.ai','openrouter.ai','generativelanguage.googleapis.com'],
+    'Transient 502 is retried only at OpenRouter before explicitly approved Gemini fallback');
 });
 
 test('Unsuccessful or empty provider responses leave the deterministic guide available',async()=>{
@@ -181,10 +183,10 @@ test('Groq receives a brief only if enabled backup after OpenRouter failure',asy
   }});
   assert.equal(answer.provider,'groq');
   assert.equal(answer.text,'Groq generated an original design response');
-  assert.deepEqual(calls.map(x=>new URL(x.url).host),['openrouter.ai','api.groq.com']);
-  assert.equal(calls[1].init.headers.Authorization,'Bearer groq-secret');
-  assert.ok(!calls[1].init.body.includes('groq-secret'));
-  const body=JSON.parse(calls[1].init.body);
+  assert.deepEqual(calls.map(x=>new URL(x.url).host),['openrouter.ai','openrouter.ai','api.groq.com']);
+  assert.equal(calls[2].init.headers.Authorization,'Bearer groq-secret');
+  assert.ok(!calls[2].init.body.includes('groq-secret'));
+  const body=JSON.parse(calls[2].init.body);
   assert.equal(body.model,'openai/gpt-oss-20b');
   assert.equal(body.max_completion_tokens,1100);
   assert.equal(body.reasoning_effort,'low');
