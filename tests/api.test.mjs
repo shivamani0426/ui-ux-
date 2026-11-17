@@ -74,3 +74,29 @@ test('project creation, all-three feedback, history isolation and deletion',asyn
     const erased=await call(0,'/api/projects');assert.equal(erased.data.projects.length,0);
   }finally{await env.close();}
 });
+
+
+test('new and reopened projects expose all requested features without rewriting saved data',async()=>{
+  const env=await getEnvironment();const {call}=env;
+  try{
+    const brief='Create a student teacher dashboard for administrators, with assignment tracking, an AI tutor, calendar, notification center, student profile, course progress and accessible mobile design.';
+    const created=await call(0,'/api/projects','POST',{brief});
+    assert.equal(created.status,201);
+    const id=created.data.project.id;
+    const first=created.data.project.recommendations.analysis;
+    assert.ok(first.features.some(x=>x.id==='notifications'));
+    assert.ok(first.features.some(x=>x.id==='profile'));
+    assert.ok(first.audience.includes('Administrators'));
+    const loaded=await call(0,'/api/projects/'+id);
+    assert.equal(loaded.status,200);
+    const refreshed=loaded.data.project.recommendations.analysis;
+    assert.deepEqual(refreshed.features,first.features);
+    assert.equal(loaded.data.project.brief,brief);
+    assert.equal(new Set(refreshed.pages).size,refreshed.pages.length);
+    assert.ok(!refreshed.pages.includes('Courses and assignments'));
+    const after=await call(0,'/api/projects/'+id);
+    assert.equal(after.data.project.brief,brief);
+    assert.deepEqual(after.data.project.messages,[]);
+    const deleted=await call(0,'/api/profile','DELETE');assert.equal(deleted.data.deleted,true);
+  }finally{await env.close();}
+});
