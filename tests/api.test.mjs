@@ -34,6 +34,10 @@ test('project creation, all-three feedback, history isolation and deletion',asyn
     const list=await call(0,'/api/projects');assert.equal(list.data.projects.length,1);
     const chat=await call(0,`/api/projects/${id}/messages`,'POST',{message:'Plan the pages',styles:selection});
     assert.equal(chat.status,200);assert.equal(chat.data.messages.length,2);
+    assert.equal(chat.data.answer.source,'guide','Test mode must not make real OpenRouter calls');
+    assert.match(chat.data.answer.text,/## Project understanding/);
+    assert.match(chat.data.answer.text,/## Recommended UI\/UX direction/);
+    assert.match(chat.data.answer.text,/Retry with OpenRouter/);
     const after=await call(0,`/api/projects/${id}`);assert.equal(after.data.project.messages.length,2);
     const generate=await call(0,`/api/projects/${id}/design-prompt`,'POST',{
       mode:'generate',styles:['minimal'],refinement:'Focus on responsive accessibility'
