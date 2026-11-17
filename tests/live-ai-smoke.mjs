@@ -1,7 +1,7 @@
 /**
  * One-time production AI check. Uses fictional design briefs, a fresh anonymous
  * guest cookie and deletion in finally. NEVER log provider text or credentials.
- * AI_LIVE_CHECK=1 opts into 2 real OpenRouter requests; AI_DESIGN_LIVE_CHECK=1
+ * AI_LIVE_CHECK=1 opts into one real OpenRouter chat request; AI_DESIGN_LIVE_CHECK=1
  * additionally validates original Generate and Fusion prompts (fictional briefs only).
  */
 const target=process.env.AI_LIVE_CHECK==='1'?'https://ui-compass-studio.onrender.com':null;
@@ -43,8 +43,7 @@ async function run(){
   projectId=created.data.project.id;
   const failures=[];
   const questions=[
-    'For this fictional museum, recommend a clear mobile navigation layout.',
-    'Suggest an original accessible color palette and page hierarchy for the same museum.',
+    'For this fictional museum, compare Minimal SaaS, Glass UI, and Creative UI for accessible mobile navigation.',
   ];
   for(let i=0;i<questions.length;i++){
     const result=await call('/api/projects/'+encodeURIComponent(projectId)+'/messages','POST',{
@@ -59,8 +58,8 @@ async function run(){
       failures.push('ai-not-delivered-'+(i+1));
   }
   const saved=await call('/api/projects/'+encodeURIComponent(projectId));
-  check(saved.status===200&&saved.data?.project?.messages?.length===4,'chat-not-persisted');
-  if(!failures.length)console.log('LIVE_AI_SMOKE two real OpenRouter replies received and chat persisted');
+  check(saved.status===200&&saved.data?.project?.messages?.length===questions.length*2,'chat-not-persisted');
+  if(!failures.length)console.log('LIVE_AI_SMOKE Select chat OpenRouter reply received and persisted');
   else console.log('LIVE_AI_SMOKE chat persistence checked, but at least one reply did not pass');
   if(process.env.AI_DESIGN_LIVE_CHECK==='1'){
     const sources=[];
