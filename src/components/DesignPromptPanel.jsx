@@ -18,7 +18,7 @@ export default function DesignPromptPanel({project,mode,styles,api,notice}){
         method:'POST',body:JSON.stringify({mode,styles,refinement})
       });
       setResult(response);
-      notice(response.source==='ai'?'AI design prompt generated.':'Design specification ready using the offline engine.');
+      notice(response.source==='ai'?'AI-enhanced design specification ready.':'Complete structured design specification ready.');
     }catch(error){notice('Could not create your design prompt: '+error.message)}
     finally{setBusy(false)}
   };
@@ -54,12 +54,12 @@ export default function DesignPromptPanel({project,mode,styles,api,notice}){
     {result&&<div className="di-result">
       <div className="di-result-header">
         <strong>{fusion?'Original Design Fusion prompt':'Original Generate UI/UX prompt'}</strong>
-        <small>{result.source==='ai'?'AI-generated using '+result.provider:'Structured offline specification'} · {styles.length} selected styles</small>
+        <small>{result.source==='ai'?'Structured + AI creative refinements via '+result.provider:'Complete structured specification'} · {styles.length} selected styles</small>
       </div>
       <pre tabIndex={0} aria-label="Complete generated copyable UI/UX design prompt">{result.prompt}</pre>
       {result.review&&<p className="di-coverage" role="status">{result.review.usedFallback
-        ?'Quality gate: the available AI draft was incomplete, so the full structured specification was used.'
-        :'Quality gate: required prompt sections present ('+Object.values(result.review.checks).filter(Boolean).length+' checks).'} This checks section coverage, not real-world usability.</p>}
+        ?'Complete structured specification preserved; AI refinement was unavailable or did not pass validation.'
+        :'Quality gate: full specification validated and original AI refinements added ('+Object.values(result.review.checks).filter(Boolean).length+' coverage checks).'} This checks section coverage, not real-world usability.</p>}
       <p>Prompt only: no application code or working site has been generated. Referenced sites contribute curated metadata, not copied visual layouts.</p>
     </div>}
   </section>;
