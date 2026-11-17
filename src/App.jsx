@@ -212,12 +212,22 @@ function App(){
   };
   const saveLearning=async changes=>{
     if(preferencesBusy)return;
+    const previous=profile;
+    // Controlled fields must respond immediately, not snap back while the
+    // server saves. If the request fails, restore the last verified profile.
+    setProfile(current=>({
+      ...current,
+      styleWeights:{...(current.styleWeights||{}),...(changes.styleWeights||{})},
+      personalization:{...(current.personalization||{enabled:true}),
+        ...Object.fromEntries(Object.entries(changes).filter(([key])=>key!=='styleWeights'))},
+      globalOptIn:changes.enabled===false?false:current.globalOptIn,
+    }));
     setPreferencesBusy(true);
     try{
       const r=await api('/api/preferences',{method:'PUT',body:JSON.stringify(changes)});
       setProfile(r.profile);setPreferenceEvidence(r.evidence||[]);
       notice('Your private design preferences were updated.');
-    }catch(error){notice(error.message)}
+    }catch(error){setProfile(previous);notice(error.message)}
     finally{setPreferencesBusy(false)}
   };
   const resetLearning=async()=>{
