@@ -5,6 +5,8 @@ import TechText from './components/TechText.jsx';
 import StarBorder from './components/StarBorder.jsx';
 import FrontlineLanding from './components/FrontlineLanding.jsx';
 import FrontlineLogin from './components/FrontlineLogin.jsx';
+import FrontlineAccount from './components/FrontlineAccount.jsx';
+import FrontlineProjectLibrary from './components/FrontlineProjectLibrary.jsx';
 import FrontlineDomePortal from './components/FrontlineDomePortal.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
@@ -48,6 +50,12 @@ function App(){
   const [composerClearance,setComposerClearance]=useState(138);
   const [config,setConfig]=useState({aiEnabled:false,persistent:false});
   const [authState,setAuthState]=useState({googleEnabled:false,authenticated:false,user:null});
+  const [workspaceOverview,setWorkspaceOverview]=useState(null);
+  const [nextProjectOffset,setNextProjectOffset]=useState(null);
+  const [workspaceSyncing,setWorkspaceSyncing]=useState(false);
+  const [workspaceLoadingMore,setWorkspaceLoadingMore]=useState(false);
+  const [workspaceExporting,setWorkspaceExporting]=useState(false);
+  const [lastSynced,setLastSynced]=useState(null);
   const [selected,setSelected]=useState(styleKeys);
   const [working,setWorking]=useState(false);
   const [toast,setToast]=useState('');
@@ -87,11 +95,15 @@ function App(){
   useEffect(()=>{
     Promise.allSettled([
       api('/api/catalog').then(setCatalog),
-      api('/api/projects').then(v=>setProjects(v.projects||[])),
+      api('/api/projects').then(v=>{setProjects(v.projects||[]);setNextProjectOffset(v.nextOffset??null);}),
       api('/api/profile').then(setProfile),
       api('/api/config').then(setConfig),
-      api('/api/auth/me').then(setAuthState)
-    ]).then(results=>{if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded.');});
+      api('/api/auth/me').then(setAuthState),
+      api('/api/workspace/overview').then(setWorkspaceOverview)
+    ]).then(results=>{
+      if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded. Open Account to refresh.');
+      else setLastSynced(Date.now());
+    });
     return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);clearTimeout(gateTimer.current);};
   },[]);
   // Only tick while a user-visible, rate-limited retry button is cooling down.
@@ -158,6 +170,54 @@ function App(){
       await api('/api/auth/logout',{method:'POST',body:'{}'});
       window.location.assign('/login');
     }catch(error){notice(error.message);}
+  };
+  const refreshWorkspace=async()=>{
+    if(workspaceSyncing)return;
+    setWorkspaceSyncing(true);
+    try{
+      const [me,history,preferences,summary]=await Promise.all([
+        api('/api/auth/me'),api('/api/projects'),api('/api/preferences'),
+        api('/api/workspace/overview')
+      ]);
+      setAuthState(me);
+      setProjects(history.projects||[]);
+      setNextProjectOffset(history.nextOffset??null);
+      setProfile(preferences.profile);
+      setPreferenceEvidence(preferences.evidence||[]);
+      setWorkspaceOverview(summary);
+      setLastSynced(Date.now());
+      notice('Your private workspace is up to date.');
+    }catch(error){notice('Workspace refresh failed: '+error.message);}
+    finally{setWorkspaceSyncing(false);}
+  };
+  const loadEarlierProjects=async()=>{
+    if(nextProjectOffset===null||workspaceLoadingMore)return;
+    setWorkspaceLoadingMore(true);
+    try{
+      const history=await api('/api/projects?offset='+nextProjectOffset);
+      setProjects(previous=>{
+        const found=new Set(previous.map(p=>p.id));
+        return [...previous,...(history.projects||[]).filter(p=>!found.has(p.id))];
+      });
+      setNextProjectOffset(history.nextOffset??null);
+    }catch(error){notice('Earlier projects could not be loaded: '+error.message);}
+    finally{setWorkspaceLoadingMore(false);}
+  };
+  const exportWorkspace=async()=>{
+    if(workspaceExporting)return;
+    setWorkspaceExporting(true);
+    try{
+      const archive=await api('/api/workspace/export');
+      const file=new Blob([JSON.stringify(archive,null,2)],{type:'application/json'});
+      const url=URL.createObjectURL(file);
+      const anchor=document.createElement('a');
+      anchor.href=url;
+      anchor.download='frontline-private-data-'+new Date().toISOString().slice(0,10)+'.json';
+      document.body.appendChild(anchor);anchor.click();anchor.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),2000);
+      notice('Your private Frontline data export is ready.');
+    }catch(error){notice('Data export failed: '+error.message);}
+    finally{setWorkspaceExporting(false);}
   };
   const retryGuestSync=async()=>{
     try{
@@ -299,7 +359,10 @@ function App(){
     if(!window.confirm('Delete all your saved projects, history, and preferences? This cannot be undone.'))return;
     try{
       await api('/api/profile',{method:'DELETE'});
-      setProjects([]);setProfile({styleWeights:{},globalOptIn:false,personalization:{enabled:true}});setPreferenceEvidence([]);newChat();notice('Your workspace data has been deleted.');
+      setProjects([]);setNextProjectOffset(null);
+      setWorkspaceOverview({projectCount:0,inspirationCount:0,promptCount:0,feedbackCount:0,lastUpdatedAt:null});
+      setProfile({styleWeights:{},globalOptIn:false,personalization:{enabled:true}});
+      setPreferenceEvidence([]);newChat();notice('Your private workspace data has been deleted.');
     }catch(e){notice(e.message);}
   };
   const filteredProjects=projects.filter(p=>(String(p.title||'')+' '+String(p.brief||'')).toLowerCase().includes(historyQuery.trim().toLowerCase()));
@@ -307,7 +370,7 @@ function App(){
   const references=(catalog.references||[]).filter(x=>(x.name+' '+x.category+' '+x.tags.join(' ')).toLowerCase().includes(search.toLowerCase()));
   const showMenu=next=>{setPanel(next);setMenuOpen(true);};
   const sendPreset=text=>{setBrief(text);focusChat();setTimeout(()=>textareaRef.current?.focus(),100);};
-  const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
+  const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='account'?'Your account':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
   const enterLandingMode=key=>{setDesignMode(key);if(key==='fusion')setSelected(styleKeys);focusChat();};
 
   return <div style={{'--chat-clearance':composerClearance+'px'}} className={'app '+(active?'in-chat':mode==='login'?'in-login':'in-welcome')+(isLanding&&landingFrame>0?' exploring':'')+(isLanding&&landingFrame===4?' story-end':'')+(isLanding?' portal-'+portalState:'')+(gatePhase==='reveal-studio'?' studio-arriving':'')}>
@@ -469,15 +532,16 @@ function App(){
           <button className="nav-primary" onClick={newChat}><Plus size={17}/> New conversation <ArrowUp size={15}/></button>
           {projects.length>0&&<button className="nav-resume" onClick={()=>openProject(projects[0])}><Layers3 size={17}/> Continue recent conversation <ChevronRight size={15}/></button>}
           <button onClick={()=>setPanel('tools')}><Sparkles size={17}/> Select / Generate / Fusion <ChevronRight size={15}/></button>
-          <button onClick={()=>{setPanel('projects');api('/api/projects').then(v=>setProjects(v.projects||[])).catch(e=>notice(e.message));}}><Layers3 size={17}/> My conversations <ChevronRight size={15}/></button>
+          <button onClick={()=>{setPanel('projects');refreshWorkspace();}}><Layers3 size={17}/> My projects & conversations <ChevronRight size={15}/></button>
           <button onClick={()=>setPanel('references')}><Search size={17}/> UI/UX inspiration library <ChevronRight size={15}/></button>
           <button onClick={openLearning}><ShieldCheck size={17}/> Learning & privacy <ChevronRight size={15}/></button>
           <div className="menu-bottom">
             <p className="menu-eyebrow">ACCOUNT</p>
-            {authState.authenticated?<>
-              <p className="menu-fineprint">Signed in securely as {authState.user?.email||'your Google account'}. Your synced designs are private to your account.</p>
-              <button onClick={signOut}><ShieldCheck size={17}/> Sign out of Google account</button>
-            </>:<button onClick={()=>{setMenuOpen(false);enterGateway('login')}}>
+            <button onClick={()=>setPanel('account')}><ShieldCheck size={17}/>
+              {authState.authenticated?'My Google account':'Guest account & privacy'} <ChevronRight size={15}/>
+            </button>
+            {authState.authenticated?<p className="menu-fineprint">Connected as {authState.user?.email||'Google account'} · private cross-device projects</p>
+            :<button onClick={()=>{setMenuOpen(false);enterGateway('login')}}>
               <ShieldCheck size={17}/> Sign in to sync designs <ChevronRight size={15}/>
             </button>}
             <p className="menu-eyebrow">APPEARANCE</p>
@@ -499,9 +563,17 @@ function App(){
           {project&&<button className="menu-copy" onClick={()=>{setMenuOpen(false);copyPrompt();}}><Copy size={16}/> Copy selected design build prompt</button>}
         </div>}
         {panel==='projects'&&<div className="menu-subcontent">
-          <p className="menu-intro">Continue an earlier design conversation in this browser.</p>
-          {projects.length>0&&<label className="search-box"><Search size={15}/><input aria-label="Search saved conversations" value={historyQuery} onChange={e=>setHistoryQuery(e.target.value)} placeholder="Search saved conversations"/></label>}
-          {projects.length===0?<p className="empty-panel">No conversations yet. Describe an idea to start one.</p>:filteredProjects.length===0?<p className="empty-panel">No matching conversations. Try a different search.</p>:filteredProjects.map(p=><button className="history-item" key={p.id} onClick={()=>openProject(p)}><span>{p.title}</span><small>{new Date(p.createdAt).toLocaleDateString()}</small><ChevronRight size={14}/></button>)}
+          <FrontlineProjectLibrary projects={projects} overview={workspaceOverview}
+            account={authState.authenticated} query={historyQuery} onQuery={setHistoryQuery}
+            onOpen={openProject} onRefresh={refreshWorkspace} onLoadMore={loadEarlierProjects}
+            nextOffset={nextProjectOffset} loading={workspaceSyncing} moreBusy={workspaceLoadingMore}/>
+        </div>}
+        {panel==='account'&&<div className="menu-subcontent">
+          <FrontlineAccount auth={authState} overview={workspaceOverview}
+            loading={workspaceSyncing} lastSynced={lastSynced} onRefresh={refreshWorkspace}
+            onExport={exportWorkspace} exportBusy={workspaceExporting}
+            onSignOut={signOut} onSignIn={()=>{setMenuOpen(false);enterGateway('login')}}
+            onLearn={openLearning} onClaim={retryGuestSync}/>
         </div>}
         {panel==='references'&&<div className="menu-subcontent">
           <p className="menu-intro">Explore credited reference sites. Patterns inspire original results, not exact reproductions.</p>
@@ -514,7 +586,10 @@ function App(){
             onChange={saveLearning} onClear={resetLearning}/>
           <label className="opt-in"><input type="checkbox" checked={profile.globalOptIn===true}
           disabled={preferencesBusy||profile.personalization?.enabled===false} onChange={saveOptIn}/><span><strong>Contribute anonymous patterns</strong><small>Opt in to privacy-safe aggregated feedback, never raw private chats.</small></span></label>
-          <button className="danger-action" onClick={eraseEverything}>Delete all my projects and preferences</button>
+          <button type="button" className="menu-copy" onClick={exportWorkspace} disabled={workspaceExporting}>
+            <Copy size={16}/> {workspaceExporting?'Preparing archive…':'Download all my private data (JSON)'}
+          </button>
+          <button className="danger-action" onClick={eraseEverything}>Delete all my projects, chats and preferences</button>
         </div>}
       </aside>
     </div>}
