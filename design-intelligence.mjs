@@ -96,7 +96,7 @@ export function deterministicDesignPrompt(input){
     '',
     isFusion?'FUSION STRATEGY, STYLE PRIORITIES & TRADEOFFS':'THREE ORIGINAL DESIGN DIRECTIONS & TRADEOFFS',
     isFusion?
-      'Produce ONE cohesive direction, not three disjoint sections. '+b.fusion.rationale+' Complement with '+(b.fusion.supporting.join(', ')||'no other style')+'. Avoid visual clutter, conflicting color tokens, and heavy motion.':
+      'Produce ONE cohesive result from the selected directions, not three disjoint sections. '+b.fusion.rationale+' Complement with '+(b.fusion.supporting.join(', ')||'no other style')+'. Avoid visual clutter, conflicting color tokens, and heavy motion.':
       'Compare the three alternative directions and recommend ONE as the strongest fit, explaining how project-specific usability and accessibility affect the choice.',
     '',
     directions,
