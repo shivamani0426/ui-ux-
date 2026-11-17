@@ -281,10 +281,31 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.locator('.composer-position.docked textarea').waitFor({timeout:8500});
       assert.equal(new URL(page.url()).pathname,'/studio','Studio refresh should preserve its URL');
       await page.getByRole('button',{name:'Open navigation menu'}).click();
-      await page.getByRole('button',{name:/My conversations/i}).click();
-      await page.locator('.history-item').first().click();
+      await page.getByRole('button',{name:/My projects & conversations/i}).click();
+      await page.locator('.fl-project-library').waitFor({timeout:7000});
+      assert.ok(await page.locator('.fl-project-card').count()>=1,
+        'Private design archive must list saved projects');
+      await page.getByRole('combobox',{name:'Sort projects'}).selectOption('alphabetical');
+      await page.getByRole('combobox',{name:'Filter projects'}).selectOption('all');
+      await page.getByRole('textbox',{name:'Search saved conversations'}).fill('no-match-testing-title');
+      await page.getByText('No matching designs').waitFor();
+      await page.getByRole('textbox',{name:'Search saved conversations'}).fill('');
+      await page.locator('.fl-project-card').first().click();
       await page.locator('.inspiration-save.selected').first().waitFor({timeout:10000});
       assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Inspiration pick should survive refresh');
+    }
+    if(!remote){
+      await page.getByRole('button',{name:'Open navigation menu'}).click();
+      await page.getByRole('button',{name:/Guest account & privacy/i}).click();
+      await page.locator('.fl-account-root').waitFor({timeout:7000});
+      assert.ok((await page.locator('.fl-account-stat').count())===4,
+        'Account dashboard must show saved work, prompts, inspirations and feedback');
+      const downloadPromise=page.waitForEvent('download');
+      await page.getByRole('button',{name:/Download my private data/i}).click();
+      const archive=await downloadPromise;
+      assert.match(archive.suggestedFilename(),/frontline-private-data-\d{4}-\d{2}-\d{2}\.json/);
+      await page.screenshot({path:'browser-artifacts/'+name+'-personal-account-dashboard.png',fullPage:false});
+      await page.getByRole('button',{name:'Close menu'}).click();
     }
     assert.equal(await page.locator('.pi-panel').count(),1,'Project Intelligence must render once, not repeat');
     assert.equal(await page.locator('.pi-comparisons').count(),1,'Comparison must render once');
