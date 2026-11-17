@@ -396,6 +396,7 @@ function App(){
         {panel==='menu'&&<div className="menu-group">
           <p className="menu-eyebrow">DESIGN WORKSPACE</p>
           <button className="nav-primary" onClick={newChat}><Plus size={17}/> New conversation <ArrowUp size={15}/></button>
+          {projects.length>0&&<button className="nav-resume" onClick={()=>openProject(projects[0])}><Layers3 size={17}/> Continue recent conversation <ChevronRight size={15}/></button>}
           <button onClick={()=>setPanel('tools')}><Sparkles size={17}/> Select / Generate / Fusion <ChevronRight size={15}/></button>
           <button onClick={()=>{setPanel('projects');api('/api/projects').then(v=>setProjects(v.projects||[])).catch(e=>notice(e.message));}}><Layers3 size={17}/> My conversations <ChevronRight size={15}/></button>
           <button onClick={()=>setPanel('references')}><Search size={17}/> UI/UX inspiration library <ChevronRight size={15}/></button>
