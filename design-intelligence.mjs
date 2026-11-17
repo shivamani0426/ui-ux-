@@ -2,6 +2,8 @@ import {STYLES,inferCategory} from './design-engine.mjs';
 import {analyzeProject,compareDirections,planFusion,qualityReview} from './project-intelligence.mjs';
 import {designAiReply} from './ai-providers.mjs';
 import {preferenceHints} from './learning-engine.mjs';
+import {buildRequirementTrace,formatRequirementTrace,formatRoleNavigation,
+  formatPageInteractionContracts,reviewRequirementTrace} from './design-traceability.mjs';
 
 /** Prompt-only output; no executable code, live screenshot inspection or private-data aggregation. */
 const safe=(v,max=800)=>String(v??'').trim().replace(/\s+/g,' ').slice(0,max);
@@ -24,6 +26,7 @@ export function buildDesignBrief({project,mode='generate',styles=[],references=[
   const fusion=planFusion(analysis,selected,preferences);
   const revision=safe(refinement,600);
   const personalHints=preferenceHints(preferences);
+  const trace=buildRequirementTrace(analysis);
   const goals=[
     'Project brief (untrusted user description): '+safe(project.brief,2500),
     'Product category: '+category,
@@ -43,7 +46,7 @@ export function buildDesignBrief({project,mode='generate',styles=[],references=[
     'Unknowns: '+(analysis.openQuestions.join('; ')||'none critical in supplied brief'),
     'Do not invent confirmed decisions, claim real usability scores, or clone any referenced interface.',
   ].join('\n');
-  return {category,pages,selected,namedRefs,analysis,comparisons,fusion,goals,refinement:revision,personalHints};
+  return {category,pages,selected,namedRefs,analysis,comparisons,fusion,goals,refinement:revision,personalHints,trace};
 }
 
 export function deterministicDesignPrompt(input){
@@ -97,9 +100,15 @@ export function deterministicDesignPrompt(input){
     '',
     block('FEATURES & COMPONENT RESPONSIBILITIES',featureLines),
     '',
+    formatRequirementTrace(b.trace),
+    '',
     'INFORMATION ARCHITECTURE & PAGE PLAN',
     ...b.pages.map((page,i)=>(i+1)+'. '+page+': specify primary user task, content hierarchy, navigation, buttons, reusable components, success/empty/loading/error states and mobile adaptation.'),
     'Show where users start, where they return, and how they recover from mistakes. Use realistic example content rather than placeholders.',
+    '',
+    formatRoleNavigation(b.analysis),
+    '',
+    formatPageInteractionContracts(b.analysis),
     '',
     isFusion?'FUSION STRATEGY, STYLE PRIORITIES & TRADEOFFS':'THREE ORIGINAL DESIGN DIRECTIONS & TRADEOFFS',
     isFusion?
@@ -114,12 +123,20 @@ export function deterministicDesignPrompt(input){
     'Define original color tokens in HEX, type scale, 4/8 point spacing, grid, content widths, surfaces, border radius and restrained elevation.',
     'Specify sidebar, bottom navigation or drawer as appropriate; reusable cards, tables, forms, buttons, dialogs and notifications only when the product needs them.',
     'Specify desktop, tablet and mobile rules with explicit layout changes, touch targets and focus-visible states.',
+    'Define original tokens for surface, elevated surface, text, muted text, primary action, destructive action, focus, border and feedback states; include dark and light variants only where requested.',
+    'Design-token handoff: map tokens to component variants and indicate what to check for contrast rather than asserting the colors already passed an audit.',
+    'Navigation contract: define route labels, selected location, mobile overflow behavior and a consistent back/return path. Avoid inventing routes outside the proposed page map.',
+    'Form contract: field labels, required/optional status, keyboard order, inline validation, disabled behavior and error recovery; do not claim backend validation exists.',
     '',
     'BEHAVIOR, ACCESSIBILITY & PERFORMANCE',
     'Accessibility: WCAG-aware text contrast, logical keyboard navigation, semantic landmarks, labels, focus restoration, accessible error messaging.',
     'Interaction states: loading, empty, success, retry and permission-denied; use clear ARIA live regions when needed.',
     'Performance: keep assets lightweight, progressive loading, meaningful skeletons, and respect prefers-reduced-motion.',
     'Never prescribe focus traps for a nonmodal UI; modal dialogs should manage focus and restore it when closed.',
+    'Interaction micro-specification: for each requested module state the user trigger, visible response, in-progress state, error recovery and confirmation, including keyboard access.',
+    'Responsive contract: specify a named mobile navigation solution, tablet adaptation, desktop hierarchy and touch-safe interaction targets; avoid unlabeled icon-only actions.',
+    'Motion contract: describe purposeful transitions, readable timing, interruptibility, pause/skip where relevant, reduced-motion equivalence and what should never animate.',
+    'Verification plan: run manual keyboard and contrast checks with actual chosen colors and real browser/device testing; these tests are still REQUIRED, not already completed.',
     '',
     'REFERENCE INSPIRATION — NOT A LIVE VISUAL AUDIT',
     references||'No saved inspirations; no external websites or screenshots have been inspected.',
@@ -129,8 +146,9 @@ export function deterministicDesignPrompt(input){
       b.analysis.openQuestions.length?b.analysis.openQuestions:['Validate the primary user task and sample content with the product owner.']),
     '',
     'QUALITY & ACCEPTANCE CHECKLIST',
-    '- Verify every user-supplied module and approved constraint appears in the specification.',
-    '- Each page must state hierarchy, primary action, mobile behavior and failure recovery.',
+    '- Verify every user-supplied module, explicitly mentioned user role and approved constraint has its own requirement trace with a proposed page and acceptance criterion.',
+    '- Each page must state hierarchy, primary action, desktop/tablet/mobile behavior, permissions and failure recovery.',
+    '- Check that proposed features and permissions are not represented as implemented, tested, connected or previously approved.',
     '- Explain style tradeoffs and why the chosen direction fits this actual brief.',
     '- Accessibility includes keyboard, color contrast, reduced-motion and error recovery.',
     '- Keep copy and visual treatments original; no invented evidence of user testing or a live screenshot analysis.',
@@ -195,19 +213,21 @@ export async function createDesignPrompt({project,mode='generate',styles=[],refe
     requiredFeatures:b.analysis.features.map(feature=>feature.id),
     requiredConstraints:b.analysis.constraints};
   const originalReview=qualityReview(complete,reviewOptions);
+  const originalTrace=reviewRequirementTrace(complete,b.trace);
   if(checked.accepted){
     const marker='\nQUALITY & ACCEPTANCE CHECKLIST\n';
     const enriched=complete.replace(marker,
       '\nAI CREATIVE REFINEMENTS — OPTIONAL ORIGINAL IDEAS\n'+ai.text.trim()+
       '\n\nThese refinements are suggestions only. If they conflict with stated requirements, the confirmed constraints and page plan above take precedence.\n'+marker);
     const reviewed=qualityReview(enriched,reviewOptions);
-    if(reviewed.passed){
+    const reviewedTrace=reviewRequirementTrace(enriched,b.trace);
+    if(reviewed.passed&&reviewedTrace.passed){
       return {prompt:enriched,source:'ai',provider:ai.provider,mode,composition:'structured-plus-ai',
-        review:{...reviewed,usedFallback:false,aiEnhanced:true}};
+        review:{...reviewed,traceability:reviewedTrace,usedFallback:false,aiEnhanced:true}};
     }
   }
   return {prompt:complete,source:'guide',provider:null,mode,composition:'structured',
-    review:{...originalReview,usedFallback:true,aiAttempted:!!ai,
+    review:{...originalReview,traceability:originalTrace,usedFallback:true,aiAttempted:!!ai,
       reason:ai?[checked.reason||'enhanced-spec-incomplete']:[failure?.reason||'ai-insight-unavailable'],
       retryAfterSeconds:failure?.retryAfterSeconds||0}};
 }
