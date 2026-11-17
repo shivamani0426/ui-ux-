@@ -37,13 +37,7 @@ export default function DesignPromptPanel({project,mode,styles,api,notice}){
       </div>
       <span className="di-symbol" aria-hidden="true">{fusion?<Layers3 size={23}/>:<Sparkles size={23}/>}</span>
     </div>
-    <label className="di-refine">
-      <span>Optional refinement</span>
-      <textarea rows={2} maxLength={600} value={refinement}
-        onChange={e=>setRefinement(e.target.value)}
-        placeholder="Example: Prioritize mobile students, dark surfaces and accessible navigation…"
-        aria-label="Additional design prompt requirements"/>
-    </label>
+    <p className="di-start-hint">Ready to generate a full copyable specification. You can optionally refine it below.</p>
     <div className="di-actions">
       <button type="button" className="di-primary" onClick={generate} disabled={busy||!styles.length}>
         {busy?<RefreshCcw size={16} className="spin"/>:fusion?<Layers3 size={16}/>:<Sparkles size={16}/>}
@@ -51,6 +45,14 @@ export default function DesignPromptPanel({project,mode,styles,api,notice}){
       </button>
       {result&&<button type="button" className="di-copy" onClick={copy}><Copy size={15}/> Copy full prompt</button>}
     </div>
+    <label className="di-refine">
+      <span>Optional refinement (not required)</span>
+      <textarea rows={2} maxLength={600} value={refinement}
+        onChange={e=>setRefinement(e.target.value)}
+        placeholder="Example: Prioritize mobile students, dark surfaces and accessible navigation…"
+        aria-label="Additional design prompt requirements"/>
+    </label>
+
     {result&&<div className="di-result">
       <div className="di-result-header">
         <strong>{fusion?'Original Design Fusion prompt':'Original Generate UI/UX prompt'}</strong>
