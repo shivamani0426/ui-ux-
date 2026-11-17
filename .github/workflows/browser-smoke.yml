@@ -23,6 +23,7 @@ jobs:
       - name: Verify frontend in real browsers
         run: NODE_ENV=test node tests/browser.e2e.mjs
       - name: Wait for exact GitHub commit on Render (no stale deploys)
+        id: release_gate
         if: github.event_name == 'push'
         env:
           EXPECTED_COMMIT_SHA: ${{ github.sha }}
@@ -35,7 +36,9 @@ jobs:
           EXPECTED_COMMIT_SHA: ${{ github.sha }}
         run: node tests/live-ai-smoke.mjs
       - name: Verify live Render site in real browsers
-        if: github.event_name == 'push'
+        # External-model outages must not prevent independent UI regression.
+        # The job stays red if the model diagnostic failed; do NOT hide it.
+        if: ${{ always() && github.event_name == 'push' && steps.release_gate.outcome == 'success' }}
         env:
           TARGET_URL: https://ui-compass-studio.onrender.com
         run: NODE_ENV=test node tests/browser.e2e.mjs
