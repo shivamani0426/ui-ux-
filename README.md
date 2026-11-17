@@ -123,3 +123,8 @@ To keep OpenRouter as the only live provider: AI_PRIMARY_PROVIDER=openrouter, OP
 
 ### Limitations
 Brief extraction is a rule-based baseline, not verified comprehension. Missing details must be confirmed. AI responses are nondeterministic and free-model availability can change. Prompt section checks are safeguards, not proof of correctness or a live-device usability/accessibility audit. Authentication, live website screenshot analysis and running-app generation remain out of scope.
+
+
+### Milestone 06 reliability refinement
+
+The complete Generate/Fusion specification is always assembled from explicit project requirements, user-visible design heuristics, page maps and acceptance criteria. OpenRouter is now asked for a **short original creative layer** rather than a multi-thousand-token specification. Only project-relevant, prompt-only insights that pass screening are appended as optional refinements. The UI labels this as a structured specification with AI enhancements; it does not imply that the model authored every section. If the free route times out, the full local specification remains available and honestly labeled. This keeps OpenRouter as the sole live provider, without additional keys or database migrations.
