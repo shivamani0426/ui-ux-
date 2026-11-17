@@ -84,3 +84,30 @@
   .fl-blackhole-transition.is-expanding .fl-blackhole-disc,.fl-blackhole-transition.is-revealing,
   .app.studio-arriving .conversation,.app.studio-arriving .composer-position.docked{animation-duration:.01ms!important}
 }
+
+/* The former spiral chat birth is now an invitation to enter. The existing
+   progress variable (owned by the landing engine) still controls its reveal. */
+.fl-landing-gateway{position:fixed;z-index:35;left:50%;top:55svh;width:min(560px,calc(100vw - 34px));
+  opacity:var(--fl-compose-reveal,0);transform:translate3d(-50%,-50%,0) scale(calc(.035 + var(--fl-compose-reveal,0) * .965));
+  transform-origin:center;pointer-events:none;transition:none!important}
+.fl-landing-gateway.is-ready{pointer-events:auto}
+.fl-gateway-star.star-border{display:block;width:100%;padding:2px;border-radius:26px!important;
+  border:1px solid rgba(229,175,110,.68);box-shadow:0 0 35px rgba(205,130,70,.27),0 25px 76px rgba(64,35,28,.22)}
+.fl-gateway-content{border-radius:24px;background:rgba(255,248,236,.98);padding:25px 29px 20px;color:#493127;box-shadow:inset 0 1px rgba(255,255,255,.88)}
+.fl-gateway-kicker{display:flex;align-items:center;justify-content:center;gap:11px;color:#8c5a39;font:800 10px/1.5 Manrope,sans-serif;letter-spacing:.19em}
+.fl-gateway-actions{display:grid;grid-template-columns:1.3fr .8fr;gap:11px;margin:21px 0 14px}
+.fl-gateway-actions button{min-height:54px;border-radius:14px;padding:13px 17px;display:flex;align-items:center;justify-content:space-between;
+  font:800 13px/1.25 Manrope,sans-serif;transition:transform .24s,background .24s,box-shadow .24s}
+.fl-gateway-primary{color:#fff1dc;background:#3c2a28;border:1px solid #48302c}
+.fl-gateway-primary:hover{background:#674330;transform:translateY(-2px);box-shadow:0 10px 22px rgba(84,51,31,.22)}
+.fl-gateway-secondary{color:#5c3b2a;background:#f5e7d4;border:1px solid rgba(144,98,61,.28)}
+.fl-gateway-secondary:hover{background:#ead4b7;transform:translateY(-2px)}
+.fl-gateway-content>p{font:500 10px/1.7 'DM Sans',sans-serif;text-align:center;color:#876d5c;margin:0}
+@media(max-width:600px){
+ .fl-landing-gateway{top:58svh;width:calc(100vw - 24px)}
+ .fl-gateway-content{padding:20px 18px 16px;border-radius:20px}
+ .fl-gateway-kicker{font-size:8px;letter-spacing:.11em}
+ .fl-gateway-actions{grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}
+ .fl-gateway-actions button{font-size:11px;min-height:50px;padding:12px}
+ .fl-gateway-content>p{font-size:9px}
+}
