@@ -4,6 +4,7 @@ import {ArrowUp, Check, CheckCheck, ChevronLeft, ChevronRight, Copy, ExternalLin
 import TechText from './components/TechText.jsx';
 import StarBorder from './components/StarBorder.jsx';
 import FrontlineLanding from './components/FrontlineLanding.jsx';
+import FrontlineLogin from './components/FrontlineLogin.jsx';
 import FrontlineDomePortal from './components/FrontlineDomePortal.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
@@ -34,7 +35,7 @@ function App(){
   const [theme,setTheme]=useState(()=>safeRead('uic-theme','dark')==='dark'?'dark':'light');
   const [menuOpen,setMenuOpen]=useState(false);
   const [panel,setPanel]=useState('menu');
-  const [mode,setMode]=useState('welcome');
+  const [mode,setMode]=useState(()=>location.pathname==='/login'?'login':location.pathname==='/studio'?'chat':'welcome');
   const [brief,setBrief]=useState('');
   const [project,setProject]=useState(null);
   const [messages,setMessages]=useState([]);
@@ -60,12 +61,23 @@ function App(){
   const [landingFrame,setLandingFrame]=useState(0);
   const [landingComposerReady,setLandingComposerReady]=useState(false);
   const [portalState,setPortalState]=useState('idle');
-  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null),composerDockRef=useRef(null);
+  const [gatePhase,setGatePhase]=useState('');
+  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null),composerDockRef=useRef(null),gateTimer=useRef(null);
 
   const notice=(message)=>{
     setToast(message);clearTimeout(toastTimer.current);
     toastTimer.current=setTimeout(()=>setToast(''),3800);
   };
+  useEffect(()=>{
+    const onHistory=()=>{
+      clearTimeout(gateTimer.current);setGatePhase('');
+      const path=window.location.pathname;
+      setMode(path==='/login'?'login':path==='/studio'?'chat':'welcome');
+      if(path!='/login'&&path!='/studio')setPortalState('done');
+    };
+    window.addEventListener('popstate',onHistory);
+    return ()=>window.removeEventListener('popstate',onHistory);
+  },[]);
   useEffect(()=>{
     document.documentElement.setAttribute('data-theme',theme);
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#261e23':'#f7f0e4');
@@ -78,7 +90,7 @@ function App(){
       api('/api/profile').then(setProfile),
       api('/api/config').then(setConfig)
     ]).then(results=>{if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded.');});
-    return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);};
+    return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);clearTimeout(gateTimer.current);};
   },[]);
   // Only tick while a user-visible, rate-limited retry button is cooling down.
   // This does not make network requests or persist any API credentials.
@@ -112,7 +124,7 @@ function App(){
   // The pre-landing portal locks scrolling only until the inside-out reveal ends.
   // It doesn't change saved projects, user preferences, the studio or any APIs.
   useEffect(()=>{
-    if(mode==='chat'||portalState==='done')return;
+    if(mode!=='welcome'||portalState==='done')return;
     const oldHTML=document.documentElement.style.overflow;
     const oldBody=document.body.style.overflow;
     document.documentElement.style.overflow='hidden';
@@ -136,9 +148,31 @@ function App(){
   };
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth',block:'end'});},[messages,working,viewPreview]);
   const active=mode==='chat';
+  const isLanding=mode==='welcome';
+  const routeTo=path=>{if(window.location.pathname!==path)window.history.pushState({},'',path);};
+  // Animate one composited portal, then reveal the destination. Authentication
+  // is intentionally not simulated; the studio entry remains a genuine guest mode.
+  const enterGateway=destination=>{
+    if(gatePhase)return;
+    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    setGatePhase('expand-'+destination);
+    clearTimeout(gateTimer.current);
+    gateTimer.current=setTimeout(()=>{
+      setMode(destination==='login'?'login':'chat');
+      routeTo(destination==='login'?'/login':'/studio');
+      window.scrollTo({top:0,behavior:'instant'});
+      setGatePhase('reveal-'+destination);
+      gateTimer.current=setTimeout(()=>setGatePhase(''),reduced?20:760);
+    },reduced?20:1050);
+  };
+  const backToStory=()=>{
+    clearTimeout(gateTimer.current);setGatePhase('');setMode('welcome');setPortalState('done');
+    routeTo('/');
+    setTimeout(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight),behavior:'instant'}),70);
+  };
   const focusChat=()=>{
     if(!active){
-      setMode('chat');setRise(false);
+      setMode('chat');setRise(false);routeTo('/studio');
       window.scrollTo({top:0,behavior:'instant'});
     }
   };
@@ -169,7 +203,7 @@ function App(){
     }finally{setWorking(false);}
   };
   const newChat=()=>{
-    setProject(null);setMessages([]);setBrief('');setSelected(styleKeys);setMode('welcome');setPanel('menu');
+    setProject(null);setMessages([]);setBrief('');setSelected(styleKeys);setMode('welcome');setPanel('menu');routeTo('/');
     setMenuOpen(false);setViewPreview(false);setFeedback('');setRise(false);setLandingFrame(0);setLandingComposerReady(false);
     window.scrollTo({top:0,behavior:'smooth'});
     setTimeout(()=>textareaRef.current?.focus({preventScroll:true}),150);
@@ -178,7 +212,7 @@ function App(){
     try{
       const r=await api('/api/projects/'+encodeURIComponent(p.id));
       setProject(r.project);setMessages(r.project.messages||[]);setSelected(styleKeys);
-      setMode('chat');setMenuOpen(false);setViewPreview(false);setBrief('');
+      setMode('chat');routeTo('/studio');setMenuOpen(false);setViewPreview(false);setBrief('');
       window.scrollTo({top:0,behavior:'instant'});
     }catch(e){notice(e.message);}
   };
@@ -261,8 +295,8 @@ function App(){
   const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
   const enterLandingMode=key=>{setDesignMode(key);if(key==='fusion')setSelected(styleKeys);focusChat();};
 
-  return <div style={{'--chat-clearance':composerClearance+'px'}} className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')+(!active?' portal-'+portalState:'')}>
-    <header className="topbar" inert={!active&&portalState!=='done'}>
+  return <div style={{'--chat-clearance':composerClearance+'px'}} className={'app '+(active?'in-chat':mode==='login'?'in-login':'in-welcome')+(isLanding&&landingFrame>0?' exploring':'')+(isLanding&&landingFrame===4?' story-end':'')+(isLanding?' portal-'+portalState:'')+(gatePhase==='reveal-studio'?' studio-arriving':'')}>
+    {mode!=='login'&&<header className="topbar" inert={isLanding&&portalState!=='done'}>
       <button className="brand" onClick={newChat} title="New chat" aria-label="Frontline UX/UI — new chat">
         <span className="brand-mark"><FrontlineMark size={29}/></span>
         <span className="brand-tech"><span className="brand-word">FRONTLINE</span><span className="brand-sub">UX / UI STUDIO</span></span>
@@ -273,11 +307,11 @@ function App(){
           <Menu size={18}/><span>Menu</span>
         </button>
       </div>
-    </header>
+    </header>}
 
-    {!active&&<FrontlineLanding locked={portalState!=='done'} effectsReady={portalState==='done'} onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
-    {!active&&<div className="landing-scrollspace scroll-story-space" aria-hidden="true"/>}
-    {!active&&portalState!=='done'&&<FrontlineDomePortal phase={portalState} onEnter={enterPortal}/>}
+    {isLanding&&<FrontlineLanding locked={portalState!=='done'} effectsReady={portalState==='done'} onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
+    {isLanding&&<div className="landing-scrollspace scroll-story-space" aria-hidden="true"/>}
+    {isLanding&&portalState!=='done'&&<FrontlineDomePortal phase={portalState} onEnter={enterPortal}/>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
@@ -362,7 +396,7 @@ function App(){
           <div ref={endRef}/>
         </div>
       </section>}
-      {(active||landingFrame===4)&&<div inert={!active&&!landingComposerReady} ref={composerDockRef} className={'composer-position '+(active?'docked':'spiral-emerging'+(landingComposerReady?' is-ready':''))}>
+      {active&&<div ref={composerDockRef} className="composer-position docked">
         <StarBorder as="div" theme={theme}
           backgroundColor={active?(theme==='dark'?'#382a2b':'#fff8ec'):'#fff8eb'}
           textColor={active?(theme==='dark'?'#f9e7ce':'#4b312b'):'#45302a'}
@@ -383,10 +417,27 @@ function App(){
             </div>
           </form>
           </StarBorder>
-        {!active&&<div className="landing-hint">A design universe, shaped by you. Tap to begin.</div>}
-        {active&&<p className="composer-disclaimer">Frontline UX/UI can make mistakes. Validate recommendations before building.</p>}
+        <p className="composer-disclaimer">Frontline UX/UI can make mistakes. Validate recommendations before building.</p>
+      </div>}
+      {isLanding&&landingFrame===4&&<div inert={!landingComposerReady} className={'fl-landing-gateway'+(landingComposerReady?' is-ready':'')} aria-label="Frontline studio gateway">
+        <StarBorder as="div" theme="light" className="fl-gateway-star"
+          backgroundColor="#fff8ec" textColor="#493127" borderColor="#e1ae70"
+          color="#ffe1a2" trailColor="#c07d50" duration={4.8} thickness={1.7}
+          radius={26} stars={2} trailLength={0.34} glow={0.96} hover="lap" sparkle clickPulse>
+          <div className="fl-gateway-content">
+            <span className="fl-gateway-kicker"><FrontlineMark size={18}/> THE NEXT CHAPTER BEGINS HERE</span>
+            <div className="fl-gateway-actions">
+              <button type="button" className="fl-gateway-primary" onClick={()=>enterGateway('studio')}>Enter Studio <ArrowUp size={17} aria-hidden="true"/></button>
+              <button type="button" className="fl-gateway-secondary" onClick={()=>enterGateway('login')}>Login <ChevronRight size={17} aria-hidden="true"/></button>
+            </div>
+            <p>Explore as a guest or enter your account. Your vision leads the way.</p>
+          </div>
+        </StarBorder>
       </div>}
     </main>
+
+    {mode==='login'&&<FrontlineLogin onBack={backToStory} onGuest={()=>enterGateway('studio')}/>}
+    {gatePhase&&<div className={'fl-blackhole-transition '+(gatePhase.startsWith('expand')?'is-expanding':'is-revealing')} aria-hidden="true"><div className="fl-blackhole-disc"/></div>}
 
     {menuOpen&&<div className="menu-layer">
       <button className="menu-shade" onClick={()=>setMenuOpen(false)} aria-label="Close menu"/>

@@ -155,7 +155,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
         assert.ok(mature.scale>.98 && mature.scale>seed.scale*8,
           name+' spiral should mature progressively across a long scroll distance: '+JSON.stringify({seed,mature}));
         assert.ok(mature.composer>0 && mature.composer<.75,
-          name+' chat reveal should lag spiral maturation rather than pop fully into view: '+JSON.stringify(mature));
+          name+' gateway reveal should lag spiral maturation rather than pop fully into view: '+JSON.stringify(mature));
         await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
       }
       if(!remote){
@@ -196,13 +196,25 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.waitForTimeout(350);
       assert.equal(await page.locator('.fl-spiral-art').count(),1,
         name+' golden typographic spiral should be present at the final chapter');
-      await page.screenshot({path:'browser-artifacts/'+name+'-spiral-before-chat.png',fullPage:false});
+      await page.screenshot({path:'browser-artifacts/'+name+'-spiral-before-gateway.png',fullPage:false});
       await page.evaluate(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight),behavior:'instant'}));
-      await page.locator('.composer-position.spiral-emerging.is-ready textarea').waitFor({timeout:8500});
+      await page.locator('.fl-landing-gateway.is-ready').waitFor({timeout:8500});
       const reveal=await page.evaluate(()=>Number(getComputedStyle(document.documentElement).getPropertyValue('--fl-compose-reveal')));
-      assert.ok(reveal>.95,name+' composer must emerge progressively from the spiral');
+      assert.ok(reveal>.95,name+' gateway must emerge only after the golden spiral matures');
+      assert.equal(await page.locator('.composer textarea').count(),0,name+' old landing chatbox must not emerge from the spiral');
       await page.waitForTimeout(450);
-      await page.screenshot({path:'browser-artifacts/'+name+'-spiral-chat-reveal.png',fullPage:false});
+      await page.screenshot({path:'browser-artifacts/'+name+'-spiral-login-gateway.png',fullPage:false});
+      await page.getByRole('button',{name:'Login',exact:true}).click();
+      await page.locator('.fl-blackhole-transition.is-expanding').waitFor({timeout:2400});
+      await page.locator('.fl-login-page').waitFor({timeout:8500});
+      await page.waitForFunction(()=>location.pathname==='/login',null,{timeout:8500});
+      assert.equal(await page.getByRole('button',{name:'Continue with Google'}).isDisabled(),true,
+        'Google sign-in must remain disabled until actual secure account setup');
+      await page.screenshot({path:'browser-artifacts/'+name+'-cinematic-login.png',fullPage:false});
+      await page.getByRole('button',{name:'Enter Studio as Guest'}).click();
+      await page.waitForFunction(()=>location.pathname==='/studio',null,{timeout:8500});
+      await page.locator('.composer-position.docked textarea').waitFor({timeout:8500});
+      assert.equal(await page.locator('.fl-login-page').count(),0,'Studio entry must replace login page');
     }
     await page.locator('.composer textarea').waitFor({timeout:7000});
     if(!remote && await page.locator('.fl-world').count()){
@@ -225,8 +237,8 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.getByRole('button',{name:/Switch to dark theme/i}).click();
       await page.locator('.close-menu').click();
     }
-    // Focus switches the landing composer into studio mode. Wait for that
-    // transition before typing so a rerender cannot consume the first input.
+    // The login -> guest entry has already revealed the studio. Wait for
+    // the compositor transition before typing so the first input is preserved.
     await page.locator('.composer textarea').focus();
     await page.locator('.conversation-scene').waitFor({timeout:8000});
     await page.waitForTimeout(600);
@@ -264,9 +276,9 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.ok((await page.locator('.inspiration-card').count())>=1,'Portfolio filter should yield references');
       await page.locator('.inspiration-search input').fill('');
       await page.reload({waitUntil:'networkidle'});
-      // A refresh starts a fresh site entry. Open the golden dome before navigating history.
-      await page.locator('.fl-dome-trigger').click();
-      await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8500});
+      // /studio deep links now restore the studio without replaying the dome.
+      await page.locator('.composer-position.docked textarea').waitFor({timeout:8500});
+      assert.equal(new URL(page.url()).pathname,'/studio','Studio refresh should preserve its URL');
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/My conversations/i}).click();
       await page.locator('.history-item').first().click();
@@ -376,11 +388,13 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.equal(await mobile.evaluate(()=>[...document.querySelectorAll('.fl-fluid-canvas')].every(c=>c.width===300)),true,'Mobile should use lightweight CSS solar fallback');
       if(!remote){
         await mobile.evaluate(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight),behavior:'instant'}));
-        await mobile.locator('.composer-position.spiral-emerging.is-ready textarea').waitFor({timeout:10000});
+        await mobile.locator('.fl-landing-gateway.is-ready').waitFor({timeout:10000});
+        assert.equal(await mobile.locator('.composer textarea').count(),0,'Spiral reveals buttons rather than a chatbox');
         await mobile.waitForTimeout(450);
-        await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-spiral-chat.png',fullPage:false});
-        await mobile.locator('.composer textarea').focus();
-        await mobile.locator('.studio-title').waitFor({timeout:7000});
+        await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-spiral-gateway.png',fullPage:false});
+        await mobile.getByRole('button',{name:'Enter Studio',exact:true}).tap();
+        await mobile.locator('.studio-title').waitFor({timeout:8500});
+        await mobile.locator('.composer textarea').waitFor({timeout:8500});
         await mobile.waitForTimeout(1300);
         const mobileComposer=await mobile.locator('.composer-position.docked').boundingBox();
         assert.ok(mobileComposer&&mobileComposer.width<=390&&mobileComposer.height<=150,
