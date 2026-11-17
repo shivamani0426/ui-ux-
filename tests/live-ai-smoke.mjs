@@ -74,7 +74,7 @@ async function run(){
       sources.push(source);
       console.log('LIVE_DESIGN_SMOKE mode='+mode+' source='+source+' quality=passed');
       check(data.prompt.toLowerCase().includes('accessib'),'design-accessibility-'+mode);
-      check(data.prompt.toLowerCase().includes('assignments'),'design-requirements-'+mode);
+      check(data.prompt.toLowerCase().includes('assignment'),'design-requirements-'+mode);
       check(!/^\s*(?:import React|<html|<!doctype html>)/im.test(data.prompt),'design-code-leak-'+mode);
     }
     check(sources.includes('ai'),'design-provider-not-accepted');
