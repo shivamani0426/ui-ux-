@@ -20,7 +20,12 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('console',message=>{if(message.type()==='error')errors.push('CONSOLE '+message.text())});
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
     await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
-    await page.locator('.fl-dome-portal').waitFor({timeout:7000});
+    try{
+      await page.locator('.fl-dome-portal').waitFor({timeout:7000});
+    }catch(error){
+      const html=await page.evaluate(()=>document.body?.innerText?.slice(0,350)||'NO BODY').catch(()=>'<unavailable>');
+      throw new Error('Entrance did not mount. Browser errors: '+errors.join(' | ')+'. Visible: '+html+'. '+error.message);
+    }
     assert.equal(await page.locator('.fl-dome-trigger').count(),1,name+' should start at the central black dome');
     assert.equal((await page.locator('.fl-dome-portal').innerText()).trim(),'',
       name+' black entrance must contain ZERO visible text');
