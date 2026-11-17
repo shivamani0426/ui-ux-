@@ -16,6 +16,8 @@ export const TOUR_DURATION_MS=TOUR_HOLDS_MS.reduce((a,b)=>a+b,0)+TOUR_TRAVEL_MS.
 /** Exact-progress sample, never dependent on frame rate or browser timers. */
 export function sampleCinematicTour(milliseconds){
   let time=Math.max(0,Number.isFinite(milliseconds)?milliseconds:0);
+  if(time>=TOUR_DURATION_MS)
+    return {progress:1,chapter:TOUR_STOPS.length-1,stage:'complete',done:true};
   for(let i=0;i<TOUR_STOPS.length;i++){
     const hold=TOUR_HOLDS_MS[i];
     if(time<=hold)return {progress:TOUR_STOPS[i],chapter:i,stage:'hold',done:i===TOUR_STOPS.length-1};
