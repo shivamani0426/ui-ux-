@@ -1,0 +1,73 @@
+/* Frontline's guided cinematic tour controls. The editorial identity is
+ * unchanged; this quiet control exists so auto-motion is always escapable. */
+.fl-tour-ui{
+  position:absolute;z-index:27;
+  right:clamp(14px,2.7vw,44px);bottom:114px;
+  display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;
+  gap:7px;max-width:min(390px,90vw);
+  padding:7px;border:1px solid rgba(252,229,188,.36);
+  border-radius:999px;background:rgba(40,30,31,.64);color:#fff0d6;
+  box-shadow:0 10px 40px rgba(25,15,20,.18);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  pointer-events:auto;
+}
+.fl-tour-caption{
+  font:750 8px/1.3 Manrope,'DM Sans',sans-serif;
+  letter-spacing:.15em;white-space:nowrap;margin:0 8px 0 10px;
+}
+.fl-tour-ui button{
+  display:inline-flex;align-items:center;gap:6px;justify-content:center;
+  min-height:30px;padding:7px 11px;border:1px solid rgba(255,233,199,.27);
+  border-radius:99px;background:rgba(255,242,220,.12);color:inherit;
+  font:650 10px/1 'DM Sans',sans-serif;
+  transition:background .28s ease,transform .28s cubic-bezier(.2,.85,.22,1),border-color .28s ease;
+  cursor:pointer;
+}
+.fl-tour-ui button:is(:hover,:focus-visible){
+  background:rgba(255,235,203,.23);border-color:rgba(255,232,191,.58);
+  transform:translateY(-1px);
+}
+.fl-tour-ui button:focus-visible{outline:2px solid #fff0d6;outline-offset:3px}
+.fl-chapter-1 .fl-tour-ui,.fl-chapter-2 .fl-tour-ui,.fl-chapter-3 .fl-tour-ui,.fl-chapter-4 .fl-tour-ui{
+  background:rgba(255,250,242,.88);color:#654936;
+  border-color:rgba(150,94,55,.26);
+  box-shadow:0 9px 28px rgba(92,61,44,.1);
+}
+.fl-chapter-1 .fl-tour-ui button,.fl-chapter-2 .fl-tour-ui button,.fl-chapter-3 .fl-tour-ui button,.fl-chapter-4 .fl-tour-ui button{
+  background:rgba(207,156,92,.09);border-color:rgba(137,93,62,.23);
+}
+.fl-chapter-1 .fl-tour-ui button:is(:hover,:focus-visible),
+.fl-chapter-2 .fl-tour-ui button:is(:hover,:focus-visible),
+.fl-chapter-3 .fl-tour-ui button:is(:hover,:focus-visible),
+.fl-chapter-4 .fl-tour-ui button:is(:hover,:focus-visible){background:rgba(214,164,105,.2)}
+.fl-chapter-4 .fl-tour-ui{bottom:110px}
+/* Full-screen compositor layers are expensive on integrated GPUs. Keep the
+ * active chapter and its nearest neighbor ready, not five large layers. */
+.fl-scroll-story .fl-story-scene{will-change:auto}
+.fl-scroll-story .fl-story-scene.is-current,
+.fl-scroll-story.fl-chapter-0 .fl-story-scene-1,
+.fl-scroll-story.fl-chapter-1 .fl-story-scene-0,
+.fl-scroll-story.fl-chapter-1 .fl-story-scene-2,
+.fl-scroll-story.fl-chapter-2 .fl-story-scene-1,
+.fl-scroll-story.fl-chapter-2 .fl-story-scene-3,
+.fl-scroll-story.fl-chapter-3 .fl-story-scene-2,
+.fl-scroll-story.fl-chapter-3 .fl-story-scene-4,
+.fl-scroll-story.fl-chapter-4 .fl-story-scene-3{will-change:transform,opacity}
+.fl-scroll-story .fl-spiral-stage{will-change:auto}
+.fl-scroll-story:is(.fl-chapter-3,.fl-chapter-4) .fl-spiral-stage{will-change:transform,opacity}
+@media(max-width:700px){
+  .fl-tour-ui{left:50%;right:auto;transform:translateX(-50%);
+    bottom:105px;gap:5px;padding:6px;max-width:calc(100vw - 18px);
+    white-space:nowrap;flex-wrap:nowrap}
+  .fl-tour-caption{font-size:7px;letter-spacing:.075em;margin:0 4px}
+  .fl-tour-ui button{min-height:32px;font-size:10px;padding:7px 9px}
+  .fl-chapter-4 .fl-tour-ui{bottom:103px}
+}
+@media(max-width:370px){
+  .fl-tour-caption{display:none}
+  .fl-tour-ui{bottom:102px}
+}
+@media(prefers-reduced-motion:reduce){
+  .fl-tour-ui button{transition:none}
+  .fl-scroll-story .fl-story-scene,.fl-scroll-story .fl-spiral-stage{will-change:auto}
+}
