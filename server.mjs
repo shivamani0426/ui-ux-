@@ -485,7 +485,8 @@ const server=http.createServer(async(req,res)=>{
             designs:(p.recommendations?.designs||[]).map(d=>{
               const found=comparison.find(c=>c.id===d.id);
               return found?{...d,match:found.match,tradeoff:found.tradeoff,strengths:found.strengths,
-                criteria:found.criteria,scoring:found.scoring,reasons:found.reasons}:d;
+                criteria:found.criteria,scoring:found.scoring,reasons:found.reasons,
+                personalization:found.personalization}:d;
             })};
           return json(res,200,{project:{...p,recommendations}});
         }
