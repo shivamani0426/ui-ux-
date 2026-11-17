@@ -421,6 +421,17 @@ function trustedMutationOrigin(req){
   }catch{return false}
 }
 function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(obj));}
+// Profile pictures are display-only. Google user_metadata is editable and
+// must never influence authorization. Permit only a Google-controlled HTTPS
+// image origin to prevent arbitrary third-party tracking URL injection.
+function googleProfileImage(value){
+  if(typeof value!=='string'||value.length>1800)return null;
+  try{
+    const url=new URL(value);
+    return url.protocol==='https:'&&url.hostname.endsWith('.googleusercontent.com')
+      &&!url.username&&!url.password?url.toString():null;
+  }catch{return null;}
+}
 function validateText(text,min,max){return typeof text==='string'&&text.trim().length>=min&&text.trim().length<=max;}
 async function chatReply(brief,messages,styleIds,preferences={}){
   const latest=messages.at(-1)?.content||'';
@@ -508,7 +519,7 @@ const deployedRevision=()=>{
 };
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
-  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
+  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
   if(req.method==='GET'&&req.url==='/api/health')return json(res,200,{status:'ok',database:pg?'connected':'demo-memory',ai:aiConfig().aiEnabled,revision:deployedRevision()});
   let owner=cookie(req,res);
   const guestOwner=owner;
@@ -527,7 +538,8 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&pathname==='/api/auth/me')return json(res,200,{
         authenticated:!!signedIn,googleEnabled:authGateway.ready,
         user:signedIn?{id:signedIn.id,email:signedIn.email||null,
-          name:String(signedIn.user_metadata?.full_name||'').slice(0,120)}:null
+          name:String(signedIn.user_metadata?.full_name||'').slice(0,120),
+          picture:googleProfileImage(signedIn.user_metadata?.avatar_url||signedIn.user_metadata?.picture)}:null
       });
       if(req.method==='POST'&&pathname==='/api/auth/logout'){
         await readBody(req);
