@@ -147,10 +147,10 @@ export async function createDesignPrompt({project,mode='generate',styles=[],refe
       '\n\nFull required coverage:\n'+fallback.slice(0,12000)}],
     styles:b.selected,task:'prompt',env,request
   });
-  const reviewed=ai?.text?qualityReview(ai.text,{mode,requiredStyles:b.selected.map(x=>x.name)}):null;
+  const reviewed=ai?.text?qualityReview(ai.text,{mode,requiredStyles:b.selected.map(x=>x.name),requiredFeatures:b.analysis.features.map(f=>f.id),requiredConstraints:b.analysis.constraints}):null;
   if(reviewed?.passed)return {prompt:ai.text,source:'ai',provider:ai.provider,mode,
     review:{...reviewed,usedFallback:false}};
-  const local=qualityReview(fallback,{mode,requiredStyles:b.selected.map(x=>x.name)});
+  const local=qualityReview(fallback,{mode,requiredStyles:b.selected.map(x=>x.name),requiredFeatures:b.analysis.features.map(f=>f.id),requiredConstraints:b.analysis.constraints});
   return {prompt:fallback,source:'guide',provider:null,mode,
     review:{...local,usedFallback:true,aiAttempted:!!ai,reason:reviewed?.missing||[]}};
 }
