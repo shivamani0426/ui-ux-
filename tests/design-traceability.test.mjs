@@ -122,6 +122,23 @@ test('09B: successful optional AI enhancement and provider failure share the exa
   assert.equal(enhanced.review.traceability.mapped,fallback.review.traceability.mapped);
   assert.doesNotMatch(JSON.stringify(enhanced),/mock-only/);
 });
+test('09B: broader college requirements include attendance, exams, admissions, approvals and file submissions',()=>{
+  const brief='Build an education college administration portal for students, teachers and administrators with attendance, quizzes, exams, admissions, enrollment approvals and file submissions. It must preserve existing APIs.';
+  const p={brief,recommendations:recommend(brief)};
+  const analysis=analyzeProject(brief);
+  for(const id of ['attendance','assessments','enrollment','approvals','submissions']){
+    assert.ok(analysis.features.some(f=>f.id===id),'new explicit module missing: '+id);
+  }
+  assert.ok(analysis.openQuestions.some(x=>/private data|role/i.test(x)),
+    'Multiple explicit roles need an authorization question');
+  for(const mode of ['generate','fusion']){
+    const output=deterministicDesignPrompt({project:p,mode,styles:['minimal','creative']});
+    for(const id of ['attendance','assessments','enrollment','approvals','submissions'])
+      assert.ok(output.includes('[F-'+id+']'),'missing traceability for '+id);
+    assert.ok(output.includes('[R-administrators]'));
+    assert.ok(reviewRequirementTrace(output,buildDesignBrief({project:p,mode,styles:['minimal','creative']}).trace).passed);
+  }
+});
 test('09C: preserving backend and changed refinement stays explicit without turning prompts into executable code',()=>{
   const brief=CASES[0].brief;
   const p={brief,recommendations:recommend(brief)};
