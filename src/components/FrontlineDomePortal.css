@@ -331,3 +331,67 @@
   filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 26px rgba(255,255,255,.7))
  }
 }
+
+
+/* Cinematic polish: the black F charge still lasts the full 2.7 seconds.
+   Expensive per-frame box-shadow/border paints are replaced by two *static*
+   white light layers animated using composited opacity and transform. The
+   silhouette, luminous end frame and centre-aperture reveal stay intact. */
+.fl-dome-ring{transform:translateZ(0)}
+.fl-dome-ring::before{
+  content:'';position:absolute;inset:-1px;border-radius:inherit;
+  border:1px solid rgba(255,255,255,.95);
+  box-shadow:0 0 16px rgba(255,255,255,.97),
+    0 0 52px rgba(255,255,255,.69),0 0 94px rgba(255,255,255,.32);
+  opacity:0;transform:scale(.95);pointer-events:none;
+}
+.fl-dome-portal-orb::after{
+  content:'';position:absolute;inset:0;border-radius:inherit;z-index:3;
+  border:2px solid rgba(255,255,255,.98);
+  box-shadow:0 0 35px rgba(255,255,255,.94),0 0 90px rgba(255,255,255,.48);
+  opacity:0;transform:scale(.91);pointer-events:none;
+}
+.fl-dome-portal.is-charging .fl-dome-ring-outer{
+  animation:fl-dome-outer-composite 2700ms cubic-bezier(.2,.45,.25,1) both;
+}
+.fl-dome-portal.is-charging .fl-dome-ring-middle,
+.fl-dome-portal.is-charging .fl-dome-ring-inner{animation:none}
+.fl-dome-portal.is-charging .fl-dome-ring-outer::before{
+  animation:fl-dome-ring-light 2700ms cubic-bezier(.22,.58,.19,1) both;
+}
+.fl-dome-portal.is-charging .fl-dome-ring-middle::before{
+  animation:fl-dome-ring-light 2700ms cubic-bezier(.25,.55,.18,1) both;
+  animation-delay:-140ms;
+}
+.fl-dome-portal.is-charging .fl-dome-ring-inner::before{
+  animation:fl-dome-ring-light 2700ms cubic-bezier(.2,.54,.18,1) both;
+  animation-delay:-300ms;
+}
+.fl-dome-portal.is-charging .fl-dome-portal-orb{animation:none}
+.fl-dome-portal.is-charging .fl-dome-portal-orb::after{
+  animation:fl-dome-orb-light 2700ms cubic-bezier(.24,.54,.18,1) both;
+}
+@keyframes fl-dome-outer-composite{from{transform:scale(1)}to{transform:scale(1.17)}}
+@keyframes fl-dome-ring-light{
+  0%{opacity:0;transform:scale(.93)}
+  28%{opacity:.08}
+  58%{opacity:.53}
+  100%{opacity:1;transform:scale(1)}
+}
+@keyframes fl-dome-orb-light{
+  0%,18%{opacity:0;transform:scale(.93)}
+  61%{opacity:.32}
+  100%{opacity:1;transform:scale(1)}
+}
+.fl-dome-portal.is-opening .fl-dome-ring::before,
+.fl-dome-portal.is-opening .fl-dome-portal-orb::after{opacity:1;transform:scale(1)}
+.fl-dome-portal.is-charging .fl-dome-ring::before,
+.fl-dome-portal.is-charging .fl-dome-portal-orb::after,
+.fl-dome-portal.is-charging .fl-dome-white-aura{
+  will-change:opacity,transform;
+}
+@media(prefers-reduced-motion:reduce){
+  .fl-dome-portal.is-charging .fl-dome-ring::before,
+  .fl-dome-portal.is-charging .fl-dome-portal-orb::after{animation:none;opacity:1;transform:none}
+  .fl-dome-portal.is-charging .fl-dome-ring-outer{animation:none}
+}
