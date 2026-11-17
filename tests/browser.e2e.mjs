@@ -208,8 +208,9 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.locator('.fl-blackhole-transition.is-expanding').waitFor({timeout:2400});
       await page.locator('.fl-login-page').waitFor({timeout:8500});
       await page.waitForFunction(()=>location.pathname==='/login',null,{timeout:8500});
-      assert.equal(await page.getByRole('button',{name:'Continue with Google'}).isDisabled(),true,
-        'Google sign-in must remain disabled until actual secure account setup');
+      const googleConfig=await page.evaluate(()=>fetch('/api/auth/status').then(r=>r.json()));
+      assert.equal(await page.getByRole('button',{name:'Continue with Google'}).isDisabled(),!googleConfig.googleEnabled,
+        'Google sign-in must be enabled only when the provider is securely configured');
       await page.screenshot({path:'browser-artifacts/'+name+'-cinematic-login.png',fullPage:false});
       await page.getByRole('button',{name:'Enter Studio as Guest'}).click();
       await page.waitForFunction(()=>location.pathname==='/studio',null,{timeout:8500});

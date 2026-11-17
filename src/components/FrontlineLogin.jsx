@@ -9,7 +9,7 @@ import './FrontlineLogin.css';
  * backend is connected, Google sign-in is deliberately disabled rather than
  * treating a browser-local guest identity as a real account.
  */
-export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=false}){
+export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=false,authError='',onRetrySync}){
   return <section className="fl-login-page" aria-label="Frontline login and guest entry">
     <div className="fl-login-atmosphere" aria-hidden="true">
       <div className="fl-login-horizon"/>
@@ -37,7 +37,7 @@ export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=fals
         <div className="fl-login-card">
           <span className="fl-login-card-kicker"><Sparkles size={14} aria-hidden="true"/> YOUR CREATIVE SPACE</span>
           <h2>Welcome to <em>Frontline.</em></h2>
-          <p className="fl-login-card-copy">Your next great interface begins here. Enter as a guest, or connect your account when secure sign-in is available.</p>
+          <p className="fl-login-card-copy">Your next great interface begins here. Enter as a guest, or sign in with Google to securely sync your design workspace.</p>
           <StarBorder as="div" className="fl-login-google-star" theme="dark"
             backgroundColor="#2b2325" textColor="#f7ead6" borderColor="#b98a61"
             color="#ffdfaa" trailColor="#c58155" radius={19} thickness={1.5}
@@ -48,13 +48,18 @@ export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=fals
               <ArrowUpRight size={17} aria-hidden="true"/>
             </button>
           </StarBorder>
-          {!googleReady&&<p className="fl-login-availability" role="status"><LockKeyhole size={14} aria-hidden="true"/> Secure Google sign-in will be enabled after account setup. It is not active yet.</p>}
+          {!googleReady&&<p className="fl-login-availability" role="status"><LockKeyhole size={14} aria-hidden="true"/> Google sign-in is awaiting secure provider configuration. Guest access remains available.</p>}
+          {authError&&<div className="fl-login-availability" role="alert">
+            <LockKeyhole size={14} aria-hidden="true"/>
+            <span>{authError==='sync_failed'?'Your Google sign-in succeeded, but guest projects could not be transferred. Your guest data is still safe.':authError==='not_configured'?'Google sign-in is not configured yet.':'Google sign-in was cancelled or could not complete. Please try again.'}</span>
+          </div>}
+          {authError==='sync_failed'&&<button type="button" className="fl-login-guest" onClick={onRetrySync}>Retry private project sync <ArrowUpRight size={18} aria-hidden="true"/></button>}
           <div className="fl-login-separator"><span/>OR STEP INTO THE STUDIO<span/></div>
           <button type="button" className="fl-login-guest" onClick={onGuest}>
             <span>Enter Studio as Guest</span><ArrowUpRight size={18} aria-hidden="true"/>
           </button>
           <div className="fl-login-privacy"><ShieldCheck size={16} aria-hidden="true"/>
-            <span>Guest work stays private to this browser. Cross-device sync requires a future account connection.</span>
+            <span>Guest work stays private to this browser. Google sign-in securely syncs your account projects across devices after connecting.</span>
           </div>
         </div>
         <p className="fl-login-under-card">A LITTLE CURIOSITY. AN INFINITE CANVAS.</p>

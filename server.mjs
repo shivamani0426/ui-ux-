@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {createAuthGateway} from './auth-gateway.mjs';
 import {fileURLToPath} from 'node:url';
 import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
 import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
@@ -21,6 +22,13 @@ const memorySelections=new Map();
 const finalizedModes=new Set();
 const isProd=process.env.NODE_ENV==='production';
 const cookieName=isProd?'__Host-uic_guest':'uic_guest';
+const authGateway=createAuthGateway({
+  url:process.env.FRONTLINE_SUPABASE_URL||'',
+  key:process.env.FRONTLINE_SUPABASE_PUBLISHABLE_KEY||'',
+  siteUrl:process.env.FRONTLINE_SITE_URL||'https://ui-compass-studio.onrender.com',
+  googleEnabled:process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED==='true',
+  prod:isProd||Boolean(process.env.RENDER_SERVICE_ID)
+});
 let pg=null;
 
 async function setupDb(){
@@ -253,6 +261,49 @@ async function eraseProfile(owner){
   await pg.query('DELETE FROM frontline.interaction_events WHERE visitor_id=$1',[owner]);
   await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_projects WHERE visitor_id=$1',[owner]);await pg.query('DELETE FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
 }
+// A user may already have a private collection on this browser before Google
+// sign-in. Move ALL owner-scoped data atomically into the verified account.
+// Never merge opt-in to global learning without new account consent.
+async function claimGuestData(guestOwner,accountOwner){
+  if(!/^[a-f0-9-]{36}$/i.test(guestOwner)||!/^acct:[a-f0-9-]{36}$/i.test(accountOwner))
+    throw new Error('Invalid identity scope');
+  if(!pg){
+    if(guests.has(guestOwner)&&!guests.has(accountOwner)){
+      guests.set(accountOwner,{...guests.get(guestOwner),globalOptIn:false});
+    }
+    guests.delete(guestOwner);
+    for(const project of live.values())if(project.owner===guestOwner)project.owner=accountOwner;
+    for(const entry of votes)if(entry.owner===guestOwner){entry.owner=accountOwner;entry.optIn=false;}
+    for(const [key,value] of [...memorySelections])if(key.startsWith(guestOwner+':')){
+      memorySelections.set(accountOwner+key.slice(guestOwner.length),value);memorySelections.delete(key);
+    }
+    for(const key of [...finalizedModes])if(key.startsWith(guestOwner+':')){
+      finalizedModes.add(accountOwner+key.slice(guestOwner.length));finalizedModes.delete(key);
+    }
+    return;
+  }
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN');
+    // Serialize claims of a guest cookie across simultaneous OAuth callbacks.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1),915)',[guestOwner]);
+    await client.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in)
+      SELECT $1,style_weights,false FROM frontline.uic_profiles WHERE visitor_id=$2
+      ON CONFLICT (visitor_id) DO UPDATE SET
+        style_weights=EXCLUDED.style_weights || frontline.uic_profiles.style_weights,
+        updated_at=NOW()`,[accountOwner,guestOwner]);
+    await client.query('UPDATE frontline.uic_projects SET visitor_id=$1 WHERE visitor_id=$2',[accountOwner,guestOwner]);
+    await client.query('UPDATE frontline.reference_selections SET visitor_id=$1 WHERE visitor_id=$2',[accountOwner,guestOwner]);
+    await client.query('UPDATE frontline.generated_prompts SET visitor_id=$1 WHERE visitor_id=$2',[accountOwner,guestOwner]);
+    await client.query('UPDATE frontline.interaction_events SET visitor_id=$1 WHERE visitor_id=$2',[accountOwner,guestOwner]);
+    await client.query('UPDATE frontline.uic_feedback SET visitor_id=$1,eligible_global=false WHERE visitor_id=$2',[accountOwner,guestOwner]);
+    await client.query('DELETE FROM frontline.uic_profiles WHERE visitor_id=$1',[guestOwner]);
+    await client.query('COMMIT');
+  }catch(error){
+    await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release();}
+}
 function cookie(req,res){
   const pairs=Object.fromEntries((req.headers.cookie||'').split(';').map(v=>v.trim().split('=').map(decodeURIComponent)).filter(a=>a.length===2));
   let id=pairs[cookieName];
@@ -367,10 +418,35 @@ const server=http.createServer(async(req,res)=>{
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
   if(req.method==='GET'&&req.url==='/api/health')return json(res,200,{status:'ok',database:pg?'connected':'demo-memory',ai:aiConfig().aiEnabled,revision:deployedRevision()});
   let owner=cookie(req,res);
+  const guestOwner=owner;
   try{
+    const pathname=new URL(req.url,'http://localhost').pathname;
+    if(req.method==='GET'&&pathname==='/auth/google/start')return await authGateway.start(req,res);
+    if(req.method==='GET'&&pathname==='/auth/callback')return await authGateway.callback(req,res,
+      user=>claimGuestData(guestOwner,authGateway.accountOwner(user)));
     if(req.url?.startsWith('/api/')){
       if(!trustedMutationOrigin(req))return json(res,403,{error:'Cross-origin changes are not permitted.'});
       if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
+      if(req.method==='GET'&&pathname==='/api/auth/status')
+        return json(res,200,{googleEnabled:authGateway.ready});
+      const signedIn=await authGateway.getUser(req,res);
+      if(signedIn)owner=authGateway.accountOwner(signedIn);
+      if(req.method==='GET'&&pathname==='/api/auth/me')return json(res,200,{
+        authenticated:!!signedIn,googleEnabled:authGateway.ready,
+        user:signedIn?{id:signedIn.id,email:signedIn.email||null,
+          name:String(signedIn.user_metadata?.full_name||'').slice(0,120)}:null
+      });
+      if(req.method==='POST'&&pathname==='/api/auth/logout'){
+        await readBody(req);
+        await authGateway.logout(req,res);
+        return json(res,200,{signedOut:true});
+      }
+      if(req.method==='POST'&&pathname==='/api/auth/claim'){
+        await readBody(req);
+        if(!signedIn)return json(res,401,{error:'Sign in to sync your private workspace.'});
+        await claimGuestData(guestOwner,owner);
+        return json(res,200,{claimed:true});
+      }
       if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.4.0'});
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));

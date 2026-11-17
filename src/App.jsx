@@ -47,6 +47,7 @@ function App(){
   const [preferencesBusy,setPreferencesBusy]=useState(false);
   const [composerClearance,setComposerClearance]=useState(138);
   const [config,setConfig]=useState({aiEnabled:false,persistent:false});
+  const [authState,setAuthState]=useState({googleEnabled:false,authenticated:false,user:null});
   const [selected,setSelected]=useState(styleKeys);
   const [working,setWorking]=useState(false);
   const [toast,setToast]=useState('');
@@ -88,7 +89,8 @@ function App(){
       api('/api/catalog').then(setCatalog),
       api('/api/projects').then(v=>setProjects(v.projects||[])),
       api('/api/profile').then(setProfile),
-      api('/api/config').then(setConfig)
+      api('/api/config').then(setConfig),
+      api('/api/auth/me').then(setAuthState)
     ]).then(results=>{if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded.');});
     return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);clearTimeout(gateTimer.current);};
   },[]);
@@ -150,6 +152,19 @@ function App(){
   const active=mode==='chat';
   const isLanding=mode==='welcome';
   const routeTo=path=>{if(window.location.pathname!==path)window.history.pushState({},'',path);};
+  const startGoogleLogin=()=>{if(authState.googleEnabled)window.location.assign('/auth/google/start');};
+  const signOut=async()=>{
+    try{
+      await api('/api/auth/logout',{method:'POST',body:'{}'});
+      window.location.assign('/login');
+    }catch(error){notice(error.message);}
+  };
+  const retryGuestSync=async()=>{
+    try{
+      await api('/api/auth/claim',{method:'POST',body:'{}'});
+      window.location.assign('/studio');
+    }catch(error){notice('Could not sync your guest work: '+error.message);}
+  };
   // Animate one composited portal, then reveal the destination. Authentication
   // is intentionally not simulated; the studio entry remains a genuine guest mode.
   const enterGateway=destination=>{
@@ -436,7 +451,10 @@ function App(){
       </div>}
     </main>
 
-    {mode==='login'&&<FrontlineLogin onBack={backToStory} onGuest={()=>enterGateway('studio')}/>}
+    {mode==='login'&&<FrontlineLogin onBack={backToStory} onGuest={()=>enterGateway('studio')}
+      onGoogle={startGoogleLogin} googleReady={authState.googleEnabled}
+      authError={new URLSearchParams(window.location.search).get('auth')}
+      onRetrySync={retryGuestSync}/>} 
     {gatePhase&&<div className={'fl-blackhole-transition '+(gatePhase.startsWith('expand')?'is-expanding':'is-revealing')} aria-hidden="true"><div className="fl-blackhole-disc"/></div>}
 
     {menuOpen&&<div className="menu-layer">
@@ -455,6 +473,13 @@ function App(){
           <button onClick={()=>setPanel('references')}><Search size={17}/> UI/UX inspiration library <ChevronRight size={15}/></button>
           <button onClick={openLearning}><ShieldCheck size={17}/> Learning & privacy <ChevronRight size={15}/></button>
           <div className="menu-bottom">
+            <p className="menu-eyebrow">ACCOUNT</p>
+            {authState.authenticated?<>
+              <p className="menu-fineprint">Signed in securely as {authState.user?.email||'your Google account'}. Your synced designs are private to your account.</p>
+              <button onClick={signOut}><ShieldCheck size={17}/> Sign out of Google account</button>
+            </>:<button onClick={()=>{setMenuOpen(false);enterGateway('login')}}>
+              <ShieldCheck size={17}/> Sign in to sync designs <ChevronRight size={15}/>
+            </button>}
             <p className="menu-eyebrow">APPEARANCE</p>
             <button onClick={()=>setTheme(t=>t==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>} Switch to {theme==='dark'?'light':'dark'} theme <span className="theme-chip">{theme==='dark'?'Dark':'Light'}</span></button>
             <p className="menu-fineprint">{config.persistent?'Project memory is connected':'Guest preview · project memory resets on server restart'}<br/>{config.aiEnabled?'AI provider connected':'Rule-based design guidance · AI generation not yet connected'}</p>
