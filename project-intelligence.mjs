@@ -114,9 +114,33 @@ export function planFusion(analysis,styles,preferences={}){
  rationale:lead?'Use '+lead.name+' as the structural anchor based on the brief, constraints and saved personal preferences.':'Choose one consistent structural foundation.',
  avoid:ranked.map(x=>x.tradeoff),criteria:'Prefer clear tasks, accessibility, performance and cohesive identity over mixing effects.'};
 }
-export function qualityReview(text,{mode='generate',requiredStyles=[]}={}){
+const FEATURE_ALIASES={
+ assignments:['assignment','homework','task board','kanban'],
+ tutor:['ai tutor','ai assistant','tutor','study assistant'],
+ calendar:['calendar','scheduling','schedule'],
+ progress:['progress','analytics','insights','metrics'],
+ courses:['courses','lessons','curriculum'],
+ messages:['messages','conversation','inbox'],
+ commerce:['product','shopping','checkout'],
+ payments:['payment','transaction','invoice'],
+ portfolio:['portfolio','case study','case studies'],
+ settings:['settings','preferences'],
+ search:['search','filter']
+};
+const CONSTRAINT_ALIASES=[
+ ['backend',['backend','existing api','approved api']],
+ ['low-power',['performance','low-power','low power','lightweight','loading']],
+ ['Reduced-motion',['reduced-motion','reduced motion','prefers-reduced-motion']],
+ ['Mobile responsive',['mobile','responsive','small screen']],
+ ['Accessible navigation',['accessibility','keyboard','contrast']],
+ ['offline',['offline','synchronization']],
+ ['Private data',['privacy','security','access control']],
+ ['dark appearance',['dark mode','dark theme']],
+ ['light appearance',['light mode','light theme']]
+];
+export function qualityReview(text,{mode='generate',requiredStyles=[],requiredFeatures=[],requiredConstraints=[]}={}){
  const raw=String(text||'').trim().toLowerCase();
- const contains=(terms)=>terms.some(word=>raw.includes(word));
+ const contains=terms=>terms.some(word=>raw.includes(word.toLowerCase()));
  const checks={length:raw.length>=800,audience:contains(['audience','personas','target users']),
   architecture:contains(['information architecture','sitemap','page plan','page map']),
   responsive:contains(['mobile','responsive']),accessibility:contains(['accessibility','keyboard','contrast']),
@@ -124,5 +148,13 @@ export function qualityReview(text,{mode='generate',requiredStyles=[]}={}){
   modes:mode==='fusion'?contains(['fusion','combine','blend']):requiredStyles.every(x=>raw.includes(x.toLowerCase())),
   promptOnly:!/(?:^|\n)\s*(?:import\s+react|<!doctype html>|<html|function\s+app\s*\(|export default function)/i.test(raw)};
  const missing=Object.entries(checks).filter(([,ok])=>!ok).map(([id])=>id);
- return {passed:missing.length===0,checks,missing,evaluation:'Prompt section coverage only; does not measure real-world usability'};
+ for(const id of requiredFeatures){
+   const terms=FEATURE_ALIASES[id]||[id];
+   if(!contains(terms))missing.push('feature:'+id);
+ }
+ for(const constraint of requiredConstraints){
+   const rule=CONSTRAINT_ALIASES.find(([keyword])=>constraint.toLowerCase().includes(keyword.toLowerCase()));
+   if(rule&&!contains(rule[1]))missing.push('constraint:'+rule[0]);
+ }
+ return {passed:missing.length===0,checks,missing,evaluation:'Prompt coverage checks for sections, explicit modules and constraints; not real-world usability testing'};
 }
