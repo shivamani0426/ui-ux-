@@ -102,14 +102,30 @@ export function compareDirections(analysis,styles,preferences={}){
     const t=tradeoffs[s.id]||tradeoffs.minimal;
     const prior=Math.max(-5,Math.min(5,Number(weights[s.id])||0));
     const base=task?(s.id==='minimal'?17:7):(s.id==='creative'?17:s.id==='glass'?14:12);
-    const score=Math.max(48,Math.min(96,65+base+(repeated&&s.id==='minimal'?5:0)+(accessibility&&s.id==='minimal'?4:0)-(performance&&s.id==='glass'?12:0)-(repeated&&s.id==='creative'?4:0)+((a.requestedStyles||[]).includes(s.id)?18:0)+prior*2));
-    return {id:s.id,name:s.name,match:score,criteria:{...t.criteria,projectFit:Math.max(2,Math.min(5,Math.round(score/20)))},
+    const requested=(a.requestedStyles||[]).includes(s.id);
+    const baseScore=65+base+(repeated&&s.id==='minimal'?5:0)
+      +(accessibility&&s.id==='minimal'?4:0)-(performance&&s.id==='glass'?12:0)
+      -(repeated&&s.id==='creative'?4:0)+(requested?18:0);
+    const bound=n=>Math.max(48,Math.min(96,n));
+    const baseline=bound(baseScore),score=bound(baseScore+prior*2);
+    const appliedPoints=score-baseline;
+    const personalization={
+      styleSignal:prior,
+      expectedPointAdjustment:prior*2,
+      appliedPointAdjustment:appliedPoints,
+      scoreBounded:appliedPoints!==prior*2,
+    };
+    return {id:s.id,name:s.name,match:score,personalization,
+      criteria:{...t.criteria,projectFit:Math.max(2,Math.min(5,Math.round(score/20)))},
       strengths:t.strength,tradeoff:t.risk,reasons:[
         'For '+key.toLowerCase()+' requirements: '+t.strength+'.',
         ...(repeated?['Repeated tasks need stable navigation and clear feedback.']:[]),
         ...(accessibility?['Validate keyboard order, contrast and assistive-technology labels.']:[]),
         ...(performance&&s.id==='glass'?['Avoid heavy blurs on low-power devices.']:[]),
-        ...(prior!==0?['Your private saved style feedback informed this indicator.']:[])
+        ...(prior!==0?['Your private feedback signal '+(prior>0?'+':'')+prior+
+          '/5 changed this bounded heuristic indicator by '+(appliedPoints>0?'+':'')+
+          appliedPoints+' points'+(personalization.scoreBounded?' (score limit reached).':'.')+
+          ' New project requirements remain primary.']:[])
       ],scoring:'Heuristic fit indicator, not a measured usability score',order:i};
   }).sort((x,y)=>y.match-x.match||x.order-y.order).map(({order,...x})=>x);
 }
