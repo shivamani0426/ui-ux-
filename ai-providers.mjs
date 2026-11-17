@@ -31,20 +31,28 @@ const cleanMessages=messages=>(Array.isArray(messages)?messages:[]).slice(-8)
   .filter(m=>['user','assistant'].includes(m?.role)&&typeof m.content==='string')
   .map(m=>({role:m.role,content:m.content.slice(0,7000)}));
 const trimText=value=>String(value||'').slice(0,2500);
-const configured=env=>({gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_API_KEY});
+const configured=env=>({gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_API_KEY,groq:!!env.GROQ_API_KEY});
 const networkTimeout=env=>{
   const proposed=Number(env.AI_REQUEST_TIMEOUT_MS);
   return Number.isFinite(proposed)&&proposed>=3000&&proposed<=45000?proposed:28000;
 };
 export function aiConfig(env=process.env){
   const providers=configured(env);
-  const primary=env.AI_PRIMARY_PROVIDER==='openrouter'?'openrouter':'gemini';
+  const supported=['openrouter','groq','gemini'];
+  const primary=supported.includes(env.AI_PRIMARY_PROVIDER)?env.AI_PRIMARY_PROVIDER:'openrouter';
+  // Gemini remains supported but must not be retried automatically after
+  // the user selected Groq as the explicitly configured secondary provider.
+  const requested=supported.includes(env.AI_FALLBACK_PROVIDER)
+    ?env.AI_FALLBACK_PROVIDER:(primary==='openrouter'?'groq':'openrouter');
+  const fallback=requested===primary?null:requested;
+  const any=Object.values(providers).some(Boolean);
   return {
-    aiEnabled:providers.gemini||providers.openrouter,
+    aiEnabled:any,
     aiProviders:providers,
     aiPrimary:primary,
+    aiFallbackProvider:fallback,
     aiFallbackEnabled:env.AI_FALLBACK_ENABLED==='true',
-    aiStatus:providers.gemini||providers.openrouter?'configured-unverified':'not-configured',
+    aiStatus:any?'configured-unverified':'not-configured',
   };
 }
 
@@ -142,6 +150,44 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
   return {text:answer,source:'ai',provider:'openrouter'};
 }
 
+
+/** GroqCloud uses an OpenAI-compatible chat endpoint, not OpenRouter. */
+async function groqReply({brief,messages,styles,task,env,request}){
+  const configuredModel=env.GROQ_MODEL;
+  const validModel=typeof configuredModel==='string'&&configuredModel.length<=100
+    && configuredModel.split('/').length<=2
+    && configuredModel.split('/').every(part=>/^[a-zA-Z0-9_.-]{1,80}$/.test(part));
+  const model=validModel?configuredModel:'openai/gpt-oss-20b';
+  const isGptOss=['openai/gpt-oss-20b','openai/gpt-oss-120b'].includes(model);
+  const r=await request('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{
+      Authorization:'Bearer '+env.GROQ_API_KEY,
+      'Content-Type':'application/json',
+    },
+    signal:AbortSignal.timeout(networkTimeout(env)),
+    body:JSON.stringify({
+      model,
+      temperature:task==='prompt'?0.75:0.65,
+      max_completion_tokens:task==='prompt'?5200:1100,
+      ...(isGptOss?{reasoning_effort:'low',include_reasoning:false}:{}),
+      messages:[
+        {role:'system',content:task==='prompt'?DESIGN_PROMPT_SYSTEM:SYSTEM_PROMPT},
+        {role:'user',content:contextMessage(brief,styles)},
+        ...cleanMessages(messages),
+      ],
+    }),
+  });
+  if(!r.ok)throw await errorFor('groq',r);
+  const data=await r.json();
+  const message=data?.choices?.[0]?.message;
+  const answer=typeof message?.content==='string'
+    ?message.content.trim().slice(0,task==='prompt'?13000:2500)
+    :extractText(message?.content,task==='prompt'?13000:2500);
+  if(!answer)throw new Error('provider-empty-content');
+  return {text:answer,source:'ai',provider:'groq'};
+}
+
 /**
  * Returns null if AI is unavailable so the deterministic engine can respond.
  * A second provider receives the user's prompt ONLY with explicit opt-in
@@ -152,14 +198,18 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
   const settings=aiConfig(env);
   if(!settings.aiEnabled)return null;
   const first=settings.aiPrimary;
-  const second=first==='gemini'?'openrouter':'gemini';
-  const order=[first,second].filter((provider,index)=>{
+  const second=settings.aiFallbackProvider;
+  // Only the selected primary and approved backup may see the prompt.
+  // A missing primary credential is not an attempted transfer, so a
+  // configured backup can still serve requests on its own.
+  const order=[first,...(second?[second]:[])].filter((provider,index)=>{
     if(!settings.aiProviders[provider])return false;
     return index===0||!settings.aiProviders[first]||settings.aiFallbackEnabled;
   });
+  const handlers={gemini:geminiReply,openrouter:openRouterReply,groq:groqReply};
   for(const provider of order){
     try{
-      return await (provider==='gemini'?geminiReply:openRouterReply)({brief,messages,styles,task,env,request});
+      return await handlers[provider]({brief,messages,styles,task,env,request});
     }catch(err){
       console.warn('Frontline AI provider unavailable:',provider,errorKind(err));
     }

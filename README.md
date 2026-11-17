@@ -10,7 +10,7 @@ A responsive UI/UX design recommendation workspace. Tell it what you want to bui
 - Unsaved feedback/chat drafts survive style switching and preview changes.
 - Explainable prompt-based recommendation rankings using a curated reference index.
 - 12 verified UI/UX leaderboard entries (August 2026 archive) plus three additional, explicitly unranked sites; credited outbound links and original illustrative thumbnails only.
-- Studio assistant with a useful deterministic design guide; optional Gemini API (primary) and OpenRouter (secondary) integration.
+- Studio assistant with a useful deterministic design guide; OpenRouter AI (primary), GroqCloud (optional backup) and dormant optional Gemini integration.
 - PostgreSQL-backed project history, conversation history, learned personal style preferences, and opt-in aggregate feedback.
 - Privacy controls: isolated guest identities, deletion, collective learning off by default, no publishing raw conversations.
 - Copyable implementation prompts that blend selected designs.
@@ -28,12 +28,16 @@ Optional environment variables (never commit the actual secret):
 
 ```text
 DATABASE_URL=postgresql://...
-GEMINI_API_KEY=your-private-google-ai-studio-key
-GEMINI_MODEL=gemini-3.5-flash-lite
-AI_PRIMARY_PROVIDER=gemini
-OPENROUTER_API_KEY=your-optional-openrouter-key
+OPENROUTER_API_KEY=your-private-openrouter-key
 OPENROUTER_MODEL=openrouter/free
-AI_FALLBACK_ENABLED=false
+AI_PRIMARY_PROVIDER=openrouter
+GROQ_API_KEY=your-private-groqcloud-key
+GROQ_MODEL=openai/gpt-oss-20b
+AI_FALLBACK_PROVIDER=groq
+AI_FALLBACK_ENABLED=true
+# Optional dormant Gemini credentials; unused by normal OpenRouter→Groq routing:
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 `GET /api/health` provides a basic health report, and `GET /api/config` indicates whether database persistence and generative AI are currently enabled. No API key is necessary for the baseline recommendation engine.
@@ -50,7 +54,7 @@ The automated suite checks three-style recommendations, feedback signal learning
 
 The app is hosted on a Render Node web service at https://ui-compass-studio.onrender.com, deployed directly from `main` in the Singapore region. The checked-in `render.yaml` also defines a reproducible web + PostgreSQL Blueprint for future infrastructure setup, but this Blueprint has **not** been applied. The live service currently uses the project's dedicated PostgreSQL schema on Supabase. Its /api/health reports `database: connected` when persistence is active. Verify backups and restore readiness before onboarding sensitive production clients.
 
-For Gemini-powered chat, add `GEMINI_API_KEY` in your Render service's **Environment** settings. Keep `AI_PRIMARY_PROVIDER=gemini`; optionally add `OPENROUTER_API_KEY` to enable OpenRouter as an alternative. Setting `AI_FALLBACK_ENABLED=true` explicitly permits sharing the same user prompt with OpenRouter **only if Gemini fails**. Keep it `false` by default to avoid unexpected cross-provider data transfers. If neither provider works, the deterministic design guide remains available. Never put keys in GitHub, in a browser, or in the chat.
+**Recommended AI routing:** OpenRouter is the first provider (`AI_PRIMARY_PROVIDER=openrouter`, `OPENROUTER_MODEL=openrouter/free`). GroqCloud is the explicit optional backup (`AI_FALLBACK_PROVIDER=groq`, `GROQ_MODEL=openai/gpt-oss-20b`). Create `GROQ_API_KEY` at https://console.groq.com/keys and add it **only** to your Render service's Environment panel. The Groq API endpoint is `https://api.groq.com/openai/v1/chat/completions`; no browser-side key and no new client library are required. With `AI_FALLBACK_ENABLED=true`, user prompts are shared with Groq **only if OpenRouter fails**. Disable it to disallow that second-provider transfer. Gemini is preserved but not called in this route, even if `GEMINI_API_KEY` remains set. Explicitly selecting `AI_PRIMARY_PROVIDER=gemini` can still activate it. If configured providers fail, the deterministic design guide remains available. Never commit or paste API keys. Provider availability and free-tier limits depend on account and model; Groq's published pay-as-you-go token pricing applies to usage beyond any included free-tier allowance.
 
 **AI data-use note:** Google Gemini API's free tier may use submitted content to improve Google's products; the paid tier has different terms. Free model availability, project rate limits and provider rules change. Use fictional design briefs for initial tests, obtain appropriate end-user consent before sending private client data, and select a suitable paid/data-protected tier before production deployment with confidential conversations.
 

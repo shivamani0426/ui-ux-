@@ -220,7 +220,7 @@ function App(){
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
             {message.role!=='user'&&<div className="message-avatar"><FrontlineMark size={25}/></div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
-              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations · AI fallback':message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
+              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations · AI fallback':message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
               <p>{message.content}</p>
             </div>
           </div>)}

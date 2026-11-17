@@ -31,7 +31,7 @@ test('Fusion synthesizes saved reference metadata and does not invent a screensh
 });
 test('AI prompt can replace fallback without exposing secrets, in correct mode',async()=>{
   const result=await createDesignPrompt({
-    project,mode:'generate',styles:['minimal'],env:{GEMINI_API_KEY:'test'},
+    project,mode:'generate',styles:['minimal'],env:{GEMINI_API_KEY:'test',AI_PRIMARY_PROVIDER:'gemini'},
     request:async()=>({ok:true,json:async()=>({candidates:[{content:{parts:[{text:
       '# UI/UX ORIGINAL PROMPT\n'+'Create an original accessible site. '.repeat(50)}]}}]})})
   });
@@ -40,7 +40,7 @@ test('AI prompt can replace fallback without exposing secrets, in correct mode',
 });
 test('Short AI content or exhausted providers preserve deterministic quality',async()=>{
   const result=await createDesignPrompt({
-    project,mode:'fusion',styles:['glass'],env:{GEMINI_API_KEY:'test'},
+    project,mode:'fusion',styles:['glass'],env:{GEMINI_API_KEY:'test',AI_PRIMARY_PROVIDER:'gemini'},
     request:async()=>({ok:true,json:async()=>({candidates:[{content:{parts:[{text:'Too short'}]}}]})})
   });
   assert.equal(result.source,'guide');
