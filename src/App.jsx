@@ -105,8 +105,10 @@ function App(){
       window.scrollTo({top:0,behavior:'instant'});
     }
   };
-  const send=async()=>{
-    const raw=brief.trim();
+  const send=async(rawInput=brief)=>{
+    // Read the focused textarea's value on submit. A welcome-to-studio focus
+    // transition can render before React's brief state catches up in Firefox.
+    const raw=String(rawInput??'').trim();
     if(working||raw.length<2){if(raw.length<2)notice('Describe what you want to design.');return;}
     focusChat();
     setBrief('');
@@ -283,9 +285,9 @@ function App(){
           trailColor={active?(theme==='dark'?'#df935c':'#d6a263'):'#dc8f54'}
           radius={26} thickness={1.7} duration={4.8} stars={2} trailLength={0.34} glow={0.95}
           hover="lap" sparkle clickPulse className="chat-star">
-          <form className="composer" onSubmit={e=>{e.preventDefault();send();}}>
+          <form className="composer" onSubmit={e=>{e.preventDefault();send(e.currentTarget.querySelector('textarea')?.value??brief);}}>
             {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="DESIGN BEGINS WITH YOU" fontSize={38} fontWeight={650} reveal="letter" reach={0} labels={false} selection={false} draggable={false} specks={0} sweep={false} clickKick={false} color="currentColor" accentColor="#bd7444" /></div></div>}
-            <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
+            <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent?.isComposing){e.preventDefault();send(e.currentTarget.value);}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
               <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?'AI configured · fallback ready':'Design guidance ready'}</span>
               <div className="composer-buttons">
