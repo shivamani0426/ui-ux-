@@ -8,6 +8,8 @@ import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections} from './project-intelligence.mjs';
+import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
+  resetPreferenceLearning,preferenceHints} from './learning-engine.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const PORT=Number(process.env.PORT||3000);
@@ -88,14 +90,43 @@ async function makeInspirationResponse(owner,project){
   };
 }
 async function profile(owner){
-  if(!pg)return guests.get(owner)||{styleWeights:{},globalOptIn:false};
+  if(!pg)return normalizeProfile(guests.get(owner));
   const r=await pg.query('SELECT style_weights,global_opt_in FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
-  return r.rows[0]?{styleWeights:r.rows[0].style_weights,globalOptIn:r.rows[0].global_opt_in}:{styleWeights:{},globalOptIn:false};
+  return normalizeProfile(r.rows[0]?{
+    styleWeights:r.rows[0].style_weights,globalOptIn:r.rows[0].global_opt_in,
+  }:{});
 }
-async function saveProfile(owner,p){
+async function saveProfile(owner,input){
+  const p=normalizeProfile(input);
   if(!pg){guests.set(owner,p);return;}
   await pg.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in) VALUES($1,$2,$3)
-  ON CONFLICT(visitor_id) DO UPDATE SET style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,[owner,JSON.stringify(p.styleWeights),p.globalOptIn]);
+  ON CONFLICT(visitor_id) DO UPDATE SET style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,
+    [owner,JSON.stringify(persistableWeights(p)),p.globalOptIn]);
+}
+async function revokeSharedFeedback(owner){
+  if(!pg){for(const vote of votes)if(vote.owner===owner)vote.optIn=false;return;}
+  await pg.query('UPDATE frontline.uic_feedback SET eligible_global=false WHERE visitor_id=$1',[owner]);
+}
+async function clearPreferenceFeedback(owner){
+  if(!pg){for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
+  await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);
+}
+async function feedbackEvidence(owner){
+  if(!pg){
+    const rows=votes.filter(v=>v.owner===owner);
+    return ['minimal','glass','creative'].map(style=>({
+      style,likes:rows.filter(v=>v.style===style&&v.reaction==='like').length,
+      dislikes:rows.filter(v=>v.style===style&&v.reaction==='dislike').length,
+      refinements:rows.filter(v=>v.style===style&&v.reaction==='edit').length,
+    }));
+  }
+  const r=await pg.query(`SELECT style_id AS style,reaction,COUNT(*)::int AS total
+    FROM frontline.uic_feedback WHERE visitor_id=$1 GROUP BY style_id,reaction`,[owner]);
+  return ['minimal','glass','creative'].map(style=>({
+    style,likes:r.rows.filter(x=>x.style===style&&x.reaction==='like').reduce((sum,x)=>sum+x.total,0),
+    dislikes:r.rows.filter(x=>x.style===style&&x.reaction==='dislike').reduce((sum,x)=>sum+x.total,0),
+    refinements:r.rows.filter(x=>x.style===style&&x.reaction==='edit').reduce((sum,x)=>sum+x.total,0),
+  }));
 }
 async function saveProject(owner,p){
   if(!pg){live.set(p.id,{...p,owner});return;}
@@ -120,7 +151,12 @@ async function addVote(owner,id,style,reaction,detail,p){
   await pg.query('INSERT INTO frontline.uic_feedback(id,visitor_id,project_id,style_id,reaction,detail,eligible_global) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),owner,id,style,reaction,detail,p.globalOptIn]);
 }
 async function insights(){
-  const counts=pg?(await pg.query(`SELECT style_id,COUNT(DISTINCT visitor_id)::int AS people FROM frontline.uic_feedback WHERE eligible_global=true AND reaction='like' GROUP BY style_id`)).rows:votes.filter(v=>v.optIn&&v.reaction==='like').reduce((arr,v)=>{let x=arr.find(i=>i.style_id===v.style);if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}x.owners.add(v.owner);return arr},[]).map(x=>({style_id:x.style_id,people:x.owners.size}));
+  const counts=pg?(await pg.query(`SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS people
+    FROM frontline.uic_feedback f
+    JOIN frontline.uic_profiles p ON p.visitor_id=f.visitor_id
+    WHERE f.eligible_global=true AND f.reaction='like' AND p.global_opt_in=true
+      AND COALESCE(p.style_weights->'_personalization'->>'enabled','true')='true'
+    GROUP BY f.style_id`)).rows:votes.filter(v=>v.optIn&&v.reaction==='like').reduce((arr,v)=>{let x=arr.find(i=>i.style_id===v.style);if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}x.owners.add(v.owner);return arr},[]).map(x=>({style_id:x.style_id,people:x.owners.size}));
   return counts.filter(x=>x.people>=5).map(x=>({style:x.style_id,people:x.people}));
 }
 async function eraseProfile(owner){
