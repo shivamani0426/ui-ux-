@@ -320,3 +320,19 @@ test('Repeated OpenRouter timeouts fail safely without changing provider',async(
     assert.doesNotMatch(logged.join(' '),/private-secret/);
   }finally{console.warn=originalWarn}
 });
+
+test('OpenRouter creative insight uses a compact bounded completion and never sends secrets',async()=>{
+  let request;
+  const result=await designAiReply({brief,messages,styles,
+    task:'insight',env:{OPENROUTER_API_KEY:'insight-secret',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'},
+    request:async(url,init)=>{
+      request={url,body:JSON.parse(init.body)};
+      return openRouterOk('Minimal SaaS: keep the learning overview legible. Glass UI: use focused depth on AI tutor supporting cards. Creative UI: consider an expressive course hero.');
+    }
+  });
+  assert.equal(result.provider,'openrouter');
+  assert.equal(request.url,'https://openrouter.ai/api/v1/chat/completions');
+  assert.equal(request.body.max_tokens,1700);
+  assert.match(request.body.messages[0].content,/creative enhancements/i);
+  assert.ok(!JSON.stringify(request.body).includes('insight-secret'));
+});
