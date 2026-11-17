@@ -63,6 +63,11 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
     assert.equal(signed.user.id,account);
     const listed=await call('/api/projects',{headers:{Cookie:allCookies}});
     assert.ok((await listed.json()).projects.some(p=>p.id===project.id));
+    // A second device has a different guest cookie but the same verified
+    // account token, so its project history must resolve to the same owner.
+    const secondDevice=await call('/api/projects',{headers:{Cookie:accountCookies}});
+    assert.ok((await secondDevice.json()).projects.some(p=>p.id===project.id),
+      'Verified account history must be accessible across guest cookies/devices');
     const elsewhere=await call('/api/projects/'+project.id);
     assert.equal(elsewhere.status,404,'A different guest must not read migrated projects');
     const logout=await call('/api/auth/logout',{method:'POST',headers:{
