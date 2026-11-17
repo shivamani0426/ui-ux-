@@ -34,3 +34,18 @@ test('Bottom-centre black-hole motion leads to branded login and guest studio',(
   assert.match(login,/disabled=\{!googleReady\}/,'Google must not pretend to log in until configured');
   assert.ok(!login.includes('type="password"'),'No insecure placeholder credential collection');
 });
+
+
+test('Login orb and both orbital rings breathe gently without changing the layout',()=>{
+  const css=read('src/components/FrontlineLogin.css');
+  const jsx=read('src/components/FrontlineLogin.jsx');
+  assert.match(jsx,/fl-login-orb/);
+  assert.match(jsx,/fl-login-ring-one/);
+  assert.match(jsx,/fl-login-ring-two/);
+  assert.match(css,/fl-login-orb-drift 13s ease-in-out infinite alternate,\s*fl-login-orb-breathe 8\.4s/);
+  assert.match(css,/\.fl-login-ring\{\s*animation:fl-login-ring-breathe/);
+  assert.match(css,/@keyframes fl-login-orb-breathe/);
+  assert.match(css,/@keyframes fl-login-ring-breathe/);
+  assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{\s*\.fl-login-orb,\.fl-login-ring,\.fl-login-ring-two/);
+  assert.ok(!css.includes('filter:blur(22px)'),'Breathing should avoid new animated blur repainting');
+});

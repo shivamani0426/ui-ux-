@@ -111,3 +111,33 @@
  .fl-gateway-actions button{font-size:11px;min-height:50px;padding:12px}
  .fl-gateway-content>p{font-size:9px}
 }
+
+/* Subtle login atmosphere breathing. Keep the original orbital drift,
+   ring geometry, colours and layout exactly as before.
+   Individual 'scale' animates independently from each existing 'transform',
+   so the rings retain their ellipse/rotation and the orb keeps its drift. */
+.fl-login-orb{
+  animation:fl-login-orb-drift 13s ease-in-out infinite alternate,
+            fl-login-orb-breathe 8.4s ease-in-out infinite;
+}
+.fl-login-ring{
+  animation:fl-login-ring-breathe 8.4s ease-in-out infinite;
+}
+.fl-login-ring-two{
+  animation-delay:-1.05s;
+}
+@keyframes fl-login-orb-breathe{
+  0%,100%{scale:1}
+  50%{scale:1.032}
+}
+@keyframes fl-login-ring-breathe{
+  0%,100%{scale:1;opacity:1}
+  50%{scale:1.045;opacity:.82}
+}
+@media(prefers-reduced-motion:reduce){
+  .fl-login-orb,.fl-login-ring,.fl-login-ring-two{
+    animation:none!important;
+    scale:1!important;
+    opacity:1!important;
+  }
+}
