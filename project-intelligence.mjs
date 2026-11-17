@@ -35,7 +35,12 @@ const featureRules=[
 ['notifications','Notification center','Notifications','review notifications and find unread items',/\b(notifications?|unread count|alerts?|reminders?)\b/i],
 ['profile','Student and user profiles','Profile','review and edit the user profile',/\b(student profiles?|user profiles?|account profiles?|profile pages?|student account)\b/i],
 ['settings','Settings and preferences','Settings','adjust preferences',/\b(settings?|preferences?|themes?)\b/i],
-['search','Search and filtering','Search and results','find and filter content',/\b(search|filters?|discover)\b/i]
+['search','Search and filtering','Search and results','find and filter content',/\b(search|filters?|discover)\b/i],
+['attendance','Attendance records','Attendance','record and review attendance status',/\b(attendance|absences|present days)\b/i],
+['assessments','Exams, quizzes and assessments','Assessments','find an assessment, submit a response and review its result',/\b(exams?|quizzes?|assessments?)\b/i],
+['enrollment','Enrollment and admissions','Enrollment','enroll and review an enrollment decision',/\b(enrollment|enrolment|admissions?|enrollments?)\b/i],
+['approvals','Review and approvals','Approvals','approve, reject or request a revision with a clear status',/\b(approvals?|moderation|review requests?)\b/i],
+['submissions','File attachments and submissions','Submissions','submit and review an uploaded document',/\b(submissions?|file uploads?|attachments?)\b/i]
 ];
 const constraints=[
 ['Mobile responsive experience',/\b(mobile.first|responsive|mobile friendly|small screens?|smartphones?)\b/i],
@@ -76,6 +81,8 @@ export function analyzeProject(brief,{category}={}){
   const questions=[];
   if(!audience.length)questions.push('Who is the primary user?');
   if(!features.length)questions.push('What is the single most important task?');
+  if(audience.length>1)questions.push('Which tasks and private data should each named role be allowed to access?');
+  if(features.some(f=>f.id==='tutor'))questions.push('What sources, accuracy checks and escalation path should the AI tutor use when uncertain?');
   if(!limits.length)questions.push('Any device, accessibility, or performance constraints?');
   const decisions=unique((text.match(/(?:^|[.!?]\s+)([^.!?]{0,15}\b(?:must|keep|preserve|only|do not|without|should)\b[^.!?]{4,160})/gi)||[]).map(x=>clean(x,175))).slice(0,6);
   const requestedStyles=unique([/\b(glassmorphism|glass ui|glass panels|neon|futuristic|immersive|3d)\b/i.test(text)?'glass':null,/\b(minimal|clean|simple|apple.style)\b/i.test(text)?'minimal':null,/\b(creative|playful|editorial|bold)\b/i.test(text)?'creative':null]);
