@@ -104,3 +104,31 @@ test('new and reopened projects expose all requested features without rewriting 
     const deleted=await call(0,'/api/profile','DELETE');assert.equal(deleted.data.deleted,true);
   }finally{await env.close();}
 });
+
+
+test('Cookie-bound API writes reject cross-origin and non-JSON form submissions',async()=>{
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base='http://127.0.0.1:'+server.address().port;
+  const brief='Create an accessible education dashboard with courses and assignments';
+  try{
+    const visitor=await fetch(base+'/api/profile');
+    const cookie=visitor.headers.get('set-cookie')?.split(';')[0];
+    assert.ok(cookie,'Guest should have an HttpOnly visitor cookie');
+    const cross=await fetch(base+'/api/projects',{method:'POST',
+      headers:{Cookie:cookie,'Content-Type':'application/json',Origin:'https://attacker.example'},
+      body:JSON.stringify({brief})});
+    assert.equal(cross.status,403,'Do not accept cross-origin cookie writes');
+    const form=await fetch(base+'/api/projects',{method:'POST',
+      headers:{Cookie:cookie,'Content-Type':'text/plain'},
+      body:JSON.stringify({brief})});
+    assert.equal(form.status,415,'A simple cross-site HTML form must not create a project');
+    const okay=await fetch(base+'/api/projects',{method:'POST',
+      headers:{Cookie:cookie,'Content-Type':'application/json',Origin:base},
+      body:JSON.stringify({brief})});
+    assert.equal(okay.status,201,'A real same-origin JSON request must continue working');
+    const projects=await fetch(base+'/api/projects',{headers:{Cookie:cookie}});
+    assert.equal((await projects.json()).projects.length,1);
+    const cleanup=await fetch(base+'/api/profile',{method:'DELETE',headers:{Cookie:cookie,Origin:base}});
+    assert.equal(cleanup.status,200);
+  }finally{await new Promise(resolve=>server.close(resolve))}
+});

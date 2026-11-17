@@ -9,7 +9,7 @@ import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections} from './project-intelligence.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
-  resetPreferenceLearning,preferenceHints} from './learning-engine.mjs';
+  resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const PORT=Number(process.env.PORT||3000);
@@ -114,20 +114,24 @@ async function clearPreferenceFeedback(owner){
   await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);
 }
 async function feedbackEvidence(owner){
+  let rows;
   if(!pg){
-    const rows=votes.filter(v=>v.owner===owner);
-    return ['minimal','glass','creative'].map(style=>({
-      style,likes:rows.filter(v=>v.style===style&&v.reaction==='like').length,
-      dislikes:rows.filter(v=>v.style===style&&v.reaction==='dislike').length,
-      refinements:rows.filter(v=>v.style===style&&v.reaction==='edit').length,
-    }));
+    rows=latestFeedbackChoices(votes.filter(v=>v.owner===owner))
+      .map(v=>({style:v.style,reaction:v.reaction,total:1}));
+  }else{
+    const r=await pg.query(`WITH latest AS (
+      SELECT DISTINCT ON (project_id,style_id) style_id,reaction
+      FROM frontline.uic_feedback WHERE visitor_id=$1
+      ORDER BY project_id,style_id,created_at DESC,id DESC
+    )
+    SELECT style_id AS style,reaction,COUNT(*)::int AS total
+    FROM latest GROUP BY style_id,reaction`,[owner]);
+    rows=r.rows;
   }
-  const r=await pg.query(`SELECT style_id AS style,reaction,COUNT(*)::int AS total
-    FROM frontline.uic_feedback WHERE visitor_id=$1 GROUP BY style_id,reaction`,[owner]);
   return ['minimal','glass','creative'].map(style=>({
-    style,likes:r.rows.filter(x=>x.style===style&&x.reaction==='like').reduce((sum,x)=>sum+x.total,0),
-    dislikes:r.rows.filter(x=>x.style===style&&x.reaction==='dislike').reduce((sum,x)=>sum+x.total,0),
-    refinements:r.rows.filter(x=>x.style===style&&x.reaction==='edit').reduce((sum,x)=>sum+x.total,0),
+    style,likes:rows.filter(x=>x.style===style&&x.reaction==='like').reduce((sum,x)=>sum+x.total,0),
+    dislikes:rows.filter(x=>x.style===style&&x.reaction==='dislike').reduce((sum,x)=>sum+x.total,0),
+    refinements:rows.filter(x=>x.style===style&&x.reaction==='edit').reduce((sum,x)=>sum+x.total,0),
   }));
 }
 async function saveProject(owner,p){
@@ -148,18 +152,101 @@ async function listProjects(owner){
   const r=await pg.query('SELECT id,title,brief,recommendation AS recommendations,created_at AS "createdAt" FROM frontline.uic_projects WHERE visitor_id=$1 ORDER BY updated_at DESC LIMIT 50',[owner]);
   return r.rows;
 }
-async function addVote(owner,id,style,reaction,detail,p){
-  if(!pg){votes.push({owner,id,style,reaction,detail,optIn:p.globalOptIn});return;}
-  await pg.query('INSERT INTO frontline.uic_feedback(id,visitor_id,project_id,style_id,reaction,detail,eligible_global) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),owner,id,style,reaction,detail,p.globalOptIn]);
+// Serialize feedback per visitor so concurrent clicks cannot award duplicate
+// learning points. PostgreSQL advisory locks work across Render instances.
+const memoryFeedbackGates=new Map();
+async function recordFeedback(owner,id,styles,reaction,detail){
+  const saveVote=async(client,style,prefs)=>{
+    const previous=client
+      ?(await client.query(`SELECT reaction,detail FROM frontline.uic_feedback
+         WHERE visitor_id=$1 AND project_id=$2 AND style_id=$3
+         ORDER BY created_at DESC,id DESC LIMIT 1`,[owner,id,style])).rows[0]
+      :[...votes].reverse().find(v=>v.owner===owner&&v.id===id&&v.style===style);
+    if(previous?.reaction===reaction&&(previous?.detail||'')===detail)
+      return {prefs,changed:false};
+    if(client){
+      await client.query(`INSERT INTO frontline.uic_feedback
+        (id,visitor_id,project_id,style_id,reaction,detail,eligible_global)
+        VALUES($1,$2,$3,$4,$5,$6,$7)`,
+        [crypto.randomUUID(),owner,id,style,reaction,detail,prefs.globalOptIn]);
+    }else votes.push({owner,id,style,reaction,detail,optIn:prefs.globalOptIn});
+    return {prefs:learnFeedbackTransition(prefs,style,reaction,previous?.reaction),changed:true};
+  };
+  if(!pg){
+    const earlier=memoryFeedbackGates.get(owner)||Promise.resolve();
+    let unlock;
+    const next=new Promise(resolve=>{unlock=resolve});
+    memoryFeedbackGates.set(owner,next);
+    await earlier;
+    try{
+      let prefs=await profile(owner);
+      if(!prefs.personalization.enabled)
+        throw Object.assign(new Error('Personal learning is paused. Re-enable it to save design feedback.'),{status:409});
+      let changed=0;
+      for(const style of styles){
+        const outcome=await saveVote(null,style,prefs);
+        prefs=outcome.prefs;if(outcome.changed)changed++;
+      }
+      if(changed)await saveProfile(owner,prefs);
+      return {profile:prefs,changed,saved:styles.length};
+    }finally{
+      unlock();
+      if(memoryFeedbackGates.get(owner)===next)memoryFeedbackGates.delete(owner);
+    }
+  }
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN');
+    // This is a per-visitor lock; hash collisions only serialize unrelated
+    // visitors, they do not grant access to another visitor's records.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1),712)',[owner]);
+    const state=await client.query(`SELECT style_weights,global_opt_in FROM frontline.uic_profiles
+      WHERE visitor_id=$1 FOR UPDATE`,[owner]);
+    let prefs=normalizeProfile(state.rows[0]?{
+      styleWeights:state.rows[0].style_weights,globalOptIn:state.rows[0].global_opt_in,
+    }:{});
+    if(!prefs.personalization.enabled)
+      throw Object.assign(new Error('Personal learning is paused. Re-enable it to save design feedback.'),{status:409});
+    let changed=0;
+    for(const style of styles){
+      const outcome=await saveVote(client,style,prefs);
+      prefs=outcome.prefs;if(outcome.changed)changed++;
+    }
+    if(changed)await client.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in)
+      VALUES($1,$2,$3) ON CONFLICT(visitor_id) DO UPDATE SET
+      style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,
+      [owner,JSON.stringify(persistableWeights(prefs)),prefs.globalOptIn]);
+    await client.query('COMMIT');
+    return {profile:prefs,changed,saved:styles.length};
+  }catch(error){
+    await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release()}
 }
 async function insights(){
-  const counts=pg?(await pg.query(`SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS people
-    FROM frontline.uic_feedback f
+  const counts=pg?(await pg.query(`WITH latest AS (
+      SELECT DISTINCT ON (visitor_id,project_id,style_id)
+        visitor_id,style_id,reaction,eligible_global
+      FROM frontline.uic_feedback
+      ORDER BY visitor_id,project_id,style_id,created_at DESC,id DESC
+    )
+    SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS visitors
+    FROM latest f
     JOIN frontline.uic_profiles p ON p.visitor_id=f.visitor_id
     WHERE f.eligible_global=true AND f.reaction='like' AND p.global_opt_in=true
       AND COALESCE(p.style_weights->'_personalization'->>'enabled','true')='true'
-    GROUP BY f.style_id`)).rows:votes.filter(v=>v.optIn&&v.reaction==='like').reduce((arr,v)=>{let x=arr.find(i=>i.style_id===v.style);if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}x.owners.add(v.owner);return arr},[]).map(x=>({style_id:x.style_id,people:x.owners.size}));
-  return counts.filter(x=>x.people>=5).map(x=>({style:x.style_id,people:x.people}));
+    GROUP BY f.style_id`)).rows:latestFeedbackChoices(votes)
+    .filter(v=>v.optIn&&v.reaction==='like')
+    .reduce((arr,v)=>{
+      let x=arr.find(i=>i.style_id===v.style);
+      if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}
+      x.owners.add(v.owner);
+      return arr;
+    },[]).map(x=>({style_id:x.style_id,visitors:x.owners.size}));
+  // Avoid exposing exact small-cohort sizes, member IDs or free-form details.
+  return counts.filter(x=>x.visitors>=5).map(x=>({
+    style:x.style_id,contributorsBand:visitorCohortBand(x.visitors),
+  }));
 }
 async function eraseProfile(owner){
   if(!pg){guests.delete(owner);for(const [id,p] of live){if(p.owner===owner)live.delete(id)}for(const key of memorySelections.keys())if(key.startsWith(owner+':'))memorySelections.delete(key);for(const key of finalizedModes)if(key.startsWith(owner+':'))finalizedModes.delete(key);for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
@@ -175,8 +262,19 @@ function cookie(req,res){
   return id;
 }
 async function readBody(req){
+  // Cookie-authenticated writes must be JSON. Browsers cannot silently submit
+  // this content type from a cross-site HTML form.
+  if(String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase()!=='application/json')
+    throw Object.assign(new Error('Use application/json for API writes.'),{status:415});
   let buff='';for await(const part of req){buff+=part;if(buff.length>MAX_BODY)throw Object.assign(new Error('Request too large'),{status:413});}
   try{return JSON.parse(buff||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
+}
+function trustedMutationOrigin(req){
+  if(!['POST','PUT','PATCH','DELETE'].includes(req.method)||!req.headers.origin)return true;
+  try{
+    const origin=new URL(req.headers.origin);
+    return ['https:','http:'].includes(origin.protocol)&&origin.host===req.headers.host;
+  }catch{return false}
 }
 function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(obj));}
 function validateText(text,min,max){return typeof text==='string'&&text.trim().length>=min&&text.trim().length<=max;}
@@ -271,6 +369,7 @@ const server=http.createServer(async(req,res)=>{
   let owner=cookie(req,res);
   try{
     if(req.url?.startsWith('/api/')){
+      if(!trustedMutationOrigin(req))return json(res,403,{error:'Cross-origin changes are not permitted.'});
       if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
       if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.4.0'});
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
@@ -305,7 +404,11 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='DELETE'&&req.url==='/api/profile'){
         await eraseProfile(owner);return json(res,200,{deleted:true});
       }
-      if(req.method==='GET'&&req.url==='/api/insights')return json(res,200,{publicPatterns:await insights(),minimumContributors:5});
+      if(req.method==='GET'&&req.url==='/api/insights')return json(res,200,{
+        publicPatterns:await insights(),minimumContributors:5,
+        contributorUnit:'distinct guest visitor IDs, not verified people',
+        counts:'privacy bands only; not precise totals or statistical findings',
+      });
       if(req.method==='GET'&&req.url==='/api/projects')return json(res,200,{projects:await listProjects(owner)});
       if(req.method==='POST'&&req.url==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
@@ -394,7 +497,8 @@ const server=http.createServer(async(req,res)=>{
             designs:(p.recommendations?.designs||[]).map(d=>{
               const found=comparison.find(c=>c.id===d.id);
               return found?{...d,match:found.match,tradeoff:found.tradeoff,strengths:found.strengths,
-                criteria:found.criteria,scoring:found.scoring,reasons:found.reasons}:d;
+                criteria:found.criteria,scoring:found.scoring,reasons:found.reasons,
+                personalization:found.personalization}:d;
             })};
           return json(res,200,{project:{...p,recommendations}});
         }
@@ -422,14 +526,8 @@ const server=http.createServer(async(req,res)=>{
         const selected=Array.isArray(b.styles)?[...new Set(b.styles)]:[];
         if(!selected.length||selected.some(s=>!STYLES.some(t=>t.id===s))||!['like','dislike','edit'].includes(b.reaction))return json(res,400,{error:'Invalid feedback'});
         const detail=typeof b.detail==='string'?b.detail.slice(0,500):'';
-        let prefs=await profile(owner);
-        if(!prefs.personalization.enabled)
-          return json(res,409,{error:'Personal learning is paused. Re-enable it to save design feedback.'});
-        for(const style of selected){
-          await addVote(owner,p.id,style,b.reaction,detail,prefs);
-          prefs=learnStyle(prefs,style,b.reaction);
-        }
-        await saveProfile(owner,prefs);return json(res,200,{saved:selected.length,profile:prefs});
+        const saved=await recordFeedback(owner,p.id,selected,b.reaction,detail);
+        return json(res,200,saved);
       }
       return json(res,404,{error:'API route not found'});
     }

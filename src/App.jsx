@@ -191,7 +191,8 @@ function App(){
       const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({projectId:project.id,styles:selected,reaction,detail:feedback})});
       setProfile(r.profile);
       setFeedback('');
-      notice('Feedback saved for '+r.saved+' design '+(r.saved===1?'direction.':'directions.'));
+      notice(r.changed===0?'That feedback was already saved; no extra preference points were added.':
+        'Feedback updated for '+r.changed+' design '+(r.changed===1?'direction.':'directions.'));
     }catch(e){notice(e.message);}
   };
   const copyPrompt=async()=>{

@@ -31,17 +31,31 @@ test('Milestone 07 guest feedback is private, editable, pausable and deletable w
     for(let i=0;i<3;i++){
       const result=await alice('/api/feedback','POST',{projectId:id,styles:['creative'],reaction:'like',detail:'Distinctive visuals'});
       assert.equal(result.status,200);
+      assert.equal(result.data.changed,i===0?1:0,'Repeated identical feedback must not inflate learning');
     }
     const learned=await alice('/api/preferences');
     assert.equal(learned.status,200);
-    assert.equal(learned.data.profile.styleWeights.creative,3);
-    assert.equal(learned.data.evidence.find(x=>x.style==='creative').likes,3);
+    assert.equal(learned.data.profile.styleWeights.creative,1);
+    assert.equal(learned.data.evidence.find(x=>x.style==='creative').likes,1);
     const isolated=await bob('/api/preferences');
     assert.equal(isolated.data.profile.styleWeights.creative,undefined,'Visitors do not share learned preferences');
     assert.equal(isolated.data.evidence.find(x=>x.style==='creative').likes,0);
     const newA=await alice('/api/projects','POST',{brief});
     const personalized=newA.data.project.recommendations.designs.find(x=>x.id==='creative').match;
     assert.ok(personalized>initialScore,'New projects consider explicit private feedback');
+    const dislike=await alice('/api/feedback','POST',{
+      projectId:id,styles:['creative'],reaction:'dislike',detail:'Too much decoration'
+    });
+    assert.equal(dislike.status,200);
+    assert.equal(dislike.data.changed,1);
+    assert.equal(dislike.data.profile.styleWeights.creative,-1,
+      'Switching from like to dislike must reverse the earlier +1 signal');
+    const reversedEvidence=await alice('/api/preferences');
+    assert.equal(reversedEvidence.data.evidence.find(x=>x.style==='creative').likes,0);
+    assert.equal(reversedEvidence.data.evidence.find(x=>x.style==='creative').dislikes,1);
+    const afterDislike=await alice('/api/projects','POST',{brief});
+    assert.ok(afterDislike.data.project.recommendations.designs.find(x=>x.id==='creative').match<initialScore,
+      'Negative preference should influence later unrelated projects');
     const updated=await alice('/api/preferences','PUT',{
       motion:'minimal',density:'compact',contrast:'high',colorMood:'warm',
       styleWeights:{creative:-3,minimal:3}
@@ -70,12 +84,14 @@ test('Milestone 07 guest feedback is private, editable, pausable and deletable w
     assert.equal(existing.status,200,'Clearing preferences must not delete existing projects');
     assert.equal(existing.data.project.brief,brief);
     assert.equal((await bob('/api/projects/'+id)).status,404);
-  }finally{await env.close();}
+  }finally{
+    await Promise.allSettled([alice('/api/profile','DELETE'),bob('/api/profile','DELETE')]);
+    await env.close();
+  }
 });
 test('Aggregated learning requires five distinct opted-in contributors and honors revoked consent',async()=>{
-  const env=await setup();
+  const env=await setup(),clients=Array.from({length:5},()=>env.client());
   try{
-    const clients=Array.from({length:5},()=>env.client());
     for(let i=0;i<clients.length;i++){
       const call=clients[i];
       const project=await call('/api/projects','POST',{brief:'Create a modern team productivity dashboard for work'});
@@ -87,11 +103,68 @@ test('Aggregated learning requires five distinct opted-in contributors and honor
       const aggregate=await call('/api/insights');
       assert.equal(aggregate.status,200);
       if(i<4)assert.equal(aggregate.data.publicPatterns.length,0,'Never publish a cohort below five');
-      else assert.ok(aggregate.data.publicPatterns.some(x=>x.style==='minimal'&&x.people===5));
+      else assert.ok(aggregate.data.publicPatterns.some(x=>x.style==='minimal'&&x.contributorsBand==='5–9'));
+      assert.equal(aggregate.data.contributorUnit,'distinct guest visitor IDs, not verified people');
+      assert.ok(aggregate.data.publicPatterns.every(x=>x.people===undefined),
+        'Public insights must not expose exact small guest cohort sizes');
     }
     const revoke=await clients[0]('/api/profile','PUT',{globalOptIn:false});
     assert.equal(revoke.data.globalOptIn,false);
     const after=await clients[1]('/api/insights');
     assert.equal(after.data.publicPatterns.length,0,'Prior eligible feedback must be excluded after opting out');
-  }finally{await env.close();}
+  }finally{
+    await Promise.allSettled(clients.map(call=>call('/api/profile','DELETE')));
+    await env.close();
+  }
+});
+
+
+test('One guest with many projects is never treated as five independent contributors',async()=>{
+  const env=await setup(),call=env.client();
+  try{
+    const opted=await call('/api/profile','PUT',{globalOptIn:true});
+    assert.equal(opted.data.globalOptIn,true);
+    for(let i=0;i<6;i++){
+      const project=await call('/api/projects','POST',{
+        brief:'Create an accessible task workspace for an education portal '+i
+      });
+      assert.equal(project.status,201);
+      const vote=await call('/api/feedback','POST',{
+        projectId:project.data.project.id,styles:['minimal'],reaction:'like'
+      });
+      assert.equal(vote.status,200);
+    }
+    assert.deepEqual((await call('/api/insights')).data.publicPatterns,[],
+      'A single guest cookie cannot independently meet the minimum cohort');
+  }finally{
+    await call('/api/profile','DELETE').catch(()=>{});
+    await env.close();
+  }
+});
+
+test('Current shared cohort reflects latest reaction, not a past like',async()=>{
+  const env=await setup(),clients=Array.from({length:5},()=>env.client()),ids=[];
+  try{
+    for(const call of clients){
+      const created=await call('/api/projects','POST',{brief:'Design a simple education dashboard with accessible assignments'});
+      ids.push(created.data.project.id);
+      await call('/api/profile','PUT',{globalOptIn:true});
+      await call('/api/feedback','POST',{projectId:created.data.project.id,styles:['minimal'],reaction:'like'});
+    }
+    assert.equal((await clients[0]('/api/insights')).data.publicPatterns[0].contributorsBand,'5–9');
+    const reverse=await clients[0]('/api/feedback','POST',{
+      projectId:ids[0],styles:['minimal'],reaction:'dislike',detail:'Changed my mind'
+    });
+    assert.equal(reverse.status,200);
+    assert.equal(reverse.data.profile.styleWeights.minimal,-1);
+    assert.deepEqual((await clients[1]('/api/insights')).data.publicPatterns,[],
+      'A previously liked style must not remain eligible after feedback reversal');
+    await clients[0]('/api/feedback','POST',{
+      projectId:ids[0],styles:['minimal'],reaction:'like',detail:'I prefer it now'
+    });
+    assert.equal((await clients[1]('/api/insights')).data.publicPatterns[0].contributorsBand,'5–9');
+  }finally{
+    await Promise.allSettled(clients.map(call=>call('/api/profile','DELETE')));
+    await env.close();
+  }
 });

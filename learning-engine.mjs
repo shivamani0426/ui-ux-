@@ -122,3 +122,30 @@ export function preferenceHints(profile){
   for(const id of ranked)hints.push('Personal '+id+' preference signal: '+p.styleWeights[id]+'/5 (prior feedback; not a measured match score)');
   return hints;
 }
+
+
+// 07D — a feedback reaction represents the latest choice on one project and
+// style, not an unlimited supply of points earned by pressing Like repeatedly.
+export const reactionScore=value=>value==='like'?1:value==='dislike'?-1:0;
+export function learnFeedbackTransition(profile,style,next,previous=null){
+  const p=normalizeProfile(profile);
+  if(!p.personalization.enabled||!STYLE_IDS.includes(style))return p;
+  const delta=reactionScore(next)-reactionScore(previous);
+  if(delta)p.styleWeights[style]=Math.max(-5,Math.min(5,(p.styleWeights[style]||0)+delta));
+  return p;
+}
+// Input must be chronological (oldest first). Entries never leave the server;
+// output is used for private counts or min-cohort anonymous summaries only.
+export function latestFeedbackChoices(rows){
+  const latest=new Map();
+  for(const row of Array.isArray(rows)?rows:[]){
+    if(!row||!STYLE_IDS.includes(row.style))continue;
+    latest.set(JSON.stringify([row.owner,row.id,row.style]),row);
+  }
+  return [...latest.values()];
+}
+// Coarse public display deliberately avoids exact guest-identifier counts.
+export function visitorCohortBand(count){
+  const n=Number(count)||0;
+  return n>=25?'25+':n>=10?'10–24':n>=5?'5–9':null;
+}

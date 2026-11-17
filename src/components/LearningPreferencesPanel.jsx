@@ -57,7 +57,7 @@ export default function LearningPreferencesPanel({profile={},evidence=[],busy=fa
       </div>)}
     </div>
     <div className="learning-privacy-note"><ShieldCheck size={15} aria-hidden="true"/>
-      Private feedback remains inside this visitor's profile. Aggregated learning requires separate opt-in and at least five distinct contributors per style.
+      Your feedback remains private unless you separately opt into aggregate learning. Shared results use coarse size bands and require at least five distinct guest browser IDs per style; these are not verified people.
     </div>
     <button type="button" className="learning-clear" disabled={busy} onClick={onClear}>
       <Trash2 size={15}/> Clear only design preferences & feedback

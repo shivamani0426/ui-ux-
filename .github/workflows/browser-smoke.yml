@@ -16,6 +16,8 @@ jobs:
           node-version: '22'
       - name: Install production app and build
         run: npm install --omit=dev
+      - name: Verify reproducible 07D learning-quality fixtures
+        run: npm run evaluate:learning
       - name: Install browser test runner
         run: npm install --no-save --ignore-scripts playwright@1.56.1
       - name: Install browser binaries
@@ -35,6 +37,9 @@ jobs:
           AI_DESIGN_LIVE_CHECK: ${{ contains(github.event.head_commit.message, 'Milestone 06 design intelligence') && '1' || '0' }}
           EXPECTED_COMMIT_SHA: ${{ github.sha }}
         run: node tests/live-ai-smoke.mjs
+      - name: Verify latest feedback on live PostgreSQL with disposable guest (no AI calls)
+        if: ${{ always() && github.event_name == 'push' && steps.release_gate.outcome == 'success' }}
+        run: node tests/live-learning-smoke.mjs
       - name: Verify live Render site in real browsers
         # External-model outages must not prevent independent UI regression.
         # The job stays red if the model diagnostic failed; do NOT hide it.
