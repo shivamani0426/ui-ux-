@@ -171,10 +171,16 @@ async function serveFile(req,res){
 
 const RATE_WINDOW=60_000,MAX_CALLS=75;const rateMap=new Map();
 function rateLimited(id){const now=Date.now();const rec=rateMap.get(id)||{start:now,count:0};if(now-rec.start>RATE_WINDOW){rec.start=now;rec.count=0;}rec.count++;rateMap.set(id,rec);return rec.count>MAX_CALLS;}
+// Render supplies the deployed Git commit SHA automatically. Expose only a
+// short public revision so release checks can detect a stale deployment.
+const deployedRevision=()=>{
+  const sha=process.env.RENDER_GIT_COMMIT;
+  return typeof sha==='string'&&/^[a-f0-9]{40}$/i.test(sha)?sha.slice(0,12).toLowerCase():'local';
+};
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
-  if(req.method==='GET'&&req.url==='/api/health')return json(res,200,{status:'ok',database:pg?'connected':'demo-memory',ai:aiConfig().aiEnabled});
+  if(req.method==='GET'&&req.url==='/api/health')return json(res,200,{status:'ok',database:pg?'connected':'demo-memory',ai:aiConfig().aiEnabled,revision:deployedRevision()});
   let owner=cookie(req,res);
   try{
     if(req.url?.startsWith('/api/')){
