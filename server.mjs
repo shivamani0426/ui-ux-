@@ -224,13 +224,29 @@ async function recordFeedback(owner,id,styles,reaction,detail){
   }finally{client.release()}
 }
 async function insights(){
-  const counts=pg?(await pg.query(`SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS people
-    FROM frontline.uic_feedback f
+  const counts=pg?(await pg.query(`WITH latest AS (
+      SELECT DISTINCT ON (visitor_id,project_id,style_id)
+        visitor_id,style_id,reaction,eligible_global
+      FROM frontline.uic_feedback
+      ORDER BY visitor_id,project_id,style_id,created_at DESC,id DESC
+    )
+    SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS visitors
+    FROM latest f
     JOIN frontline.uic_profiles p ON p.visitor_id=f.visitor_id
     WHERE f.eligible_global=true AND f.reaction='like' AND p.global_opt_in=true
       AND COALESCE(p.style_weights->'_personalization'->>'enabled','true')='true'
-    GROUP BY f.style_id`)).rows:votes.filter(v=>v.optIn&&v.reaction==='like').reduce((arr,v)=>{let x=arr.find(i=>i.style_id===v.style);if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}x.owners.add(v.owner);return arr},[]).map(x=>({style_id:x.style_id,people:x.owners.size}));
-  return counts.filter(x=>x.people>=5).map(x=>({style:x.style_id,people:x.people}));
+    GROUP BY f.style_id`)).rows:latestFeedbackChoices(votes)
+    .filter(v=>v.optIn&&v.reaction==='like')
+    .reduce((arr,v)=>{
+      let x=arr.find(i=>i.style_id===v.style);
+      if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}
+      x.owners.add(v.owner);
+      return arr;
+    },[]).map(x=>({style_id:x.style_id,visitors:x.owners.size}));
+  // Avoid exposing exact small-cohort sizes, member IDs or free-form details.
+  return counts.filter(x=>x.visitors>=5).map(x=>({
+    style:x.style_id,contributorsBand:visitorCohortBand(x.visitors),
+  }));
 }
 async function eraseProfile(owner){
   if(!pg){guests.delete(owner);for(const [id,p] of live){if(p.owner===owner)live.delete(id)}for(const key of memorySelections.keys())if(key.startsWith(owner+':'))memorySelections.delete(key);for(const key of finalizedModes)if(key.startsWith(owner+':'))finalizedModes.delete(key);for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
@@ -376,7 +392,11 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='DELETE'&&req.url==='/api/profile'){
         await eraseProfile(owner);return json(res,200,{deleted:true});
       }
-      if(req.method==='GET'&&req.url==='/api/insights')return json(res,200,{publicPatterns:await insights(),minimumContributors:5});
+      if(req.method==='GET'&&req.url==='/api/insights')return json(res,200,{
+        publicPatterns:await insights(),minimumContributors:5,
+        contributorUnit:'distinct guest visitor IDs, not verified people',
+        counts:'privacy bands only; not precise totals or statistical findings',
+      });
       if(req.method==='GET'&&req.url==='/api/projects')return json(res,200,{projects:await listProjects(owner)});
       if(req.method==='POST'&&req.url==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
