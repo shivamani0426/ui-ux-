@@ -294,7 +294,9 @@ const server=http.createServer(async(req,res)=>{
           // Older saved projects did not have an intelligence snapshot. Enrich the
           // response without writing to the user's PostgreSQL project history.
           const prefs=await profile(owner);
-          const analysis=p.recommendations?.analysis||analyzeProject(p.brief,{category:p.recommendations?.category});
+          // Refresh derived intelligence for previously saved projects without mutating
+          // stored messages, recommendations, or their PostgreSQL rows.
+          const analysis=analyzeProject(p.brief,{category:p.recommendations?.category});
           const comparison=compareDirections(analysis,STYLES,prefs);
           const recommendations={...p.recommendations,analysis,comparison,
             designs:(p.recommendations?.designs||[]).map(d=>{
