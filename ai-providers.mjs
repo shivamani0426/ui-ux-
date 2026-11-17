@@ -8,7 +8,9 @@ const SYSTEM_PROMPT=[
   'You are Frontline UX/UI, a practical expert UI/UX design advisor.',
   'Provide original, actionable, accessible design guidance in simple English.',
   'Prioritize hierarchy, responsive components, real user flows and user needs.',
-  'Keep conversational answers to approximately 100–180 words.',
+  'Usually be concise, but when asked for a complete design comparison provide up to 600 words when useful.',
+  'Use clear Markdown headings, real tables, short lists, and complete sections where they help.',
+  'Never stop mid-sentence or mid-color token; condense details or suggest Generate UI/UX for a full specification.',
   'Ground the answer in the user brief, identified modules, and current user request.',
   'Treat missing user roles and requirements as uncertainties, not confirmed features.',
   'Preserve earlier approved decisions unless the user explicitly revises them.',
@@ -159,7 +161,7 @@ async function geminiReply({brief,messages,styles,task,env,request}){
 async function openRouterReply({brief,messages,styles,task,env,request}){
   const model=env.OPENROUTER_MODEL||'openrouter/free';
   const isPrompt=task==='prompt',isInsight=task==='insight';
-  const outputLimit=isPrompt?5400:isInsight?1700:1800;
+  const outputLimit=isPrompt?5400:isInsight?1700:3100;
   const messagesForModel=[
     {role:'system',content:isPrompt?DESIGN_PROMPT_SYSTEM:isInsight?DESIGN_INSIGHT_SYSTEM:SYSTEM_PROMPT},
     {role:'user',content:contextMessage(brief,styles)},
@@ -195,7 +197,8 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
     try{
       return await requestOnce(Math.max(35000,networkTimeout(env)));
     }catch(error){
-      if(!['TimeoutError','AbortError'].includes(error?.name)||attempts>=3)throw error;
+      const transient=['TimeoutError','AbortError'].includes(error?.name)||[502,503,504].includes(error?.httpStatus);
+      if(!transient||attempts>=3)throw error;
       // One shorter retry avoids making an already slow first response
       // wait another full request window. The global request cap is three.
       return requestOnce(25000);
@@ -205,18 +208,36 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
     const message=data?.choices?.[0]?.message;
     return (typeof message?.content==='string'
       ?message.content.trim()
-      :extractText(message?.content,isPrompt?13000:isInsight?4500:2500)).slice(0,isPrompt?13000:isInsight?4500:2500);
+      :extractText(message?.content,isPrompt?13000:isInsight?4500:12000)).slice(0,isPrompt?13000:isInsight?4500:12000);
   };
   let data=await complete(outputLimit);
   let answer=visibleText(data);
-  const choice=data?.choices?.[0];
-  // Retry at most once with OPENROUTER ONLY for a blank completion. Do not retry
-  // refusals or content-filtered responses. No private prompt reaches Gemini/Groq.
-  if(!answer&&attempts<3&&choice?.finish_reason!=='content_filter'&&!choice?.message?.refusal){
-    data=await complete(isPrompt?6500:isInsight?2200:2800);
-    answer=visibleText(data);
+  let choice=data?.choices?.[0];
+  // A nonempty completion marked "length" is not a complete answer.
+  // Retry on the SAME OpenRouter provider, with a larger visible-output budget.
+  // Retain any useful first answer if the retry itself times out.
+  const unfinished=()=>task==='chat'&&choice?.finish_reason==='length';
+  const shouldRetry=(!answer||unfinished())&&attempts<3&&
+    choice?.finish_reason!=='content_filter'&&!choice?.message?.refusal;
+  if(shouldRetry){
+    const first=answer,wasIncomplete=unfinished();
+    try{
+      const retried=await complete(isPrompt?6500:isInsight?2200:4400);
+      const alternative=visibleText(retried);
+      if(alternative.length>answer.length||!answer)answer=alternative;
+      choice=alternative.length>=first.length?retried?.choices?.[0]:choice;
+    }catch(error){
+      if(!first)throw error;
+      // Do not discard a partial but useful response after a transient retry
+      // failure. Clearly identify it as partial rather than silently clipping.
+      answer=first;
+      if(wasIncomplete)answer+='\n\n*The model reached its response limit. Ask for the remaining details.*';
+      choice=null;
+    }
   }
   if(!answer)throw new Error('provider-empty-content');
+  if(task==='chat'&&choice?.finish_reason==='length')
+    answer+='\n\n*The model reached its response limit. Ask for the remaining details.*';
   return {text:answer,source:'ai',provider:'openrouter'};
 }
 
