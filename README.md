@@ -128,3 +128,11 @@ Brief extraction is a rule-based baseline, not verified comprehension. Missing d
 ### Milestone 06 reliability refinement
 
 The complete Generate/Fusion specification is always assembled from explicit project requirements, user-visible design heuristics, page maps and acceptance criteria. OpenRouter is now asked for a **short original creative layer** rather than a multi-thousand-token specification. Only project-relevant, prompt-only insights that pass screening are appended as optional refinements. The UI labels this as a structured specification with AI enhancements; it does not imply that the model authored every section. If the free route times out, the full local specification remains available and honestly labeled. This keeps OpenRouter as the sole live provider, without additional keys or database migrations.
+
+### OpenRouter free-router reliability and quota-aware behavior (Nov 17, 2026)
+
+The site received OpenRouter HTTP 429 quota-limit and timeout responses while users tested the three modes. These are external availability constraints. The free-router usage limit is generally 20 requests/minute and 50 requests/day for unfunded accounts; failed attempts may count toward the daily limit. Higher allowances may require an eligible funded account, which is not necessary for the complete structured fallback.
+
+To conserve a shared free key, Frontline defaults to ONE OpenRouter request per user action on openrouter/free or a :free model, compacts recent chat context, asks for concise answers, and never presents provider-marked incomplete text as a complete final design. OPENROUTER_MAX_ATTEMPTS=2 is opt-in for a more generous plan, not the default. A 429 causes a short process-local cooldown and clear user-facing guidance. Logs contain only safe provider/status metadata. The app does not send private prompts to another provider without explicit opt-in.
+
+Generate/Fusion specifications remain available from the grounded structured design engine, even without an optional AI creative refinement. Quality checks remain active. These changes reduce unnecessary requests but cannot override external rate limits or guarantee 100% free-model uptime.
