@@ -255,7 +255,7 @@ test('OpenRouter recovers a reasoning-only first completion using its own provid
   assert.match(answer.text,/readable dashboard/);
   assert.equal(requests.length,2,'retry a blank visible answer once');
   assert.ok(requests.every(r=>new URL(r.url).host==='openrouter.ai'),'no second provider');
-  assert.deepEqual(requests.map(r=>r.body.max_tokens),[1700,4400]);
+  assert.deepEqual(requests.map(r=>r.body.max_tokens),[2400,4400]);
   assert.ok(requests.every(r=>r.body.reasoning.effort==='low'));
   assert.ok(requests.every(r=>!JSON.stringify(r.body).includes('primary-secret')));
 });
@@ -358,7 +358,7 @@ test('length-limited OpenRouter chat retries with a larger budget and preserves 
     :{choices:[{finish_reason:'stop',message:{content:'## Complete\n\nColor: #102A43. All details explained.'}}]});
  }});
  assert.equal(answer.text,'## Complete\n\nColor: #102A43. All details explained.');
- assert.deepEqual(seen.map(x=>x.max),[1700,4400]);
+ assert.deepEqual(seen.map(x=>x.max),[2400,4400]);
  assert.ok(seen.every(x=>new URL(x.url).host==='openrouter.ai'));
 });
 test('OpenRouter transient HTTP 503 retries once without switching providers; 429 is not retried',async()=>{
@@ -391,7 +391,7 @@ test('OpenRouter free default uses only one compact chat request and never sends
     }});
   assert.equal(result,null,'Do not present a clipped answer as complete');
   assert.equal(calls.length,1,'Never spend a second free request on length retry by default');
-  assert.equal(calls[0].body.max_tokens,1700);
+  assert.equal(calls[0].body.max_tokens,2400);
   assert.ok(calls[0].body.messages.length<=6,'Limit conversation context');
   assert.ok(calls[0].body.messages[1].content.length<=1550,'Keep explicit project context concise');
   assert.ok(calls[0].body.messages.slice(2).every(m=>m.content.length<=1300));
