@@ -9,7 +9,7 @@ import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections} from './project-intelligence.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
-  resetPreferenceLearning,preferenceHints} from './learning-engine.mjs';
+  resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const PORT=Number(process.env.PORT||3000);
@@ -114,20 +114,24 @@ async function clearPreferenceFeedback(owner){
   await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);
 }
 async function feedbackEvidence(owner){
+  let rows;
   if(!pg){
-    const rows=votes.filter(v=>v.owner===owner);
-    return ['minimal','glass','creative'].map(style=>({
-      style,likes:rows.filter(v=>v.style===style&&v.reaction==='like').length,
-      dislikes:rows.filter(v=>v.style===style&&v.reaction==='dislike').length,
-      refinements:rows.filter(v=>v.style===style&&v.reaction==='edit').length,
-    }));
+    rows=latestFeedbackChoices(votes.filter(v=>v.owner===owner))
+      .map(v=>({style:v.style,reaction:v.reaction,total:1}));
+  }else{
+    const r=await pg.query(`WITH latest AS (
+      SELECT DISTINCT ON (project_id,style_id) style_id,reaction
+      FROM frontline.uic_feedback WHERE visitor_id=$1
+      ORDER BY project_id,style_id,created_at DESC,id DESC
+    )
+    SELECT style_id AS style,reaction,COUNT(*)::int AS total
+    FROM latest GROUP BY style_id,reaction`,[owner]);
+    rows=r.rows;
   }
-  const r=await pg.query(`SELECT style_id AS style,reaction,COUNT(*)::int AS total
-    FROM frontline.uic_feedback WHERE visitor_id=$1 GROUP BY style_id,reaction`,[owner]);
   return ['minimal','glass','creative'].map(style=>({
-    style,likes:r.rows.filter(x=>x.style===style&&x.reaction==='like').reduce((sum,x)=>sum+x.total,0),
-    dislikes:r.rows.filter(x=>x.style===style&&x.reaction==='dislike').reduce((sum,x)=>sum+x.total,0),
-    refinements:r.rows.filter(x=>x.style===style&&x.reaction==='edit').reduce((sum,x)=>sum+x.total,0),
+    style,likes:rows.filter(x=>x.style===style&&x.reaction==='like').reduce((sum,x)=>sum+x.total,0),
+    dislikes:rows.filter(x=>x.style===style&&x.reaction==='dislike').reduce((sum,x)=>sum+x.total,0),
+    refinements:rows.filter(x=>x.style===style&&x.reaction==='edit').reduce((sum,x)=>sum+x.total,0),
   }));
 }
 async function saveProject(owner,p){
