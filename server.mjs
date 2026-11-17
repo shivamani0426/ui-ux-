@@ -149,27 +149,44 @@ async function chatReply(brief,messages,styleIds){
   const ai=process.env.NODE_ENV==='test'?null:await designAiReply({brief,messages,styles:chosen});
   if(ai)return ai;
   const analysis=analyzeProject(brief);
-  const module=analysis.features[0]?.label||'the primary user task';
-  const page=analysis.features[0]?.page||analysis.pages[0];
-  const audience=analysis.audienceSource==='explicit'?analysis.audience.join(', '):'the intended audience (still to confirm)';
-  const constraints=analysis.constraints.slice(0,2).join(' and ');
-  const style=chosen[0]?.name||'Minimal SaaS';
+  const audience=analysis.audienceSource==='explicit'
+    ?analysis.audience.join(', '):'Primary users not yet confirmed';
+  const preferred=compareDirections(analysis,chosen.length?chosen:STYLES);
+  const best=preferred[0];
+  const mainFeature=analysis.features[0]||null;
   const lower=latest.toLowerCase();
-  const context='For '+analysis.category.toLowerCase()+' users ('+audience+'), prioritize '+module+' on the '+page+' page. ';
-  let advice;
+  let focus;
   if(/\b(color|palette|theme|contrast)\b/.test(lower)){
-    advice='Use '+style+' as the art-direction starting point. Define accessible surface, text and accent tokens. Validate contrast and avoid visual noise behind labels. ';
+    focus='Define readable surface, text and accent color tokens. Check contrast over every panel and preserve a solid-surface alternative.';
   }else if(/\b(navigation|layout|dashboard|page|sidebar|mobile)\b/.test(lower)){
-    advice='Use a clear desktop navigation pattern and a compact mobile destination menu. Place the top task, its status and one primary action above supporting information. ';
+    focus='Give the primary user task a stable desktop navigation destination and compact, labeled mobile navigation. Keep a clear action, its status and confirmation within reach.';
   }else if(/\b(motion|animation|glass|transition)\b/.test(lower)){
-    advice='Use motion only to explain navigation and feedback. Keep task-critical surfaces opaque, preserve focus visibility and provide reduced-motion alternatives. ';
+    focus='Use motion to clarify state changes, keep task-critical text opaque, and respect reduced-motion settings on every device.';
   }else if(/\b(improve|refine|change|simplify|keep|preserve)\b/.test(lower)){
-    advice='Change only the requested visual or interaction detail. Keep the earlier approved task flow, data assumptions and reusable components unless you explicitly replace them. ';
+    focus='Refine only the requested detail. Preserve approved tasks, API contracts and user decisions unless explicitly replaced.';
   }else{
-    advice='Start with the user journey: entry point, action, confirmation and error recovery. Define the interface states before choosing decoration. ';
+    focus='Start with entry point → main task → progress/feedback → error recovery. Design real content and empty states before decorative treatments.';
   }
-  return {text:context+advice+(constraints?'Honor the stated constraint: '+constraints+'. ':'')+
-    'This is offline guidance; the AI provider did not return a usable response.',source:'guide'};
+  const lines=[
+    '## Project understanding',
+    '**Audience:** '+audience,
+    '**Requested modules:** '+(analysis.features.length?analysis.features.map(f=>f.label).join('; '):'No modules explicitly identified yet.'),
+    '**Constraints:** '+(analysis.constraints.length?analysis.constraints.join('; '):'Responsive, accessible defaults proposed.'),
+    '',
+    '## Recommended UI/UX direction',
+    '**'+(best?.name||'Minimal SaaS')+'** is the strongest starting point for these requirements. '+(best?.strengths||'Favor clear task hierarchy.')+'.',
+    '**Trade-off:** '+(best?.tradeoff||'Avoid unnecessary visual complexity')+'.',
+    '',
+    '## Suggested pages and flow',
+    ...analysis.pages.slice(0,9).map(page=>'- '+page),
+    mainFeature?'**Primary task:** Open '+mainFeature.page+', '+mainFeature.action+', then confirm success or show a recovery path.':'**Primary task:** Confirm the user’s most important action before finalizing navigation.',
+    '',
+    '## Practical next step',
+    focus,
+    '',
+    '*OpenRouter did not return a usable reply this time. This is brief-based guidance, not a live model answer. Use “Retry with OpenRouter” to try again; Generate UI/UX can still produce a complete copyable design specification.*'
+  ];
+  return {text:lines.join('\n'),source:'guide'};
 }
 async function serveFile(req,res){
   const pathname=new URL(req.url,'http://localhost').pathname;
