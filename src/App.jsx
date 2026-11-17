@@ -9,6 +9,7 @@ import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
 import DesignPromptPanel from './components/DesignPromptPanel.jsx';
 import ProjectIntelligencePanel from './components/ProjectIntelligencePanel.jsx';
+import MessageMarkdown from './components/MessageMarkdown.jsx';
 import './styles.css';
 import './frontline-studio.css';
 import './inspiration-explorer.css';
@@ -224,7 +225,14 @@ function App(){
             {message.role!=='user'&&<div className="message-avatar"><FrontlineMark size={25}/></div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
               {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?'Guided recommendations · AI fallback':message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
-              <p>{message.content}</p>
+              {message.role==='user'?<p>{message.content}</p>:<MessageMarkdown content={message.content}/>}
+              {message.source==='guide'&&<button type="button" className="message-retry"
+                disabled={working} onClick={()=>{
+                  const prior=messages.slice(0,i).reverse().find(m=>m.role==='user');
+                  if(prior?.content)send(prior.content);
+                }} title="Make another OpenRouter attempt in this conversation">
+                <RotateCcw size={13} aria-hidden="true"/> Retry with OpenRouter
+              </button>}
             </div>
           </div>)}
           {working&&<div className="message-row incoming"><div className="message-avatar"><FrontlineMark size={25}/></div><div className="bubble ai-bubble thinking" aria-label="Analyzing your request"><i/><i/><i/></div></div>}
