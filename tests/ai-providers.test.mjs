@@ -235,3 +235,48 @@ test('Groq prompt-only mode uses longer budget and supports provider status erro
     assert.ok(!logs[0].includes('secret should not show'));
   }finally{console.warn=originalWarn}
 });
+
+test('OpenRouter recovers a reasoning-only first completion using its own provider',async()=>{
+  const requests=[];
+  const env={OPENROUTER_API_KEY:'primary-secret',GEMINI_API_KEY:'unused-secret',
+    GROQ_API_KEY:'unused-groq',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_PROVIDER:'groq',
+    AI_FALLBACK_ENABLED:'false',OPENROUTER_MODEL:'openrouter/free'};
+  const answer=await designAiReply({brief,messages,styles,env,request:async(url,init)=>{
+    requests.push({url,body:JSON.parse(init.body)});
+    if(requests.length===1)return response(200,{
+      choices:[{finish_reason:'length',message:{content:'',reasoning:'private thoughts'}}],
+      usage:{completion_tokens:1800,completion_tokens_details:{reasoning_tokens:1800}},
+    });
+    return openRouterOk('Create a readable dashboard with one primary action.');
+  }});
+  assert.equal(answer.provider,'openrouter');
+  assert.match(answer.text,/readable dashboard/);
+  assert.equal(requests.length,2,'retry a blank visible answer once');
+  assert.ok(requests.every(r=>new URL(r.url).host==='openrouter.ai'),'no second provider');
+  assert.deepEqual(requests.map(r=>r.body.max_tokens),[1800,2800]);
+  assert.ok(requests.every(r=>r.body.reasoning.effort==='low'));
+  assert.ok(requests.every(r=>!JSON.stringify(r.body).includes('primary-secret')));
+});
+
+test('OpenRouter never retries a filtered or refused completion',async()=>{
+  for(const payload of [
+    {choices:[{finish_reason:'content_filter',message:{content:''}}]},
+    {choices:[{finish_reason:'stop',message:{content:'',refusal:'cannot respond'}}]},
+  ]){
+    let calls=0;
+    const result=await designAiReply({brief,messages,env:{
+      OPENROUTER_API_KEY:'key',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false',
+    },request:async()=>{calls++;return response(200,payload)}});
+    assert.equal(result,null);
+    assert.equal(calls,1);
+  }
+});
+
+test('OpenRouter exhausted visible-text retry retains deterministic guidance',async()=>{
+  let count=0;
+  const result=await designAiReply({brief,messages,env:{
+    OPENROUTER_API_KEY:'key',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'
+  },request:async()=>{count++;return response(200,{choices:[{finish_reason:'length',message:{content:''}}]})}});
+  assert.equal(result,null);
+  assert.equal(count,2);
+});

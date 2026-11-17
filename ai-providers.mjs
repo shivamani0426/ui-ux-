@@ -123,33 +123,52 @@ async function geminiReply({brief,messages,styles,task,env,request}){
 
 async function openRouterReply({brief,messages,styles,task,env,request}){
   const model=env.OPENROUTER_MODEL||'openrouter/free';
-  const r=await request('https://openrouter.ai/api/v1/chat/completions',{
-    method:'POST',
-    headers:{
-      Authorization:'Bearer '+env.OPENROUTER_API_KEY,
-      'Content-Type':'application/json',
-      ...(env.APP_PUBLIC_URL?{'HTTP-Referer':env.APP_PUBLIC_URL}:{}),
-    },
-    signal:AbortSignal.timeout(networkTimeout(env)),
-    body:JSON.stringify({
-      model,temperature:task==='prompt'?0.75:0.65,max_tokens:task==='prompt'?3600:650,
-      messages:[
-        {role:'system',content:task==='prompt'?DESIGN_PROMPT_SYSTEM:SYSTEM_PROMPT},
-        {role:'user',content:contextMessage(brief,styles)},
-        ...cleanMessages(messages),
-      ],
-    }),
-  });
-  if(!r.ok)throw await errorFor('openrouter',r);
-  const data=await r.json();
-  const message=data?.choices?.[0]?.message;
-  const answer=typeof message?.content==='string'
-    ?message.content.trim().slice(0,task==='prompt'?13000:2500)
-    :extractText(message?.content,task==='prompt'?13000:2500);
+  const isPrompt=task==='prompt';
+  const outputLimit=isPrompt?5400:1800;
+  const messagesForModel=[
+    {role:'system',content:isPrompt?DESIGN_PROMPT_SYSTEM:SYSTEM_PROMPT},
+    {role:'user',content:contextMessage(brief,styles)},
+    ...cleanMessages(messages),
+  ];
+  // The free router may select a thinking model. A 650-token completion could
+  // spend its entire budget reasoning and return an empty visible answer.
+  // Ask for low reasoning effort and reserve enough tokens for user-facing text.
+  const complete=async maxTokens=>{
+    const r=await request('https://openrouter.ai/api/v1/chat/completions',{
+      method:'POST',
+      headers:{
+        Authorization:'Bearer '+env.OPENROUTER_API_KEY,
+        'Content-Type':'application/json',
+        ...(env.APP_PUBLIC_URL?{'HTTP-Referer':env.APP_PUBLIC_URL}:{}),
+      },
+      signal:AbortSignal.timeout(networkTimeout(env)),
+      body:JSON.stringify({
+        model,temperature:isPrompt?0.75:0.65,max_tokens:maxTokens,
+        reasoning:{effort:'low'},
+        messages:messagesForModel,
+      }),
+    });
+    if(!r.ok)throw await errorFor('openrouter',r);
+    return r.json();
+  };
+  const visibleText=data=>{
+    const message=data?.choices?.[0]?.message;
+    return (typeof message?.content==='string'
+      ?message.content.trim()
+      :extractText(message?.content,isPrompt?13000:2500)).slice(0,isPrompt?13000:2500);
+  };
+  let data=await complete(outputLimit);
+  let answer=visibleText(data);
+  const choice=data?.choices?.[0];
+  // Retry at most once with OPENROUTER ONLY for a blank completion. Do not retry
+  // refusals or content-filtered responses. No private prompt reaches Gemini/Groq.
+  if(!answer&&choice?.finish_reason!=='content_filter'&&!choice?.message?.refusal){
+    data=await complete(isPrompt?6500:2800);
+    answer=visibleText(data);
+  }
   if(!answer)throw new Error('provider-empty-content');
   return {text:answer,source:'ai',provider:'openrouter'};
 }
-
 
 /** GroqCloud uses an OpenAI-compatible chat endpoint, not OpenRouter. */
 async function groqReply({brief,messages,styles,task,env,request}){
