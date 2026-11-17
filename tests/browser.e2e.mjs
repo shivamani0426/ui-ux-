@@ -305,7 +305,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       const archive=await downloadPromise;
       assert.match(archive.suggestedFilename(),/frontline-private-data-\d{4}-\d{2}-\d{2}\.json/);
       await page.screenshot({path:'browser-artifacts/'+name+'-personal-account-dashboard.png',fullPage:false});
-      await page.getByRole('button',{name:'Close menu'}).click();
+      await page.locator('.menu-panel .close-menu').click();
     }
     assert.equal(await page.locator('.pi-panel').count(),1,'Project Intelligence must render once, not repeat');
     assert.equal(await page.locator('.pi-comparisons').count(),1,'Comparison must render once');
