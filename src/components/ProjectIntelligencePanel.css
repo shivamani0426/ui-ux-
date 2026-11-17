@@ -34,3 +34,7 @@
 .pi-footnote{display:flex;align-items:center;gap:6px}
 @media(max-width:650px){.pi-panel{padding:15px}.pi-summary{grid-template-columns:1fr}.pi-comparisons{grid-template-columns:1fr}.pi-details-body{grid-template-columns:1fr;gap:6px}}
 @media(prefers-reduced-motion:reduce){.pi-panel *{scroll-behavior:auto!important}}
+
+/* Long audience descriptions must never hide a recognized role. */
+.pi-summary strong{white-space:normal;line-height:1.55}
+.pi-summary>div{overflow-wrap:anywhere}
