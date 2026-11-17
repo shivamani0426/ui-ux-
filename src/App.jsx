@@ -44,6 +44,7 @@ function App(){
   const [profile,setProfile]=useState({styleWeights:{},globalOptIn:false,personalization:{enabled:true}});
   const [preferenceEvidence,setPreferenceEvidence]=useState([]);
   const [preferencesBusy,setPreferencesBusy]=useState(false);
+  const [composerClearance,setComposerClearance]=useState(138);
   const [config,setConfig]=useState({aiEnabled:false,persistent:false});
   const [selected,setSelected]=useState(styleKeys);
   const [working,setWorking]=useState(false);
@@ -58,7 +59,7 @@ function App(){
   const [landingFrame,setLandingFrame]=useState(0);
   const [landingComposerReady,setLandingComposerReady]=useState(false);
   const [portalState,setPortalState]=useState('idle');
-  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null);
+  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null),composerDockRef=useRef(null);
 
   const notice=(message)=>{
     setToast(message);clearTimeout(toastTimer.current);
@@ -93,6 +94,20 @@ function App(){
     textarea.style.height='auto';
     textarea.style.height=Math.min(126,Math.max(36,textarea.scrollHeight))+'px';
   },[brief,mode]);
+  useEffect(()=>{
+    if(mode!=='chat'||!composerDockRef.current)return;
+    const container=composerDockRef.current;
+    const measure=()=>{
+      const top=container.getBoundingClientRect().top;
+      const next=Math.max(110,Math.ceil(window.innerHeight-top+8));
+      setComposerClearance(previous=>previous===next?previous:next);
+    };
+    const observer=typeof ResizeObserver==='function'?new ResizeObserver(measure):null;
+    observer?.observe(container);
+    window.addEventListener('resize',measure);
+    const frame=requestAnimationFrame(measure);
+    return ()=>{observer?.disconnect();window.removeEventListener('resize',measure);cancelAnimationFrame(frame)};
+  },[mode]);
   // The pre-landing portal locks scrolling only until the inside-out reveal ends.
   // It doesn't change saved projects, user preferences, the studio or any APIs.
   useEffect(()=>{
@@ -233,7 +248,7 @@ function App(){
   const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
   const enterLandingMode=key=>{setDesignMode(key);if(key==='fusion')setSelected(styleKeys);focusChat();};
 
-  return <div className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')+(!active?' portal-'+portalState:'')}>
+  return <div style={{'--chat-clearance':composerClearance+'px'}} className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')+(!active?' portal-'+portalState:'')}>
     <header className="topbar" inert={!active&&portalState!=='done'}>
       <button className="brand" onClick={newChat} title="New chat" aria-label="Frontline UX/UI — new chat">
         <span className="brand-mark"><FrontlineMark size={29}/></span>
@@ -334,7 +349,7 @@ function App(){
           <div ref={endRef}/>
         </div>
       </section>}
-      {(active||landingFrame===4)&&<div inert={!active&&!landingComposerReady} className={'composer-position '+(active?'docked':'spiral-emerging'+(landingComposerReady?' is-ready':''))}>
+      {(active||landingFrame===4)&&<div inert={!active&&!landingComposerReady} ref={composerDockRef} className={'composer-position '+(active?'docked':'spiral-emerging'+(landingComposerReady?' is-ready':''))}>
         <StarBorder as="div" theme={theme}
           backgroundColor={active?(theme==='dark'?'#382a2b':'#fff8ec'):'#fff8eb'}
           textColor={active?(theme==='dark'?'#f9e7ce':'#4b312b'):'#45302a'}
