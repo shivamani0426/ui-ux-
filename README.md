@@ -210,3 +210,30 @@ Frontline remains a PROMPT-ONLY UI/UX recommendation and design-specification ap
 - The structured fallback and optional OpenRouter refinements maintain identical coverage. No extra OpenRouter requests, new AI provider, schema migration, new access permissions or sharing of private conversations.
 - Cross-domain tests cover Generate and Fusion, missing-feature/role rejection, unknown audiences, complex education administration, AI fallback parity, preserved backend instructions and original prompt-only output.
 - The checks are engineering contract tests, not empirical recommendation accuracy or a verified usability/accessibility audit. Customers must still confirm their roles, permissions and final visual design.
+
+
+## Milestone 10A — cinematic login gateway (design / navigation)
+
+The existing F-dome and full five-chapter golden scroll journey are preserved. The final
+typographic spiral now reveals **Enter Studio** and **Login** inside an original
+StarBorder-styled invitation, not a chat composer. Reveal timing is still tied to
+spiral scroll progress; the studio composer continues to appear only after entry.
+
+- **Enter Studio** expands a tiny black circle from the bottom-centre of the window
+  into a full-screen portal, then reveals the existing studio with a soft rise.
+- **Login** uses that same visual portal into the dedicated responsive `/login`
+  page. The page inherits Frontline's copper, black, cream, gold and editorial type.
+- **Enter Studio as Guest** from the login page uses the identical return gateway.
+  Existing guest cookie isolation, project memory, AI requests and privacy remain
+  unchanged. Direct `/login` and `/studio` URLs work on reload.
+- Keyboard controls, browser history, user-scrolling takeover and reduced-motion
+  preferences remain supported. The transition animates opacity/scale rather than
+  repeatedly repainting shader effects.
+
+**Authentication status:** this milestone delivers the login **screen and visual entry
+flow**, not authenticated accounts. The Google button is deliberately disabled until
+Supabase Auth's Google provider, OAuth redirect allowlist, verified sessions and secure
+guest-to-account data migration are integrated and tested. No password is collected,
+no user is falsely marked signed-in, and the guest workspace remains available.
+Do not claim cross-device account sync has shipped.
+
