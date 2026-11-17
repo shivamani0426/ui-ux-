@@ -206,6 +206,13 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     // transition before typing so a rerender cannot consume the first input.
     await page.locator('.composer textarea').focus();
     await page.locator('.conversation-scene').waitFor({timeout:8000});
+    await page.waitForTimeout(600);
+    const chatShape=await page.locator('.composer-position.docked').boundingBox();
+    const textareaShape=await page.locator('.composer textarea').boundingBox();
+    assert.ok(chatShape&&chatShape.width<=690&&chatShape.height<=155,
+      name+' docked composer must be ChatGPT-proportioned without removing StarBorder: '+JSON.stringify(chatShape));
+    assert.ok(textareaShape&&textareaShape.height<=60,'Composer starts as a compact single-line field');
+    assert.ok(await page.locator('.chat-star canvas').count()>=1,'Preserve animated Frontline StarBorder canvas');
     const firstPrompt='A modern student learning platform with a study dashboard and AI tutor';
     await page.locator('.composer textarea').fill(firstPrompt);
     assert.equal(await page.locator('.composer textarea').inputValue(),firstPrompt,
@@ -246,6 +253,22 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     assert.equal(await page.locator('.pi-panel').count(),1,'Project Intelligence must render once, not repeat');
     assert.equal(await page.locator('.pi-comparisons').count(),1,'Comparison must render once');
     assert.ok(await page.locator('.message-markdown').count()>=1,'Advisor messages should use safe Markdown renderer');
+    if(!remote){
+      await page.getByRole('button',{name:'Open navigation menu'}).click();
+      await page.getByRole('button',{name:/Learning & privacy/i}).click();
+      await page.locator('.learning-preferences').waitFor({timeout:7000});
+      assert.ok(await page.locator('.learning-settings select').count()===4,
+        'Private memory controls must offer motion, density, contrast and color atmosphere');
+      const toggle=page.locator('.learning-switch input');
+      await toggle.uncheck();
+      await page.waitForFunction(()=>document.querySelector('.learning-switch input')?.checked===false);
+      assert.ok(await page.locator('.learning-settings select').first().isDisabled(),
+        'Pausing learning must disable preference corrections');
+      await toggle.check();
+      await page.locator('.learning-settings select').first().selectOption('minimal');
+      await page.waitForFunction(()=>document.querySelector('.learning-settings select')?.value==='minimal');
+      await page.locator('.close-menu').click();
+    }
     const fallbackRetry=page.getByRole('button',{name:/Retry with OpenRouter/i});
     if(!remote&&await fallbackRetry.count())assert.ok(await fallbackRetry.first().isEnabled(),'Offline fallback must offer a usable retry action');
     const selectAll=page.getByRole('button',{name:/Select all three/i});
@@ -319,6 +342,9 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
         await mobile.locator('.composer textarea').focus();
         await mobile.locator('.studio-title').waitFor({timeout:7000});
         await mobile.waitForTimeout(1300);
+        const mobileComposer=await mobile.locator('.composer-position.docked').boundingBox();
+        assert.ok(mobileComposer&&mobileComposer.width<=390&&mobileComposer.height<=150,
+          'Mobile compact composer must fit screen without excessive height: '+JSON.stringify(mobileComposer));
         await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-studio.png',fullPage:false});
         const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
         assert.equal(overflow,false,'Frontline mobile studio must have no horizontal overflow');
