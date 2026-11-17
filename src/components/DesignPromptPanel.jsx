@@ -65,6 +65,17 @@ export default function DesignPromptPanel({project,mode,styles,api,notice}){
           :result.review.reason?.includes('timeout')?'OpenRouter timed out; AI enhancement is optional.'
           :'AI refinement was unavailable or did not pass validation.')
         :'Quality gate: full specification validated and original AI refinements added ('+Object.values(result.review.checks).filter(Boolean).length+' coverage checks).'} This checks section coverage, not real-world usability.</p>}
+      {result.review?.traceability&&<details className="di-trace-report">
+        <summary>Requirements coverage · {result.review.traceability.mapped}/{result.review.traceability.total} mapped</summary>
+        <div className="di-trace-body">
+          <p>{result.review.traceability.passed
+            ?'Every brief-derived requirement has a named trace and a proposed acceptance criterion.'
+            :'Some requirement mappings are missing; review the prompt before copying.'}</p>
+          <p>{result.review.traceability.count.features} requested modules · {result.review.traceability.count.roles} explicitly mentioned roles · {result.review.traceability.count.constraints} constraints · {result.review.traceability.count.decisions} preservation decisions</p>
+          {result.review.traceability.missing.length>0&&<p>Missing: {result.review.traceability.missing.join(', ')}</p>}
+          <p>These are specification coverage checks, not real-user studies, verified permissions, performance measurements or accessibility certification.</p>
+        </div>
+      </details>}
       <p>Prompt only: no application code or working site has been generated. Referenced sites contribute curated metadata, not copied visual layouts.</p>
     </div>}
   </section>;

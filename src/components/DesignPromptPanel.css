@@ -50,3 +50,10 @@
 .di-head+.di-start-hint{margin-top:17px}
 .di-actions{margin-bottom:12px}
 .di-refine{margin-top:13px}
+
+/* Milestone 09: transparent coverage without cluttering the original design. */
+.di-trace-report{border-top:1px solid rgba(210,169,119,.15);font-size:11px;color:inherit}
+.di-trace-report summary{cursor:pointer;padding:13px 14px;font-weight:700;letter-spacing:.015em;list-style-position:inside}
+.di-trace-report summary:focus-visible{outline:2px solid #d6aa77;outline-offset:-3px}
+.di-trace-body{padding:0 14px 12px;line-height:1.65;opacity:.87}
+.di-trace-body p{margin:4px 0 8px}

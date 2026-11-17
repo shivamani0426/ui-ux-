@@ -190,3 +190,23 @@ The original all-black sculpted F portal is click-only. Its approximately 2.7-se
 **Performance without shrinking the visual design:** WebGL solar shaders are delayed until after the black portal is fully revealed, then staged. CSS sun and water are still complete fallbacks. Hidden canvases and background tabs no longer schedule perpetual WebGL RAF draws, and canvas dimensions/scroll range are cached until resize. Entrance glows retain full white luminous end frames but use composited static shadow layers whose opacity/scale changes instead of repainting large soft shadows at every frame. Only the current and neighboring text scenes are marked as priority compositor layers. Gold/cream color, architecture, editorial headings, star-border, scrolling spiral, all three tools, privacy memory, API and data are preserved.
 
 **Validation:** node tests for all five chapter holds and continuous monotonic easing, original portal phases, visibility-based GPU pausing, and real Chromium/Firefox desktop + mobile autoplay, pause, replay, user interruption and reduced-motion navigation. This is software behavior validation: do not claim a particular FPS on untested hardware. For a real-device review, use browser performance profiling to inspect long tasks and dropped frames on the user's GPU and mobile browser.
+
+
+## Milestone 09 — traceable design intelligence and prompt quality
+
+Frontline remains a PROMPT-ONLY UI/UX recommendation and design-specification application, not a website/code generator. The cinematic F landing, guided auto-scroll, dark/light modes, compact golden StarBorder chat, PostgreSQL projects and private learning are unchanged.
+
+### Specification contracts
+- Generate still compares Minimal SaaS, Glass UI and Creative UI. Fusion still produces one coherent original direction from selected styles and does not clone real reference sites.
+- A deterministic REQUIREMENT TRACEABILITY MATRIX maps every recognized explicit module, mentioned role, preserved constraint and decision to a proposed page and testable criterion; requested facts and proposed page permissions are clearly distinguished.
+- ROLE-SPECIFIC NAVIGATION & PERMISSION STATES distinguishes student, teacher, admin, patient, customer and other named users. This is guidance only, not proof that authorization already exists in the customer's app.
+- PER-PAGE INTERACTION CONTRACTS cover entry and return routes, actions, desktop/tablet/mobile adaptation, loading/empty/success/error/permission states and keyboard focus.
+- Style directions include meaningful tokens, interaction, motion and accessibility VERIFICATION instructions, not claims of completed WCAG certification or backend integration.
+- Extended brief recognition: attendance, exams and assessments, admissions, approvals, file submissions. Multi-role briefs ask about authorization, and AI tutors ask about reliable sources and error escalation.
+- The existing prompt panel adds an expandable requirement-coverage summary with counts of features, roles, constraints, preserved decisions and any missing mappings.
+
+### Quality gates
+- A separate structured coverage reviewer checks the ACTUAL exported prompt instead of assuming the original brief's keywords prove that every requirement survived.
+- The structured fallback and optional OpenRouter refinements maintain identical coverage. No extra OpenRouter requests, new AI provider, schema migration, new access permissions or sharing of private conversations.
+- Cross-domain tests cover Generate and Fusion, missing-feature/role rejection, unknown audiences, complex education administration, AI fallback parity, preserved backend instructions and original prompt-only output.
+- The checks are engineering contract tests, not empirical recommendation accuracy or a verified usability/accessibility audit. Customers must still confirm their roles, permissions and final visual design.

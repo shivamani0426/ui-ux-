@@ -319,13 +319,27 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.match(generatedPrompt,/THREE ORIGINAL DESIGN DIRECTIONS/);
       assert.match(generatedPrompt,/DIRECTION 3/);
       assert.ok(generatedPrompt.length>1800,name+' generated UI/UX prompt should be substantial');
+      assert.match(generatedPrompt,/REQUIREMENT TRACEABILITY MATRIX/);
+      assert.match(generatedPrompt,/PER-PAGE INTERACTION CONTRACTS/);
+      assert.match(generatedPrompt,/ROLE-SPECIFIC NAVIGATION & PERMISSION STATES/);
+      const coverage=page.locator('.di-trace-report');
+      await coverage.waitFor({timeout:4000});
+      await coverage.locator('summary').click();
+      assert.match(await coverage.innerText(),/mapped/i,
+        'Visible design quality report should disclose the exact requirement coverage');
+      assert.match(await coverage.innerText(),/not real-user studies|not real-world|not.*verified/i,
+        'The UI must not imply the traceability score is a measured usability audit');
       await page.screenshot({path:'browser-artifacts/'+name+'-generate-uiux-prompt.png',fullPage:false});
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/Select \/ Generate \/ Fusion/i}).click();
       await page.locator('.tool-mode').filter({hasText:'Design Fusion'}).click();
       await page.getByRole('button',{name:/Combine my selected concepts/i}).click();
       await page.locator('.di-result').waitFor({timeout:16000});
-      assert.match(await page.locator('.di-result pre').innerText(),/DESIGN FUSION SPECIFICATION/);
+      const fusionPrompt=await page.locator('.di-result pre').innerText();
+      assert.match(fusionPrompt,/DESIGN FUSION SPECIFICATION/);
+      assert.match(fusionPrompt,/REQUIREMENT TRACEABILITY MATRIX/);
+      assert.equal(await page.locator('.di-trace-report').count(),1,
+        'Fusion must also disclose its requirement coverage instead of showing a raw unverified prompt');
       await page.screenshot({path:'browser-artifacts/'+name+'-intelligent-design-fusion.png',fullPage:false});
     }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,hasTouch:true});
