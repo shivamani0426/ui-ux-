@@ -72,7 +72,7 @@ export default function FrontlineLanding({locked=false,effectsReady=false,onBegi
     const water=window.setTimeout(()=>setFluidStage(2),1030);
     return ()=>{clearTimeout(sun);clearTimeout(water)};
   },[effectsReady]);
-  const tour=useCinematicTour({enabled:!locked,reducedMotion});
+  const tour=useCinematicTour({enabled:!locked,reducedMotion:reduceMotion});
   useEffect(()=>{
     let raf=0,pointerFrame=0,tx=0,ty=0,sx=0,sy=0;
     let scrollRange=1,previousReveal='';
