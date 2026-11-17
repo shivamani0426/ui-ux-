@@ -215,6 +215,11 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await page.locator('.message-row.incoming').first().waitFor({timeout:12000});
     assert.ok(await page.locator('.message-avatar .fl-monogram').count()>=1,'AI avatar must use F mark');
     await page.locator('.result-message').first().waitFor({timeout:12000});
+    // Project creation renders recommendations immediately while the model is
+    // still responding. .message-row.incoming can be only the thinking dots.
+    // Wait for the actual completed assistant content, never assert against a
+    // loading animation or incorrectly claim Markdown was not rendered.
+    await page.locator('.message-markdown').first().waitFor({timeout:remote?100000:12000});
     if(!remote){
       await page.locator('.inspiration-card').first().waitFor({timeout:8000});
       const firstCard=page.locator('.inspiration-card').first();
