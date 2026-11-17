@@ -39,6 +39,9 @@ test('AI prompt can replace fallback without exposing secrets, in correct mode',
   assert.ok(result.prompt.length>500);
   assert.equal(result.review.passed,true);
   assert.equal(result.review.usedFallback,false);
+  assert.equal(result.composition,'structured-plus-ai');
+  assert.match(result.prompt,/AI CREATIVE REFINEMENTS/);
+  assert.match(result.prompt,/QUALITY & ACCEPTANCE CHECKLIST/);
 });
 test('Short AI content or exhausted providers preserve deterministic quality',async()=>{
   const result=await createDesignPrompt({
@@ -62,7 +65,8 @@ test('long but structurally empty AI text is rejected in favor of a complete pro
   assert.equal(result.source,'guide');
   assert.ok(result.review.passed);
   assert.equal(result.review.usedFallback,true);
-  assert.ok(result.review.reason.includes('architecture'));
+  assert.ok(result.review.reason.includes('insight-missing-style'));
+  assert.equal(result.composition,'structured');
 });
 test('specific student modules and a refinement survive in the generated specification',()=>{
   const p={id:'x',brief:'Build a student dashboard with assignments, calendar and AI tutor. Must preserve existing backend.',
@@ -93,6 +97,31 @@ test('a plausible AI prompt that omits a confirmed module cannot replace the com
    request:async()=>({ok:true,json:async()=>({choices:[{message:{content:looksComplete}}]})})
  });
  assert.equal(output.source,'guide');
- assert.ok(output.review.reason.some(item=>item==='feature:calendar'||item==='feature:tutor'));
+ assert.ok(output.review.reason.includes('insight-not-project-specific'));
  assert.equal(output.review.passed,true);
+});
+
+test('Fusion layers an original AI insight without removing complete required specifications',async()=>{
+  const briefing='Design a student learning dashboard with assignments, AI tutor and calendar. Must preserve existing backend.';
+  const p={brief:briefing,recommendations:recommend(briefing)};
+  const insight='Minimal SaaS is the structural anchor for predictable course task navigation. Give the AI tutor an always-available but unobtrusive entry point, and borrow subtle Glass UI layering only for optional learning insights. Preserve the existing backend contract and accessible focus states; avoid transparent text backgrounds and motion-heavy forms.';
+  const result=await createDesignPrompt({project:p,mode:'fusion',styles:['glass','minimal'],
+    env:{OPENROUTER_API_KEY:'fake'},request:async()=>({ok:true,json:async()=>({choices:[{message:{content:insight}}]})})
+  });
+  assert.equal(result.source,'ai');
+  assert.equal(result.composition,'structured-plus-ai');
+  assert.equal(result.provider,'openrouter');
+  assert.match(result.prompt,/AI CREATIVE REFINEMENTS/);
+  assert.match(result.prompt,/one cohesive result/i);
+  assert.match(result.prompt,/Preserve existing backend/);
+  assert.ok(result.review.passed);
+});
+test('Unsafe code-bearing creative output cannot enter copyable design specifications',async()=>{
+  const insight='Minimal SaaS is a great structure for assignments, with accessible cards. Glass UI adds subtle depth. Creative UI enriches the palette. '+('Avoid hidden navigation and keep course progress visible. ').repeat(7)+'\n'+'import React from "react";';
+  const response=await createDesignPrompt({project,mode:'generate',styles:['minimal'],
+    env:{OPENROUTER_API_KEY:'test'},request:async()=>({ok:true,json:async()=>({choices:[{message:{content:insight}}]})})
+  });
+  assert.equal(response.source,'guide');
+  assert.ok(response.review.reason.includes('insight-contains-code'));
+  assert.doesNotMatch(response.prompt,/import React from/);
 });
