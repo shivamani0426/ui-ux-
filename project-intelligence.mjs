@@ -72,10 +72,11 @@ export function analyzeProject(brief,{category}={}){
   if(!features.length)questions.push('What is the single most important task?');
   if(!limits.length)questions.push('Any device, accessibility, or performance constraints?');
   const decisions=unique((text.match(/(?:^|[.!?]\s+)([^.!?]{0,15}\b(?:must|keep|preserve|only|do not|without|should)\b[^.!?]{4,160})/gi)||[]).map(x=>clean(x,175))).slice(0,6);
+  const requestedStyles=unique([/\b(glassmorphism|glass ui|glass panels|neon)\b/i.test(text)?'glass':null,/\b(minimal|clean|simple|apple.style)\b/i.test(text)?'minimal':null,/\b(creative|playful|editorial|bold)\b/i.test(text)?'creative':null]);
   return {category:kind,audience:audience.length?audience:['Primary audience not stated — confirm'],
     audienceSource:audience.length?'explicit':'suggested',features,constraints:limits,pages,workflows,
     goals:features.length?features.slice(0,3).map(f=>'Help users '+f.action):['Make the primary task discoverable (to confirm)'],
-    explicitDecisions:decisions,openQuestions:questions,evidenceLevel:features.length&&audience.length?'brief-specific':'partly-inferred',
+    explicitDecisions:decisions,requestedStyles,openQuestions:questions,evidenceLevel:features.length&&audience.length?'brief-specific':'partly-inferred',
     note:'Suggested pages and heuristic assessments are not findings from user testing or scanned websites.'};
 }
 const tradeoffs={
@@ -95,7 +96,7 @@ export function compareDirections(analysis,styles,preferences={}){
     const t=tradeoffs[s.id]||tradeoffs.minimal;
     const prior=Math.max(-5,Math.min(5,Number(weights[s.id])||0));
     const base=task?(s.id==='minimal'?17:7):(s.id==='creative'?17:s.id==='glass'?14:12);
-    const score=Math.max(48,Math.min(96,65+base+(repeated&&s.id==='minimal'?5:0)+(accessibility&&s.id==='minimal'?4:0)-(performance&&s.id==='glass'?12:0)-(repeated&&s.id==='creative'?4:0)+prior*2));
+    const score=Math.max(48,Math.min(96,65+base+(repeated&&s.id==='minimal'?5:0)+(accessibility&&s.id==='minimal'?4:0)-(performance&&s.id==='glass'?12:0)-(repeated&&s.id==='creative'?4:0)+((a.requestedStyles||[]).includes(s.id)?14:0)+prior*2));
     return {id:s.id,name:s.name,match:score,criteria:{...t.criteria,projectFit:Math.max(2,Math.min(5,Math.round(score/20)))},
       strengths:t.strength,tradeoff:t.risk,reasons:[
         'For '+key.toLowerCase()+' requirements: '+t.strength+'.',
