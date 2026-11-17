@@ -152,9 +152,76 @@ async function listProjects(owner){
   const r=await pg.query('SELECT id,title,brief,recommendation AS recommendations,created_at AS "createdAt" FROM frontline.uic_projects WHERE visitor_id=$1 ORDER BY updated_at DESC LIMIT 50',[owner]);
   return r.rows;
 }
-async function addVote(owner,id,style,reaction,detail,p){
-  if(!pg){votes.push({owner,id,style,reaction,detail,optIn:p.globalOptIn});return;}
-  await pg.query('INSERT INTO frontline.uic_feedback(id,visitor_id,project_id,style_id,reaction,detail,eligible_global) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),owner,id,style,reaction,detail,p.globalOptIn]);
+// Serialize feedback per visitor so concurrent clicks cannot award duplicate
+// learning points. PostgreSQL advisory locks work across Render instances.
+const memoryFeedbackGates=new Map();
+async function recordFeedback(owner,id,styles,reaction,detail){
+  const saveVote=async(client,style,prefs)=>{
+    const previous=client
+      ?(await client.query(`SELECT reaction,detail FROM frontline.uic_feedback
+         WHERE visitor_id=$1 AND project_id=$2 AND style_id=$3
+         ORDER BY created_at DESC,id DESC LIMIT 1`,[owner,id,style])).rows[0]
+      :[...votes].reverse().find(v=>v.owner===owner&&v.id===id&&v.style===style);
+    if(previous?.reaction===reaction&&(previous?.detail||'')===detail)
+      return {prefs,changed:false};
+    if(client){
+      await client.query(`INSERT INTO frontline.uic_feedback
+        (id,visitor_id,project_id,style_id,reaction,detail,eligible_global)
+        VALUES($1,$2,$3,$4,$5,$6,$7)`,
+        [crypto.randomUUID(),owner,id,style,reaction,detail,prefs.globalOptIn]);
+    }else votes.push({owner,id,style,reaction,detail,optIn:prefs.globalOptIn});
+    return {prefs:learnFeedbackTransition(prefs,style,reaction,previous?.reaction),changed:true};
+  };
+  if(!pg){
+    const earlier=memoryFeedbackGates.get(owner)||Promise.resolve();
+    let unlock;
+    const next=new Promise(resolve=>{unlock=resolve});
+    memoryFeedbackGates.set(owner,next);
+    await earlier;
+    try{
+      let prefs=await profile(owner);
+      if(!prefs.personalization.enabled)
+        throw Object.assign(new Error('Personal learning is paused. Re-enable it to save design feedback.'),{status:409});
+      let changed=0;
+      for(const style of styles){
+        const outcome=await saveVote(null,style,prefs);
+        prefs=outcome.prefs;if(outcome.changed)changed++;
+      }
+      if(changed)await saveProfile(owner,prefs);
+      return {profile:prefs,changed,saved:styles.length};
+    }finally{
+      unlock();
+      if(memoryFeedbackGates.get(owner)===next)memoryFeedbackGates.delete(owner);
+    }
+  }
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN');
+    // This is a per-visitor lock; hash collisions only serialize unrelated
+    // visitors, they do not grant access to another visitor's records.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1),712)',[owner]);
+    const state=await client.query(`SELECT style_weights,global_opt_in FROM frontline.uic_profiles
+      WHERE visitor_id=$1 FOR UPDATE`,[owner]);
+    let prefs=normalizeProfile(state.rows[0]?{
+      styleWeights:state.rows[0].style_weights,globalOptIn:state.rows[0].global_opt_in,
+    }:{});
+    if(!prefs.personalization.enabled)
+      throw Object.assign(new Error('Personal learning is paused. Re-enable it to save design feedback.'),{status:409});
+    let changed=0;
+    for(const style of styles){
+      const outcome=await saveVote(client,style,prefs);
+      prefs=outcome.prefs;if(outcome.changed)changed++;
+    }
+    if(changed)await client.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in)
+      VALUES($1,$2,$3) ON CONFLICT(visitor_id) DO UPDATE SET
+      style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,
+      [owner,JSON.stringify(persistableWeights(prefs)),prefs.globalOptIn]);
+    await client.query('COMMIT');
+    return {profile:prefs,changed,saved:styles.length};
+  }catch(error){
+    await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release()}
 }
 async function insights(){
   const counts=pg?(await pg.query(`SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS people
@@ -426,14 +493,8 @@ const server=http.createServer(async(req,res)=>{
         const selected=Array.isArray(b.styles)?[...new Set(b.styles)]:[];
         if(!selected.length||selected.some(s=>!STYLES.some(t=>t.id===s))||!['like','dislike','edit'].includes(b.reaction))return json(res,400,{error:'Invalid feedback'});
         const detail=typeof b.detail==='string'?b.detail.slice(0,500):'';
-        let prefs=await profile(owner);
-        if(!prefs.personalization.enabled)
-          return json(res,409,{error:'Personal learning is paused. Re-enable it to save design feedback.'});
-        for(const style of selected){
-          await addVote(owner,p.id,style,b.reaction,detail,prefs);
-          prefs=learnStyle(prefs,style,b.reaction);
-        }
-        await saveProfile(owner,prefs);return json(res,200,{saved:selected.length,profile:prefs});
+        const saved=await recordFeedback(owner,p.id,selected,b.reaction,detail);
+        return json(res,200,saved);
       }
       return json(res,404,{error:'API route not found'});
     }
