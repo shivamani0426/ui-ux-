@@ -125,3 +125,24 @@ test('Unsafe code-bearing creative output cannot enter copyable design specifica
   assert.ok(response.review.reason.includes('insight-contains-code'));
   assert.doesNotMatch(response.prompt,/import React from/);
 });
+
+test('Generate reports free-provider 429 honestly while preserving complete specification',async()=>{
+  let requests=0;
+  const result=await createDesignPrompt({project,mode:'generate',styles:['minimal'],env:{
+    OPENROUTER_API_KEY:'never-display-this-key',
+    AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'
+  },request:async()=>{
+    requests++;
+    return {ok:false,status:429,headers:{get:()=>null},json:async()=>({
+      error:{status:'RESOURCE_EXHAUSTED',message:'Too many requests, secret details'}
+    })};
+  }});
+  assert.equal(requests,1,'Avoid repeated free quota consumption');
+  assert.equal(result.source,'guide');
+  assert.equal(result.review.passed,true);
+  assert.equal(result.composition,'structured');
+  assert.ok(result.review.reason.includes('rate-limited'));
+  assert.ok(result.review.retryAfterSeconds>=30);
+  assert.match(result.prompt,/INFORMATION ARCHITECTURE/);
+  assert.doesNotMatch(JSON.stringify(result),/never-display-this-key|secret details/);
+});
