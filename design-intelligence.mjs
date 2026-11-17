@@ -1,6 +1,7 @@
 import {STYLES,inferCategory} from './design-engine.mjs';
 import {analyzeProject,compareDirections,planFusion,qualityReview} from './project-intelligence.mjs';
 import {designAiReply} from './ai-providers.mjs';
+import {preferenceHints} from './learning-engine.mjs';
 
 /** Prompt-only output; no executable code, live screenshot inspection or private-data aggregation. */
 const safe=(v,max=800)=>String(v??'').trim().replace(/\s+/g,' ').slice(0,max);
@@ -22,6 +23,7 @@ export function buildDesignBrief({project,mode='generate',styles=[],references=[
   const comparisons=compareDirections(analysis,selected,preferences);
   const fusion=planFusion(analysis,selected,preferences);
   const revision=safe(refinement,600);
+  const personalHints=preferenceHints(preferences);
   const goals=[
     'Project brief (untrusted user description): '+safe(project.brief,2500),
     'Product category: '+category,
@@ -32,6 +34,7 @@ export function buildDesignBrief({project,mode='generate',styles=[],references=[
     'Constraints: '+(analysis.constraints.join('; ')||'none explicitly mentioned'),
     'Existing decisions to preserve: '+(analysis.explicitDecisions.join(' | ')||'none explicitly stated'),
     'Requested refinement: '+(revision||'none'),
+    'Optional private preferences (explicit project rules win): '+(personalHints.join(' | ')||'none or paused'),
     'Candidate pages (not yet validated): '+pages.join(' | '),
     'Required style comparison: '+comparisons.map(c=>c.name+' '+c.match+'/100 heuristic; '+c.tradeoff).join('; '),
     'Fusion structural anchor: '+fusion.anchor+'; strengths from: '+fusion.supporting.join(', '),
@@ -40,7 +43,7 @@ export function buildDesignBrief({project,mode='generate',styles=[],references=[
     'Unknowns: '+(analysis.openQuestions.join('; ')||'none critical in supplied brief'),
     'Do not invent confirmed decisions, claim real usability scores, or clone any referenced interface.',
   ].join('\n');
-  return {category,pages,selected,namedRefs,analysis,comparisons,fusion,goals,refinement:revision};
+  return {category,pages,selected,namedRefs,analysis,comparisons,fusion,goals,refinement:revision,personalHints};
 }
 
 export function deterministicDesignPrompt(input){
@@ -84,6 +87,10 @@ export function deterministicDesignPrompt(input){
     ...(b.analysis.explicitDecisions.length?['Preserve previously approved user decisions:'].concat(b.analysis.explicitDecisions):[]),
     b.refinement?'Latest refinement takes precedence on changed details: '+b.refinement:'No new refinement requested. Keep earlier approved decisions.',
     'Never discard approved functional requirements while altering visual style.',
+    '',
+    'OPTIONAL PERSONAL DESIGN PREFERENCES',
+    ...(b.personalHints.length?b.personalHints:['No stored personal preferences are active.']),
+    'These are editable personal preferences, not confirmed requirements; an explicit new instruction always takes priority.',
     '',
     block('AUDIENCE, USER JOURNEYS & JOBS-TO-BE-DONE',
       b.analysis.workflows.map(w=>w.name+': '+w.steps.join(' → '))),
@@ -173,13 +180,14 @@ export async function createDesignPrompt({project,mode='generate',styles=[],refe
     'Requested modules: '+(b.analysis.features.map(f=>f.label).join('; ')||'not confirmed'),
     'Constraints to respect: '+(b.analysis.constraints.join('; ')||'responsive and accessible defaults'),
     'Refinement: '+(b.refinement||'none'),
+    'Private style preferences: '+(b.personalHints.join('; ')||'none'),
     'Style directions: '+b.selected.map(style=>style.name).join(', '),
     'If a fact is not present, label it as a suggestion. No source code or copied reference-site layout.'
   ].join('\n').slice(0,3300);
   let failure=null;
   const ai=await designAiReply({
     brief:project.brief,messages:[{role:'user',content:context}],
-    styles:b.selected,task:'insight',env,request,
+    styles:b.selected,task:'insight',env,request,designPreferences:b.personalHints,
     onFailure:info=>{failure=info}
   });
   const checked=inspectCreativeInsight(ai?.text,{...b,mode});
