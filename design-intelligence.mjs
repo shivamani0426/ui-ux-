@@ -176,9 +176,11 @@ export async function createDesignPrompt({project,mode='generate',styles=[],refe
     'Style directions: '+b.selected.map(style=>style.name).join(', '),
     'If a fact is not present, label it as a suggestion. No source code or copied reference-site layout.'
   ].join('\n').slice(0,3300);
+  let failure=null;
   const ai=await designAiReply({
     brief:project.brief,messages:[{role:'user',content:context}],
-    styles:b.selected,task:'insight',env,request
+    styles:b.selected,task:'insight',env,request,
+    onFailure:info=>{failure=info}
   });
   const checked=inspectCreativeInsight(ai?.text,{...b,mode});
   const reviewOptions={mode,requiredStyles:b.selected.map(style=>style.name),
@@ -198,5 +200,6 @@ export async function createDesignPrompt({project,mode='generate',styles=[],refe
   }
   return {prompt:complete,source:'guide',provider:null,mode,composition:'structured',
     review:{...originalReview,usedFallback:true,aiAttempted:!!ai,
-      reason:ai?[checked.reason||'enhanced-spec-incomplete']:['ai-insight-unavailable']}};
+      reason:ai?[checked.reason||'enhanced-spec-incomplete']:[failure?.reason||'ai-insight-unavailable'],
+      retryAfterSeconds:failure?.retryAfterSeconds||0}};
 }
