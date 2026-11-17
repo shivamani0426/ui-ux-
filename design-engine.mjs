@@ -50,6 +50,39 @@ export function recommend(brief,preferences={},library=REFERENCES){
     scoring:'Heuristic fit indicators, not measured usability, accessibility audits, or user-testing results'};
 }
 export function exportPrompt(project,selectedIds){
-  const chosen=project.recommendations.designs.filter(d=>selectedIds.includes(d.id));
-  return `Build an original, responsive ${project.recommendations.category} website.\n\nProject brief: ${project.brief}\n\nSelected design direction(s): ${chosen.map(c=>c.name).join(', ')}.\n\nDesign principles:\n${chosen.map(c=>`- ${c.name}: ${c.description} Layout: ${c.layout}. Type: ${c.fonts}. Motion: ${c.motion}. Palette: ${c.colors.join(', ')}.`).join('\n')}\n\nCombine these directions into a cohesive, accessible design rather than copying any reference website. Include a landing page, intuitive navigation, task-specific dashboards where relevant, responsive mobile layouts, thoughtful empty/error/loading states, accessible focus styles, and reduced-motion support. Provide a page map and reusable component specification. Use React, TypeScript and Tailwind CSS; keep dependencies reasonable.\n`;
+  const choices=project.recommendations?.designs||[];
+  const chosen=choices.filter(d=>selectedIds.includes(d.id));
+  const analysis=analyzeProject(project.brief,{category:project.recommendations?.category});
+  const fusion=planFusion(analysis,chosen);
+  return [
+    'FRONTLINE UX/UI — ORIGINAL SELECTED DESIGN SPECIFICATION',
+    '',
+    'PROJECT BRIEF',
+    project.brief,
+    '',
+    'AUDIENCE & USER GOALS',
+    'Users: '+analysis.audience.join(', ')+' ('+analysis.audienceSource+').',
+    'Key goals: '+analysis.goals.join('; '),
+    'Unknowns: '+(analysis.openQuestions.join('; ')||'Validate the inferred page choices with users.'),
+    '',
+    'INFORMATION ARCHITECTURE AND WORKFLOWS',
+    ...analysis.pages.map((p,i)=>(i+1)+'. '+p+': describe a primary user task, navigation, content hierarchy, loading/empty/error states and mobile behavior.'),
+    ...analysis.workflows.map(f=>f.name+' workflow: '+f.steps.join(' → ')),
+    '',
+    'SELECTED DESIGN DIRECTIONS & TRADEOFFS',
+    ...chosen.map(c=>'- '+c.name+': '+c.description+' Layout: '+c.layout+'. Type: '+c.fonts+'. Motion: '+c.motion+'. Palette: '+c.colors.join(', ')+'.'+
+      (c.tradeoff?' Tradeoff: '+c.tradeoff+'.':'')),
+    'If combining styles, use '+fusion.anchor+' as the structural anchor and only borrow complementary traits from other choices.',
+    '',
+    'APPROVED REQUIREMENTS & CONSTRAINTS',
+    ...(analysis.constraints.length?analysis.constraints:['Clarify any special constraints before implementation.']),
+    ...(analysis.explicitDecisions.length?analysis.explicitDecisions:['No explicit preservation decisions identified.']),
+    '',
+    'RESPONSIVE COMPONENTS, ACCESSIBILITY AND QUALITY',
+    'Specify design tokens, typography scale, 4/8 spacing system, navigation, buttons, inputs, cards, feedback and error recovery.',
+    'Explain desktop/tablet/mobile adaptations, accessible contrast, keyboard and focus states, screen-reader labels and reduced-motion alternatives.',
+    'Include a detailed acceptance checklist tied to the named user goals and modules.',
+    'Deliver one original copyable UI/UX PROMPT only, not executable code.',
+    'Combine these directions into a cohesive experience rather than copying any reference website.',
+  ].join('\n');
 }
