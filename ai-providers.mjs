@@ -192,7 +192,7 @@ async function geminiReply({brief,messages,styles,task,env,request}){
 async function openRouterReply({brief,messages,styles,task,env,request}){
   const model=env.OPENROUTER_MODEL||'openrouter/free';
   const isPrompt=task==='prompt',isInsight=task==='insight';
-  const outputLimit=isPrompt?5400:isInsight?1700:1700;
+  const outputLimit=isPrompt?5400:isInsight?1700:2400;
   const maxAttempts=freeRetryBudget(env,model);
   const recent=task==='chat'
     ?cleanMessages(messages).slice(-4).map(m=>({...m,content:m.content.slice(0,m.role==='user'?1300:950)}))
