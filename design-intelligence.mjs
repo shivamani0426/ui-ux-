@@ -133,24 +133,70 @@ export function deterministicDesignPrompt(input){
     'Return the complete, coherent, ready-to-copy UI/UX implementation prompt, with a useful page map, reusable components and measurable acceptance criteria.',
   ].filter(Boolean).join('\n');
 }
+/**
+ * A long-form request can exhaust a free-model budget. Guarantee the complete
+ * specification from evidence, with AI contributing a concise creative layer.
+ */
+export function inspectCreativeInsight(text,brief){
+  const raw=String(text||'').trim();
+  if(raw.length<180||raw.length>4500)return {accepted:false,reason:'insight-length'};
+  if(/\u0060{3}|<\s*(?:script|html|style|iframe)\b|(?:^|\n)\s*(?:import\s+React|export default|function\s+App\s*\()/i.test(raw))
+    return {accepted:false,reason:'insight-contains-code'};
+  if(/\b(?:i (?:visited|inspected|scanned|audited) (?:the |your )?(?:live )?(?:website|screenshots?|site))\b/i.test(raw))
+    return {accepted:false,reason:'insight-unverified-site-claim'};
+  const lower=raw.toLowerCase(),mode=brief.mode;
+  if(mode==='generate'&&!brief.selected.every(style=>lower.includes(style.name.toLowerCase())))
+    return {accepted:false,reason:'insight-missing-style'};
+  if(mode==='fusion'&&!lower.includes(brief.fusion.anchor.toLowerCase()))
+    return {accepted:false,reason:'insight-missing-anchor'};
+  if(brief.analysis.features.length){
+    const featureReview=qualityReview(raw,{requiredFeatures:brief.analysis.features.map(f=>f.id)});
+    const mentioned=brief.analysis.features.some(f=>!featureReview.missing.includes('feature:'+f.id));
+    if(!mentioned)return {accepted:false,reason:'insight-not-project-specific'};
+  }
+  return {accepted:true,reason:null};
+}
 export async function createDesignPrompt({project,mode='generate',styles=[],references=[],preferences={},refinement='',env=process.env,request=fetch}){
   if(!['generate','fusion'].includes(mode))throw new Error('Invalid design mode');
   const input={project,mode,styles,references,preferences,refinement};
   const b=buildDesignBrief(input);
-  const fallback=deterministicDesignPrompt(input);
-  const instruction=mode==='generate'?
-    'Produce exactly THREE original style directions, compare usability/contrast/performance and recommend a tailored design specification.':
-    'Produce ONE coherent fusion prompt, anchoring its structure in the best-fit selected style and acknowledging conflicts.';
+  const complete=deterministicDesignPrompt(input);
+  // Keep the creative request brief. The verified full specification is already
+  // available locally and does not depend on the AI provider being responsive.
+  const instruction=mode==='generate'
+    ?'Offer concise original creative enhancements under exactly these headings: Minimal SaaS, Glass UI, Creative UI. Give concrete layout and interface content with a real tradeoff for each.'
+    :'Offer ONE coherent original fusion refinement. Name '+b.fusion.anchor+' as structural anchor; borrow from '+b.fusion.supporting.join(', ')+'. Give one concrete project module and one tradeoff.';
+  const context=[
+    instruction,
+    'Brief: '+safe(project.brief,1300),
+    'Audience: '+b.analysis.audience.join(', '),
+    'Requested modules: '+(b.analysis.features.map(f=>f.label).join('; ')||'not confirmed'),
+    'Constraints to respect: '+(b.analysis.constraints.join('; ')||'responsive and accessible defaults'),
+    'Refinement: '+(b.refinement||'none'),
+    'Style directions: '+b.selected.map(style=>style.name).join(', '),
+    'If a fact is not present, label it as a suggestion. No source code or copied reference-site layout.'
+  ].join('\n').slice(0,3300);
   const ai=await designAiReply({
-    brief:project.brief,
-    messages:[{role:'user',content:instruction+'\n\nGround everything in this project understanding:\n'+b.goals+
-      '\n\nFull required coverage:\n'+fallback.slice(0,12000)}],
-    styles:b.selected,task:'prompt',env,request
+    brief:project.brief,messages:[{role:'user',content:context}],
+    styles:b.selected,task:'insight',env,request
   });
-  const reviewed=ai?.text?qualityReview(ai.text,{mode,requiredStyles:b.selected.map(x=>x.name),requiredFeatures:b.analysis.features.map(f=>f.id),requiredConstraints:b.analysis.constraints}):null;
-  if(reviewed?.passed)return {prompt:ai.text,source:'ai',provider:ai.provider,mode,
-    review:{...reviewed,usedFallback:false}};
-  const local=qualityReview(fallback,{mode,requiredStyles:b.selected.map(x=>x.name),requiredFeatures:b.analysis.features.map(f=>f.id),requiredConstraints:b.analysis.constraints});
-  return {prompt:fallback,source:'guide',provider:null,mode,
-    review:{...local,usedFallback:true,aiAttempted:!!ai,reason:reviewed?.missing||[]}};
+  const checked=inspectCreativeInsight(ai?.text,{...b,mode});
+  const reviewOptions={mode,requiredStyles:b.selected.map(style=>style.name),
+    requiredFeatures:b.analysis.features.map(feature=>feature.id),
+    requiredConstraints:b.analysis.constraints};
+  const originalReview=qualityReview(complete,reviewOptions);
+  if(checked.accepted){
+    const marker='\nQUALITY & ACCEPTANCE CHECKLIST\n';
+    const enriched=complete.replace(marker,
+      '\nAI CREATIVE REFINEMENTS — OPTIONAL ORIGINAL IDEAS\n'+ai.text.trim()+
+      '\n\nThese refinements are suggestions only. If they conflict with stated requirements, the confirmed constraints and page plan above take precedence.\n'+marker);
+    const reviewed=qualityReview(enriched,reviewOptions);
+    if(reviewed.passed){
+      return {prompt:enriched,source:'ai',provider:ai.provider,mode,composition:'structured-plus-ai',
+        review:{...reviewed,usedFallback:false,aiEnhanced:true}};
+    }
+  }
+  return {prompt:complete,source:'guide',provider:null,mode,composition:'structured',
+    review:{...originalReview,usedFallback:true,aiAttempted:!!ai,
+      reason:ai?[checked.reason||'enhanced-spec-incomplete']:['ai-insight-unavailable']}};
 }
