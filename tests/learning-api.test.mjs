@@ -1,0 +1,97 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {server} from '../server.mjs';
+
+async function setup(){
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const host='http://127.0.0.1:'+server.address().port;
+  const client=()=>{
+    let cookie='';
+    return async(path,method='GET',data)=>{
+      const headers={};
+      if(cookie)headers.Cookie=cookie;
+      if(data!==undefined)headers['Content-Type']='application/json';
+      const r=await fetch(host+path,{method,headers,body:data===undefined?undefined:JSON.stringify(data)});
+      cookie=r.headers.get('set-cookie')?.split(';')[0]||cookie;
+      return {status:r.status,data:await r.json()};
+    };
+  };
+  return {client,close:()=>new Promise(resolve=>server.close(resolve))};
+}
+test('Milestone 07 guest feedback is private, editable, pausable and deletable without deleting projects',async()=>{
+  const env=await setup(),alice=env.client(),bob=env.client();
+  try{
+    const brief='Create a general web platform for team collaboration, document sharing and messaging';
+    const a=await alice('/api/projects','POST',{brief});
+    const b=await bob('/api/projects','POST',{brief});
+    assert.equal(a.status,201);assert.equal(b.status,201);
+    const initialB=await bob('/api/projects/'+b.data.project.id);
+    const initialScore=initialB.data.project.recommendations.designs.find(x=>x.id==='creative').match;
+    const id=a.data.project.id;
+    for(let i=0;i<3;i++){
+      const result=await alice('/api/feedback','POST',{projectId:id,styles:['creative'],reaction:'like',detail:'Distinctive visuals'});
+      assert.equal(result.status,200);
+    }
+    const learned=await alice('/api/preferences');
+    assert.equal(learned.status,200);
+    assert.equal(learned.data.profile.styleWeights.creative,3);
+    assert.equal(learned.data.evidence.find(x=>x.style==='creative').likes,3);
+    const isolated=await bob('/api/preferences');
+    assert.equal(isolated.data.profile.styleWeights.creative,undefined,'Visitors do not share learned preferences');
+    assert.equal(isolated.data.evidence.find(x=>x.style==='creative').likes,0);
+    const newA=await alice('/api/projects','POST',{brief});
+    const personalized=newA.data.project.recommendations.designs.find(x=>x.id==='creative').match;
+    assert.ok(personalized>initialScore,'New projects consider explicit private feedback');
+    const updated=await alice('/api/preferences','PUT',{
+      motion:'minimal',density:'compact',contrast:'high',colorMood:'warm',
+      styleWeights:{creative:-3,minimal:3}
+    });
+    assert.equal(updated.status,200);
+    assert.equal(updated.data.profile.styleWeights.creative,-3);
+    assert.equal(updated.data.profile.personalization.motion,'minimal');
+    assert.equal(updated.data.profile.personalization.colorMood,'warm');
+    const paused=await alice('/api/preferences','PUT',{enabled:false});
+    assert.equal(paused.data.profile.personalization.enabled,false);
+    assert.equal(paused.data.profile.globalOptIn,false);
+    const blocked=await alice('/api/feedback','POST',{projectId:id,styles:['minimal'],reaction:'like'});
+    assert.equal(blocked.status,409,'Paused learning cannot silently store feedback');
+    const prompt=await alice('/api/projects/'+id+'/design-prompt','POST',{mode:'fusion',styles:['glass','minimal']});
+    assert.equal(prompt.status,200);assert.match(prompt.data.prompt,/No stored personal preferences are active/);
+    const pausedNew=await alice('/api/projects','POST',{brief});
+    const pausedScore=pausedNew.data.project.recommendations.designs.find(x=>x.id==='creative').match;
+    assert.equal(pausedScore,initialScore,'Paused memory cannot silently bias recommendations');
+    const corrections=await alice('/api/preferences','PUT',{styleWeights:{glass:22}});
+    assert.equal(corrections.status,400);
+    const wipe=await alice('/api/preferences','DELETE');
+    assert.equal(wipe.status,200);
+    assert.equal(wipe.data.evidence.find(x=>x.style==='creative').likes,0);
+    assert.deepEqual(wipe.data.profile.styleWeights,{});
+    const existing=await alice('/api/projects/'+id);
+    assert.equal(existing.status,200,'Clearing preferences must not delete existing projects');
+    assert.equal(existing.data.project.brief,brief);
+    assert.equal((await bob('/api/projects/'+id)).status,404);
+  }finally{await env.close();}
+});
+test('Aggregated learning requires five distinct opted-in contributors and honors revoked consent',async()=>{
+  const env=await setup();
+  try{
+    const clients=Array.from({length:5},()=>env.client());
+    for(let i=0;i<clients.length;i++){
+      const call=clients[i];
+      const project=await call('/api/projects','POST',{brief:'Create a modern team productivity dashboard for work'});
+      assert.equal(project.status,201);
+      const opted=await call('/api/profile','PUT',{globalOptIn:true});
+      assert.equal(opted.data.globalOptIn,true);
+      const saved=await call('/api/feedback','POST',{projectId:project.data.project.id,styles:['minimal'],reaction:'like'});
+      assert.equal(saved.status,200);
+      const aggregate=await call('/api/insights');
+      assert.equal(aggregate.status,200);
+      if(i<4)assert.equal(aggregate.data.publicPatterns.length,0,'Never publish a cohort below five');
+      else assert.ok(aggregate.data.publicPatterns.some(x=>x.style==='minimal'&&x.people===5));
+    }
+    const revoke=await clients[0]('/api/profile','PUT',{globalOptIn:false});
+    assert.equal(revoke.data.globalOptIn,false);
+    const after=await clients[1]('/api/insights');
+    assert.equal(after.data.publicPatterns.length,0,'Prior eligible feedback must be excluded after opting out');
+  }finally{await env.close();}
+});

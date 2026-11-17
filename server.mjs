@@ -8,6 +8,8 @@ import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections} from './project-intelligence.mjs';
+import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
+  resetPreferenceLearning,preferenceHints} from './learning-engine.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const PORT=Number(process.env.PORT||3000);
@@ -78,24 +80,55 @@ async function savedSourceRows(owner,projectId){
   return ids.map(id=>refs.find(r=>r.id===id)).filter(Boolean).slice(0,8);
 }
 async function makeInspirationResponse(owner,project){
-  const [refs,prefs,picks,personalTags]=await Promise.all([listReferences(),profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)]);
+  const [refs,raw,picks,personalTags]=await Promise.all([listReferences(),profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)]);
+  const prefs=effectivePreferences(raw);
   return {
     projectId:project.id,
-    matches:rankInspirations(project.brief,refs,{styleWeights:prefs.styleWeights||{},favoriteTags:personalTags}),
+    matches:rankInspirations(project.brief,refs,{styleWeights:prefs.styleWeights||{},
+      favoriteTags:prefs.personalization.enabled?personalTags:[]}),
     selected:picks,
     librarySize:refs.length,
     ranking:'Metadata signals + your private selection history; not live website scraping',
   };
 }
 async function profile(owner){
-  if(!pg)return guests.get(owner)||{styleWeights:{},globalOptIn:false};
+  if(!pg)return normalizeProfile(guests.get(owner));
   const r=await pg.query('SELECT style_weights,global_opt_in FROM frontline.uic_profiles WHERE visitor_id=$1',[owner]);
-  return r.rows[0]?{styleWeights:r.rows[0].style_weights,globalOptIn:r.rows[0].global_opt_in}:{styleWeights:{},globalOptIn:false};
+  return normalizeProfile(r.rows[0]?{
+    styleWeights:r.rows[0].style_weights,globalOptIn:r.rows[0].global_opt_in,
+  }:{});
 }
-async function saveProfile(owner,p){
+async function saveProfile(owner,input){
+  const p=normalizeProfile(input);
   if(!pg){guests.set(owner,p);return;}
   await pg.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in) VALUES($1,$2,$3)
-  ON CONFLICT(visitor_id) DO UPDATE SET style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,[owner,JSON.stringify(p.styleWeights),p.globalOptIn]);
+  ON CONFLICT(visitor_id) DO UPDATE SET style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,
+    [owner,JSON.stringify(persistableWeights(p)),p.globalOptIn]);
+}
+async function revokeSharedFeedback(owner){
+  if(!pg){for(const vote of votes)if(vote.owner===owner)vote.optIn=false;return;}
+  await pg.query('UPDATE frontline.uic_feedback SET eligible_global=false WHERE visitor_id=$1',[owner]);
+}
+async function clearPreferenceFeedback(owner){
+  if(!pg){for(let i=votes.length-1;i>=0;i--)if(votes[i].owner===owner)votes.splice(i,1);return;}
+  await pg.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);
+}
+async function feedbackEvidence(owner){
+  if(!pg){
+    const rows=votes.filter(v=>v.owner===owner);
+    return ['minimal','glass','creative'].map(style=>({
+      style,likes:rows.filter(v=>v.style===style&&v.reaction==='like').length,
+      dislikes:rows.filter(v=>v.style===style&&v.reaction==='dislike').length,
+      refinements:rows.filter(v=>v.style===style&&v.reaction==='edit').length,
+    }));
+  }
+  const r=await pg.query(`SELECT style_id AS style,reaction,COUNT(*)::int AS total
+    FROM frontline.uic_feedback WHERE visitor_id=$1 GROUP BY style_id,reaction`,[owner]);
+  return ['minimal','glass','creative'].map(style=>({
+    style,likes:r.rows.filter(x=>x.style===style&&x.reaction==='like').reduce((sum,x)=>sum+x.total,0),
+    dislikes:r.rows.filter(x=>x.style===style&&x.reaction==='dislike').reduce((sum,x)=>sum+x.total,0),
+    refinements:r.rows.filter(x=>x.style===style&&x.reaction==='edit').reduce((sum,x)=>sum+x.total,0),
+  }));
 }
 async function saveProject(owner,p){
   if(!pg){live.set(p.id,{...p,owner});return;}
@@ -120,7 +153,12 @@ async function addVote(owner,id,style,reaction,detail,p){
   await pg.query('INSERT INTO frontline.uic_feedback(id,visitor_id,project_id,style_id,reaction,detail,eligible_global) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),owner,id,style,reaction,detail,p.globalOptIn]);
 }
 async function insights(){
-  const counts=pg?(await pg.query(`SELECT style_id,COUNT(DISTINCT visitor_id)::int AS people FROM frontline.uic_feedback WHERE eligible_global=true AND reaction='like' GROUP BY style_id`)).rows:votes.filter(v=>v.optIn&&v.reaction==='like').reduce((arr,v)=>{let x=arr.find(i=>i.style_id===v.style);if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}x.owners.add(v.owner);return arr},[]).map(x=>({style_id:x.style_id,people:x.owners.size}));
+  const counts=pg?(await pg.query(`SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS people
+    FROM frontline.uic_feedback f
+    JOIN frontline.uic_profiles p ON p.visitor_id=f.visitor_id
+    WHERE f.eligible_global=true AND f.reaction='like' AND p.global_opt_in=true
+      AND COALESCE(p.style_weights->'_personalization'->>'enabled','true')='true'
+    GROUP BY f.style_id`)).rows:votes.filter(v=>v.optIn&&v.reaction==='like').reduce((arr,v)=>{let x=arr.find(i=>i.style_id===v.style);if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}x.owners.add(v.owner);return arr},[]).map(x=>({style_id:x.style_id,people:x.owners.size}));
   return counts.filter(x=>x.people>=5).map(x=>({style:x.style_id,people:x.people}));
 }
 async function eraseProfile(owner){
@@ -142,20 +180,20 @@ async function readBody(req){
 }
 function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(obj));}
 function validateText(text,min,max){return typeof text==='string'&&text.trim().length>=min&&text.trim().length<=max;}
-async function chatReply(brief,messages,styleIds){
+async function chatReply(brief,messages,styleIds,preferences={}){
   const latest=messages.at(-1)?.content||'';
   const chosen=styleIds.map(i=>STYLES.find(s=>s.id===i)).filter(Boolean);
   // Tests never consume real API quotas or send content to model providers.
   let failure={reason:'provider-unavailable',retryAfterSeconds:0};
   const ai=process.env.NODE_ENV==='test'?null:await designAiReply({
-    brief,messages,styles:chosen,
+    brief,messages,styles:chosen,designPreferences:preferenceHints(preferences),
     onFailure:info=>{failure=info}
   });
   if(ai)return ai;
   const analysis=analyzeProject(brief);
   const audience=analysis.audienceSource==='explicit'
     ?analysis.audience.join(', '):'Primary users not yet confirmed';
-  const preferred=compareDirections(analysis,chosen.length?chosen:STYLES);
+  const preferred=compareDirections(analysis,chosen.length?chosen:STYLES,effectivePreferences(preferences));
   const best=preferred[0];
   const mainFeature=analysis.features[0]||null;
   const lower=latest.toLowerCase();
@@ -239,8 +277,30 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
         const data=await readBody(req);const old=await profile(owner);
-        const p={...old,globalOptIn:data.globalOptIn===true};
+        if(typeof data.globalOptIn!=='boolean')return json(res,400,{error:'Choose whether to opt into aggregated learning.'});
+        const p={...old,globalOptIn:data.globalOptIn===true&&old.personalization.enabled};
+        if(!p.globalOptIn)await revokeSharedFeedback(owner);
         await saveProfile(owner,p);return json(res,200,p);
+      }
+      if(req.method==='GET'&&req.url==='/api/preferences'){
+        return json(res,200,{profile:await profile(owner),evidence:await feedbackEvidence(owner),
+          note:'Only feedback and design choices from this visitor; no private conversations shared.'});
+      }
+      if(req.method==='PUT'&&req.url==='/api/preferences'){
+        const input=await readBody(req);
+        let next;
+        try{next=applyPreferenceChanges(await profile(owner),input);}
+        catch(error){return json(res,400,{error:error.message});}
+        if(!next.personalization.enabled)await revokeSharedFeedback(owner);
+        await saveProfile(owner,next);
+        return json(res,200,{profile:next,evidence:await feedbackEvidence(owner)});
+      }
+      if(req.method==='DELETE'&&req.url==='/api/preferences'){
+        const next=resetPreferenceLearning(await profile(owner));
+        await clearPreferenceFeedback(owner);
+        await saveProfile(owner,next);
+        return json(res,200,{profile:next,evidence:await feedbackEvidence(owner),
+          note:'Preferences and private feedback cleared. Projects and chats were preserved.'});
       }
       if(req.method==='DELETE'&&req.url==='/api/profile'){
         await eraseProfile(owner);return json(res,200,{deleted:true});
@@ -249,7 +309,7 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&req.url==='/api/projects')return json(res,200,{projects:await listProjects(owner)});
       if(req.method==='POST'&&req.url==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
-        const prefs=await profile(owner);const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
+        const prefs=effectivePreferences(await profile(owner));const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
         await saveProject(owner,p);return json(res,201,{project:p});
       }
@@ -290,7 +350,8 @@ const server=http.createServer(async(req,res)=>{
         if(b.refinement!==undefined&&(typeof b.refinement!=='string'||b.refinement.length>600))
           return json(res,400,{error:'Refinement must be 600 characters or fewer'});
         const styleIds=[...new Set(b.styles)];
-        const [refs,prefs]=await Promise.all([savedSourceRows(owner,id),profile(owner)]);
+        const [refs,raw]=await Promise.all([savedSourceRows(owner,id),profile(owner)]);
+        const prefs=effectivePreferences(raw);
         const result=await createDesignPrompt({
           project:p,mode:b.mode,styles:styleIds,references:refs,preferences:prefs,
           refinement:b.refinement||'',
@@ -310,9 +371,9 @@ const server=http.createServer(async(req,res)=>{
           hasFinalized=finalizedModes.has(key);
           finalizedModes.add(key);
         }
-        if(!hasFinalized){
-          const next={...prefs,styleWeights:{...(prefs.styleWeights||{})}};
-          for(const style of styleIds)next.styleWeights[style]=Math.max(-5,Math.min(5,(next.styleWeights[style]||0)+1));
+        if(!hasFinalized&&prefs.personalization.enabled){
+          let next=prefs;
+          for(const style of styleIds)next=learnStyle(next,style,'finalized');
           await saveProfile(owner,next);
         }
         return json(res,200,{...result,styles:styleIds,references:refs.map(x=>x.id)});
@@ -324,7 +385,7 @@ const server=http.createServer(async(req,res)=>{
         if(req.method==='GET'&&!action){
           // Older saved projects did not have an intelligence snapshot. Enrich the
           // response without writing to the user's PostgreSQL project history.
-          const prefs=await profile(owner);
+          const prefs=effectivePreferences(await profile(owner));
           // Refresh derived intelligence for previously saved projects without mutating
           // stored messages, recommendations, or their PostgreSQL rows.
           const analysis=analyzeProject(p.brief,{category:p.recommendations?.category});
@@ -342,7 +403,7 @@ const server=http.createServer(async(req,res)=>{
           if(!Array.isArray(b.styles)||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Invalid styles'});
           const messages=(Array.isArray(p.messages)?p.messages:[]).slice(-24);
           messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
-          const response=await chatReply(p.brief,messages,b.styles);messages.push({role:'assistant',content:response.text,source:response.source,
+          const response=await chatReply(p.brief,messages,b.styles,await profile(owner));messages.push({role:'assistant',content:response.text,source:response.source,
             ...(response.provider?{provider:response.provider}:{}),
             ...(response.failureReason?{failureReason:response.failureReason}:{}),
             ...(response.retryAfterSeconds?{retryAfterUntil:new Date(Date.now()+response.retryAfterSeconds*1000).toISOString()}:{}),
@@ -361,11 +422,12 @@ const server=http.createServer(async(req,res)=>{
         const selected=Array.isArray(b.styles)?[...new Set(b.styles)]:[];
         if(!selected.length||selected.some(s=>!STYLES.some(t=>t.id===s))||!['like','dislike','edit'].includes(b.reaction))return json(res,400,{error:'Invalid feedback'});
         const detail=typeof b.detail==='string'?b.detail.slice(0,500):'';
-        const prefs=await profile(owner);
+        let prefs=await profile(owner);
+        if(!prefs.personalization.enabled)
+          return json(res,409,{error:'Personal learning is paused. Re-enable it to save design feedback.'});
         for(const style of selected){
           await addVote(owner,p.id,style,b.reaction,detail,prefs);
-          const d=b.reaction==='like'?1:b.reaction==='dislike'?-1:0;
-          prefs.styleWeights[style]=Math.max(-5,Math.min(5,(prefs.styleWeights[style]||0)+d));
+          prefs=learnStyle(prefs,style,b.reaction);
         }
         await saveProfile(owner,prefs);return json(res,200,{saved:selected.length,profile:prefs});
       }

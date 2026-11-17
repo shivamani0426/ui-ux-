@@ -136,3 +136,18 @@ The site received OpenRouter HTTP 429 quota-limit and timeout responses while us
 To conserve a shared free key, Frontline defaults to ONE OpenRouter request per user action on openrouter/free or a :free model, compacts recent chat context, asks for concise answers, and never presents provider-marked incomplete text as a complete final design. OPENROUTER_MAX_ATTEMPTS=2 is opt-in for a more generous plan, not the default. A 429 causes a short process-local cooldown and clear user-facing guidance. Logs contain only safe provider/status metadata. The app does not send private prompts to another provider without explicit opt-in.
 
 Generate/Fusion specifications remain available from the grounded structured design engine, even without an optional AI creative refinement. Quality checks remain active. These changes reduce unnecessary requests but cannot override external rate limits or guarantee 100% free-model uptime.
+
+
+## Milestone 07 — personalized design learning + compact studio chat
+
+Stage 07A–07C foundation. The existing profile/feedback tables and guest-scoped identity were retained. No schema migration and no additional provider required.
+
+- **Private memory:** Explicit style feedback and once-per-project-mode finalization influence later Select, Generate, Fusion and inspiration rankings. Project requirements override private preferences.
+- **Learning & Privacy controls:** View per-style likes/dislikes/improvements, correct style signals from -5 to +5, and set motion, content density, contrast priority and color atmosphere. Do not infer sensitive traits or mine raw private chat transcripts.
+- **Pause and clear:** Pausing stops using and updating design memories and refuses new feedback. Clearing deletes only this visitor's feedback and resets preferences, but preserves saved projects, conversations and inspirations. Existing full workspace deletion remains distinct.
+- **Persistence:** Preference metadata is stored inside the existing per-visitor frontline.uic_profiles.style_weights JSONB field under the reserved namespace _personalization. Older visitor profiles still load.
+- **Collective consent:** Opt-in remains separate and off by default. Public patterns require five distinct current opted-in contributors per style. Opting out or pausing revokes earlier feedback eligibility, not only future contributions. Raw project messages are not part of shared learning.
+- **AI:** Compact private preference hints are provided only while learning is enabled; explicit current brief constraints take precedence. OpenRouter-only routing and structured fallback remain unchanged.
+- **Chat UI:** Docked composer is ~660px max width, starts as one line, grows on demand, and reserves conversation scrolling clearance. Original gold StarBorder/glow/canvas, light/dark appearance, buttons, landing spiral and cinematic entrance remain unchanged.
+
+**Limitations:** Rule-based preference signals, not new trained model weights or validated matching scores. Guest identity is tied to the browser cookie; it does not authenticate users across devices. Collective model training and account-based memory migration remain out of scope.

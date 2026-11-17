@@ -10,6 +10,7 @@ import InspirationExplorer from './components/InspirationExplorer.jsx';
 import DesignPromptPanel from './components/DesignPromptPanel.jsx';
 import ProjectIntelligencePanel from './components/ProjectIntelligencePanel.jsx';
 import MessageMarkdown from './components/MessageMarkdown.jsx';
+import LearningPreferencesPanel from './components/LearningPreferencesPanel.jsx';
 import './styles.css';
 import './frontline-studio.css';
 import './inspiration-explorer.css';
@@ -40,7 +41,10 @@ function App(){
   const [retryClock,setRetryClock]=useState(()=>Date.now());
   const [catalog,setCatalog]=useState({styles:[],references:[]});
   const [projects,setProjects]=useState([]);
-  const [profile,setProfile]=useState({styleWeights:{},globalOptIn:false});
+  const [profile,setProfile]=useState({styleWeights:{},globalOptIn:false,personalization:{enabled:true}});
+  const [preferenceEvidence,setPreferenceEvidence]=useState([]);
+  const [preferencesBusy,setPreferencesBusy]=useState(false);
+  const [composerClearance,setComposerClearance]=useState(138);
   const [config,setConfig]=useState({aiEnabled:false,persistent:false});
   const [selected,setSelected]=useState(styleKeys);
   const [working,setWorking]=useState(false);
@@ -55,7 +59,7 @@ function App(){
   const [landingFrame,setLandingFrame]=useState(0);
   const [landingComposerReady,setLandingComposerReady]=useState(false);
   const [portalState,setPortalState]=useState('idle');
-  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null);
+  const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null),composerDockRef=useRef(null);
 
   const notice=(message)=>{
     setToast(message);clearTimeout(toastTimer.current);
@@ -82,6 +86,28 @@ function App(){
     const ticker=setInterval(()=>setRetryClock(Date.now()),15000);
     return ()=>clearInterval(ticker);
   },[messages]);
+  // ChatGPT-like one-line composer, expanding only for longer text; the existing
+  // StarBorder, colors and cinematic landing use the same components as before.
+  useEffect(()=>{
+    if(mode!=='chat'||!textareaRef.current)return;
+    const textarea=textareaRef.current;
+    textarea.style.height='auto';
+    textarea.style.height=Math.min(126,Math.max(36,textarea.scrollHeight))+'px';
+  },[brief,mode]);
+  useEffect(()=>{
+    if(mode!=='chat'||!composerDockRef.current)return;
+    const container=composerDockRef.current;
+    const measure=()=>{
+      const top=container.getBoundingClientRect().top;
+      const next=Math.max(110,Math.ceil(window.innerHeight-top+8));
+      setComposerClearance(previous=>previous===next?previous:next);
+    };
+    const observer=typeof ResizeObserver==='function'?new ResizeObserver(measure):null;
+    observer?.observe(container);
+    window.addEventListener('resize',measure);
+    const frame=requestAnimationFrame(measure);
+    return ()=>{observer?.disconnect();window.removeEventListener('resize',measure);cancelAnimationFrame(frame)};
+  },[mode]);
   // The pre-landing portal locks scrolling only until the inside-out reveal ends.
   // It doesn't change saved projects, user preferences, the studio or any APIs.
   useEffect(()=>{
@@ -178,6 +204,42 @@ function App(){
       notice('Implementation prompt copied to clipboard.');
     }catch(e){notice(e.message);}
   };
+  const openLearning=()=>{
+    setPanel('learning');setMenuOpen(true);
+    api('/api/preferences').then(data=>{
+      setProfile(data.profile);setPreferenceEvidence(data.evidence||[]);
+    }).catch(error=>notice(error.message));
+  };
+  const saveLearning=async changes=>{
+    if(preferencesBusy)return;
+    const previous=profile;
+    // Controlled fields must respond immediately, not snap back while the
+    // server saves. If the request fails, restore the last verified profile.
+    setProfile(current=>({
+      ...current,
+      styleWeights:{...(current.styleWeights||{}),...(changes.styleWeights||{})},
+      personalization:{...(current.personalization||{enabled:true}),
+        ...Object.fromEntries(Object.entries(changes).filter(([key])=>key!=='styleWeights'))},
+      globalOptIn:changes.enabled===false?false:current.globalOptIn,
+    }));
+    setPreferencesBusy(true);
+    try{
+      const r=await api('/api/preferences',{method:'PUT',body:JSON.stringify(changes)});
+      setProfile(r.profile);setPreferenceEvidence(r.evidence||[]);
+      notice('Your private design preferences were updated.');
+    }catch(error){setProfile(previous);notice(error.message)}
+    finally{setPreferencesBusy(false)}
+  };
+  const resetLearning=async()=>{
+    if(!window.confirm('Clear ONLY your design preferences and feedback? Saved projects and chats will stay.'))return;
+    setPreferencesBusy(true);
+    try{
+      const r=await api('/api/preferences',{method:'DELETE'});
+      setProfile(r.profile);setPreferenceEvidence(r.evidence||[]);
+      notice('Your design preferences and feedback were cleared. Projects preserved.');
+    }catch(error){notice(error.message)}
+    finally{setPreferencesBusy(false)}
+  };
   const saveOptIn=async e=>{
     try{setProfile(await api('/api/profile',{method:'PUT',body:JSON.stringify({globalOptIn:e.target.checked})}));notice('Your learning preference was saved.');}
     catch(err){notice(err.message);}
@@ -186,7 +248,7 @@ function App(){
     if(!window.confirm('Delete all your saved projects, history, and preferences? This cannot be undone.'))return;
     try{
       await api('/api/profile',{method:'DELETE'});
-      setProjects([]);setProfile({styleWeights:{},globalOptIn:false});newChat();notice('Your workspace data has been deleted.');
+      setProjects([]);setProfile({styleWeights:{},globalOptIn:false,personalization:{enabled:true}});setPreferenceEvidence([]);newChat();notice('Your workspace data has been deleted.');
     }catch(e){notice(e.message);}
   };
   const recommendations=project?.recommendations?.designs||[];
@@ -196,7 +258,7 @@ function App(){
   const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
   const enterLandingMode=key=>{setDesignMode(key);if(key==='fusion')setSelected(styleKeys);focusChat();};
 
-  return <div className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')+(!active?' portal-'+portalState:'')}>
+  return <div style={{'--chat-clearance':composerClearance+'px'}} className={'app '+(active?'in-chat':'in-welcome')+(!active&&landingFrame>0?' exploring':'')+(!active&&landingFrame===4?' story-end':'')+(!active?' portal-'+portalState:'')}>
     <header className="topbar" inert={!active&&portalState!=='done'}>
       <button className="brand" onClick={newChat} title="New chat" aria-label="Frontline UX/UI — new chat">
         <span className="brand-mark"><FrontlineMark size={29}/></span>
@@ -290,14 +352,14 @@ function App(){
                 {['like','dislike','edit'].map(value=><button key={value} className={reaction===value?'reaction-current':''} aria-pressed={reaction===value} onClick={()=>setReaction(value)}>{value==='like'?'Like':value==='dislike'?'Dislike':'Improve'}</button>)}
               </div>
               <input value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Optional feedback on your selections" maxLength={500} aria-label="Feedback detail"/>
-              <button className="save-feedback" onClick={feedbackSave} disabled={!selected.length}>Save refinement <ArrowUp size={14}/></button>
+              <button className="save-feedback" onClick={feedbackSave} disabled={!selected.length||profile.personalization?.enabled===false} title={profile.personalization?.enabled===false?'Enable learning in Learning & privacy to save feedback':'Save private design feedback'}>Save refinement <ArrowUp size={14}/></button>
               </div>
             </details>
           </section>}
           <div ref={endRef}/>
         </div>
       </section>}
-      {(active||landingFrame===4)&&<div inert={!active&&!landingComposerReady} className={'composer-position '+(active?'docked':'spiral-emerging'+(landingComposerReady?' is-ready':''))}>
+      {(active||landingFrame===4)&&<div inert={!active&&!landingComposerReady} ref={composerDockRef} className={'composer-position '+(active?'docked':'spiral-emerging'+(landingComposerReady?' is-ready':''))}>
         <StarBorder as="div" theme={theme}
           backgroundColor={active?(theme==='dark'?'#382a2b':'#fff8ec'):'#fff8eb'}
           textColor={active?(theme==='dark'?'#f9e7ce':'#4b312b'):'#45302a'}
@@ -308,7 +370,7 @@ function App(){
           hover="lap" sparkle clickPulse className="chat-star">
           <form className="composer" onSubmit={e=>{e.preventDefault();send(e.currentTarget.querySelector('textarea')?.value??brief);}}>
             {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="DESIGN BEGINS WITH YOU" fontSize={38} fontWeight={650} reveal="letter" reach={0} labels={false} selection={false} draggable={false} specks={0} sweep={false} clickKick={false} color="currentColor" accentColor="#bd7444" /></div></div>}
-            <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent?.isComposing){e.preventDefault();send(e.currentTarget.value);}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
+            <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent?.isComposing){e.preventDefault();send(e.currentTarget.value);}}} placeholder="Describe your website, app, or design idea…" rows={active?1:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
               <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?(config.aiPrimary==='openrouter'?'OpenRouter configured':'AI configured'):'Design guidance ready'}</span>
               <div className="composer-buttons">
@@ -336,7 +398,7 @@ function App(){
           <button onClick={()=>setPanel('tools')}><Sparkles size={17}/> Select / Generate / Fusion <ChevronRight size={15}/></button>
           <button onClick={()=>{setPanel('projects');api('/api/projects').then(v=>setProjects(v.projects||[])).catch(e=>notice(e.message));}}><Layers3 size={17}/> My conversations <ChevronRight size={15}/></button>
           <button onClick={()=>setPanel('references')}><Search size={17}/> UI/UX inspiration library <ChevronRight size={15}/></button>
-          <button onClick={()=>setPanel('learning')}><ShieldCheck size={17}/> Learning & privacy <ChevronRight size={15}/></button>
+          <button onClick={openLearning}><ShieldCheck size={17}/> Learning & privacy <ChevronRight size={15}/></button>
           <div className="menu-bottom">
             <p className="menu-eyebrow">APPEARANCE</p>
             <button onClick={()=>setTheme(t=>t==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>} Switch to {theme==='dark'?'light':'dark'} theme <span className="theme-chip">{theme==='dark'?'Dark':'Light'}</span></button>
@@ -367,8 +429,10 @@ function App(){
         </div>}
         {panel==='learning'&&<div className="menu-subcontent">
           <p className="menu-intro">Feedback helps tailor future recommendations. Your projects stay private.</p>
-          <div className="learning-box"><strong>Personal design preferences</strong>{styleKeys.map(s=><div className="learning-row" key={s}><span>{formats[s]}</span><strong>{profile.styleWeights?.[s]||0}</strong></div>)}</div>
-          <label className="opt-in"><input type="checkbox" checked={profile.globalOptIn===true} onChange={saveOptIn}/><span><strong>Contribute anonymous patterns</strong><small>Opt in to privacy-safe aggregated feedback, never raw private chats.</small></span></label>
+          <LearningPreferencesPanel profile={profile} evidence={preferenceEvidence} busy={preferencesBusy}
+            onChange={saveLearning} onClear={resetLearning}/>
+          <label className="opt-in"><input type="checkbox" checked={profile.globalOptIn===true}
+          disabled={preferencesBusy||profile.personalization?.enabled===false} onChange={saveOptIn}/><span><strong>Contribute anonymous patterns</strong><small>Opt in to privacy-safe aggregated feedback, never raw private chats.</small></span></label>
           <button className="danger-action" onClick={eraseEverything}>Delete all my projects and preferences</button>
         </div>}
       </aside>

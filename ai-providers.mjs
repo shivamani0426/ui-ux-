@@ -95,7 +95,8 @@ export function aiConfig(env=process.env){
   };
 }
 
-const compactChatContext=(brief,styles)=>{
+const designHintText=hints=>Array.isArray(hints)?hints.filter(x=>typeof x==='string').slice(0,7).map(x=>x.slice(0,145)).join('; ').slice(0,800):'';
+const compactChatContext=(brief,styles,designPreferences=[])=>{
   const analysis=analyzeProject(brief);
   return [
     'Project: '+trimText(brief).slice(0,850),
@@ -103,15 +104,17 @@ const compactChatContext=(brief,styles)=>{
     'Modules: '+analysis.features.slice(0,8).map(f=>f.label).join(', '),
     'Constraints: '+analysis.constraints.slice(0,5).join('; '),
     'Selected design styles: '+(styles||[]).map(s=>s.name).join(', '),
+    ...(designHintText(designPreferences)?['Optional private preferences (new explicit brief wins): '+designHintText(designPreferences)]:[]),
     'Answer the most recent question; no invented audits or completed tests.'
   ].join('\n').slice(0,1550);
 };
-const contextMessage=(brief,styles)=>{
+const contextMessage=(brief,styles,designPreferences=[])=>{
   const analysis=analyzeProject(brief);
   const named=(styles||[]).map(s=>s.name).filter(Boolean);
   return [
     'Project brief: '+trimText(brief),
     'Selected directions: '+named.join(', '),
+    ...(designHintText(designPreferences)?['Optional private preferences (new explicit brief wins): '+designHintText(designPreferences)]:[]),
     'Audience: '+analysis.audience.join(', ')+' ('+analysis.audienceSource+')',
     'Explicit modules: '+(analysis.features.map(x=>x.label).join(', ')||'not specified'),
     'Constraints: '+(analysis.constraints.join(', ')||'none explicitly stated'),
@@ -160,7 +163,7 @@ const errorKind=err=>{
   if(err?.name==='TypeError')return 'network-fetch-failed';
   return 'unknown-provider-error';
 };
-async function geminiReply({brief,messages,styles,task,env,request}){
+async function geminiReply({brief,messages,styles,task,env,request,designPreferences=[]}){
   const model=modelId(env.GEMINI_MODEL,'gemini-3.5-flash-lite');
   const recent=cleanMessages(messages);
   while(recent.length&&recent[0].role==='assistant')recent.shift();
@@ -169,7 +172,7 @@ async function geminiReply({brief,messages,styles,task,env,request}){
   }));
   if(!contents.length)contents.push({role:'user',parts:[{text:trimText(brief)}]});
   // Brief and reference metadata remain lower-priority user content.
-  contents[0].parts[0].text=contextMessage(brief,styles)+'\n\n'+contents[0].parts[0].text;
+  contents[0].parts[0].text=contextMessage(brief,styles,designPreferences)+'\n\n'+contents[0].parts[0].text;
   const r=await request('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{
     method:'POST',
     headers:{'x-goog-api-key':env.GEMINI_API_KEY,'Content-Type':'application/json'},
@@ -189,7 +192,7 @@ async function geminiReply({brief,messages,styles,task,env,request}){
   return {text:answer,source:'ai',provider:'gemini'};
 }
 
-async function openRouterReply({brief,messages,styles,task,env,request}){
+async function openRouterReply({brief,messages,styles,task,env,request,designPreferences=[]}){
   const model=env.OPENROUTER_MODEL||'openrouter/free';
   const isPrompt=task==='prompt',isInsight=task==='insight';
   const outputLimit=isPrompt?5400:isInsight?1700:2400;
@@ -199,7 +202,7 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
     :cleanMessages(messages);
   const messagesForModel=[
     {role:'system',content:isPrompt?DESIGN_PROMPT_SYSTEM:isInsight?DESIGN_INSIGHT_SYSTEM:SYSTEM_PROMPT},
-    {role:'user',content:task==='chat'?compactChatContext(brief,styles):contextMessage(brief,styles)},
+    {role:'user',content:task==='chat'?compactChatContext(brief,styles,designPreferences):contextMessage(brief,styles,designPreferences)},
     ...recent,
   ];
   // The free router may select a thinking model. A 650-token completion could
@@ -278,7 +281,7 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
 }
 
 /** GroqCloud uses an OpenAI-compatible chat endpoint, not OpenRouter. */
-async function groqReply({brief,messages,styles,task,env,request}){
+async function groqReply({brief,messages,styles,task,env,request,designPreferences=[]}){
   const configuredModel=env.GROQ_MODEL;
   const validModel=typeof configuredModel==='string'&&configuredModel.length<=100
     && configuredModel.split('/').length<=2
@@ -299,7 +302,7 @@ async function groqReply({brief,messages,styles,task,env,request}){
       ...(isGptOss?{reasoning_effort:'low',include_reasoning:false}:{}),
       messages:[
         {role:'system',content:task==='prompt'?DESIGN_PROMPT_SYSTEM:task==='insight'?DESIGN_INSIGHT_SYSTEM:SYSTEM_PROMPT},
-        {role:'user',content:contextMessage(brief,styles)},
+        {role:'user',content:contextMessage(brief,styles,designPreferences)},
         ...cleanMessages(messages),
       ],
     }),
@@ -320,7 +323,7 @@ async function groqReply({brief,messages,styles,task,env,request}){
  * AI_FALLBACK_ENABLED=true, except when the primary has no key at all.
  * Logs include safe provider/status metadata only, never prompts or keys.
  */
-export async function designAiReply({brief,messages,styles=[],task='chat',env=process.env,request=fetch,onFailure=null}){
+export async function designAiReply({brief,messages,styles=[],task='chat',env=process.env,request=fetch,onFailure=null,designPreferences=[]}){
   const settings=aiConfig(env);
   if(!settings.aiEnabled)return null;
   const first=settings.aiPrimary;
@@ -339,7 +342,7 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
       continue;
     }
     try{
-      return await handlers[provider]({brief,messages,styles,task,env,request});
+      return await handlers[provider]({brief,messages,styles,task,env,request,designPreferences});
     }catch(err){
       const reason=safeFailureKind(err);
       if(provider==='openrouter'&&request===fetch&&reason==='rate-limited'){
