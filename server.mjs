@@ -262,8 +262,19 @@ function cookie(req,res){
   return id;
 }
 async function readBody(req){
+  // Cookie-authenticated writes must be JSON. Browsers cannot silently submit
+  // this content type from a cross-site HTML form.
+  if(String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase()!=='application/json')
+    throw Object.assign(new Error('Use application/json for API writes.'),{status:415});
   let buff='';for await(const part of req){buff+=part;if(buff.length>MAX_BODY)throw Object.assign(new Error('Request too large'),{status:413});}
   try{return JSON.parse(buff||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
+}
+function trustedMutationOrigin(req){
+  if(!['POST','PUT','PATCH','DELETE'].includes(req.method)||!req.headers.origin)return true;
+  try{
+    const origin=new URL(req.headers.origin);
+    return ['https:','http:'].includes(origin.protocol)&&origin.host===req.headers.host;
+  }catch{return false}
 }
 function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(obj));}
 function validateText(text,min,max){return typeof text==='string'&&text.trim().length>=min&&text.trim().length<=max;}
@@ -358,6 +369,7 @@ const server=http.createServer(async(req,res)=>{
   let owner=cookie(req,res);
   try{
     if(req.url?.startsWith('/api/')){
+      if(!trustedMutationOrigin(req))return json(res,403,{error:'Cross-origin changes are not permitted.'});
       if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
       if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.4.0'});
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
