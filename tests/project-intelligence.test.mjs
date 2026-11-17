@@ -35,3 +35,20 @@ test('quality review flags incomplete prompts and disallowed application code',(
  assert.ok(qualityReview('Very short',{requiredStyles:['Minimal SaaS']}).missing.includes('length'));
  assert.equal(qualityReview(('import React from "react";\n').repeat(100),{mode:'fusion'}).checks.promptOnly,false);
 });
+
+test('college project exposes ALL roles, notifications and profile as distinct explicit modules',()=>{
+ const a=analyzeProject('Create a student and teacher education dashboard for administrators with assignments, AI tutor, course progress, calendar, notification center and student profile. Accessibility and low-power performance are required.');
+ assert.deepEqual(a.audience,['Students / learners','Teachers / educators','Administrators']);
+ for(const id of ['assignments','tutor','calendar','progress','courses','notifications','profile'])
+   assert.ok(a.features.some(f=>f.id===id),'must recognize '+id);
+ for(const name of ['Notifications','Profile','Administration','Teacher workspace'])
+   assert.ok(a.pages.includes(name),'expected '+name+' in page plan');
+ assert.equal(new Set(a.pages).size,a.pages.length);
+ assert.equal(a.pages.some(page=>page==='Courses and assignments'),false,'No overlapping course and task page');
+});
+test('unmentioned roles should not cause invented teacher or administrative sections',()=>{
+ const a=analyzeProject('Make an education app for students with assignments and course notes.');
+ assert.ok(!a.pages.includes('Teacher workspace'));
+ assert.ok(!a.pages.includes('Administration'));
+ assert.ok(a.pages.includes('Assignments and tasks'));
+});
