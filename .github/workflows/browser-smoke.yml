@@ -35,6 +35,9 @@ jobs:
           AI_DESIGN_LIVE_CHECK: ${{ contains(github.event.head_commit.message, 'Milestone 06 design intelligence') && '1' || '0' }}
           EXPECTED_COMMIT_SHA: ${{ github.sha }}
         run: node tests/live-ai-smoke.mjs
+      - name: Verify latest feedback on live PostgreSQL with disposable guest (no AI calls)
+        if: ${{ always() && github.event_name == 'push' && steps.release_gate.outcome == 'success' }}
+        run: node tests/live-learning-smoke.mjs
       - name: Verify live Render site in real browsers
         # External-model outages must not prevent independent UI regression.
         # The job stays red if the model diagnostic failed; do NOT hide it.
