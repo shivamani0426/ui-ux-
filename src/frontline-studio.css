@@ -478,3 +478,61 @@ input,textarea{accent-color:var(--lav)}
 .app.in-chat .message-retry:disabled{cursor:wait;opacity:.5}
 .app.in-chat .ai-bubble{min-width:0}
 .app.in-chat .message-row{min-width:0}
+
+
+/* Milestone 07 — compact, ChatGPT-proportioned studio composer.
+   Geometry only: keep the original Frontline StarBorder canvas, glow, palette,
+   rounded surfaces, animation, and cinematic landing composer unchanged. */
+.app.in-chat .composer-position.docked{
+  width:min(660px,calc(100vw - 34px));
+  top:calc(100svh - 12px);
+}
+.app.in-chat .chat-star.star-border{border-radius:24px}
+.app.in-chat .composer{
+  border-radius:21px;
+  padding:11px 15px 9px;
+}
+.app.in-chat .composer textarea{
+  display:block;
+  min-height:36px;
+  max-height:126px;
+  line-height:1.48;
+  font-size:14px;
+  padding:5px 1px 3px;
+  overflow-y:auto;
+}
+.app.in-chat .composer-toolbar{
+  padding-top:4px;
+  margin-top:3px;
+  border-top:0;
+}
+.app.in-chat .tool-button{width:30px;height:30px}
+.app.in-chat .submit-button{width:32px;height:32px;border-radius:11px}
+.app.in-chat .composer-disclaimer{
+  margin-top:6px;
+  font-size:9px;
+  letter-spacing:.015em;
+}
+.app.in-chat .conversation{
+  bottom:var(--chat-clearance,138px);
+  transition:bottom .16s ease-out;
+}
+.app.in-chat .conversation-inner{padding-bottom:22px}
+@media(max-width:750px){
+  .app.in-chat .composer-position.docked{
+    width:calc(100vw - 22px);
+    top:calc(100svh - 8px);
+  }
+  .app.in-chat .composer{padding:9px 12px 7px}
+  .app.in-chat .composer textarea{
+    min-height:34px;
+    max-height:116px;
+    line-height:1.45;
+    font-size:14px;
+  }
+  .app.in-chat .composer-status{font-size:9px}
+  .app.in-chat .composer-disclaimer{margin-top:5px;font-size:8px}
+}
+@media(prefers-reduced-motion:reduce){
+  .app.in-chat .conversation{transition:none}
+}
