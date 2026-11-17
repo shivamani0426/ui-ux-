@@ -18,6 +18,7 @@ test('project creation, all-three feedback, history isolation and deletion',asyn
   const env=await getEnvironment();const {call}=env;
   try{
     const health=await call(0,'/api/health');assert.equal(health.data.status,'ok');
+    assert.match(health.data.revision,/^(?:[a-f0-9]{12}|local)$/,'Health must publish a safe build revision');
     const created=await call(0,'/api/projects','POST',{brief:'Design a modern AI student learning portal with a dashboard and smooth transitions.'});
     assert.equal(created.status,201);
     const id=created.data.project.id;
