@@ -38,3 +38,6 @@
 /* Long audience descriptions must never hide a recognized role. */
 .pi-summary strong{white-space:normal;line-height:1.55}
 .pi-summary>div{overflow-wrap:anywhere}
+
+/* Milestone 07D: readable, optional explanation of actual feedback effect. */
+.pi-feedback-impact{display:block;margin-top:9px;color:var(--muted);font-size:11px;line-height:1.55}
