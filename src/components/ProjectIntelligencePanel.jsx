@@ -55,6 +55,12 @@ export default function ProjectIntelligencePanel({project}){
           <div className="pi-compare-top"><strong>{d.name}</strong><span>{d.match}/100 heuristic fit</span></div>
           <div className="pi-bar" aria-hidden="true"><span style={{width:d.match+'%'}}/></div>
           <p>{d.strengths}</p><small><b>Tradeoff:</b> {d.tradeoff}</small>
+          {d.personalization?.styleSignal!==0&&d.personalization&&
+            <small className="pi-feedback-impact">
+              Personal feedback: {d.personalization.styleSignal>0?'+':''}{d.personalization.styleSignal}/5;
+              effective heuristic effect {d.personalization.appliedPointAdjustment>0?'+':''}{d.personalization.appliedPointAdjustment} points
+              {d.personalization.scoreBounded?' (bounded at the score limit)':''}.
+            </small>}
           <div className="pi-criteria">
             {Object.entries(d.criteria||{}).map(([name,score])=><span key={name}>{name.replace(/([A-Z])/g,' $1')} {score}/5</span>)}
           </div>
