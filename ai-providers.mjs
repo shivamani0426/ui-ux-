@@ -272,7 +272,7 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
   }
   if(!answer)throw new Error('provider-empty-content');
   // A clipped answer is never misrepresented as a completed design.
-  if(task==='chat'&&(choice?.finish_reason==='length'||answer.includes('The model reached its response limit')))
+  if(['chat','insight'].includes(task)&&(['length','error'].includes(choice?.finish_reason)||answer.includes('The model reached its response limit')))
     throw new Error('provider-incomplete-content');
   return {text:answer,source:'ai',provider:'openrouter'};
 }
