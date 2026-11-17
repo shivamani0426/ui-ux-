@@ -289,7 +289,9 @@ async function claimGuestData(guestOwner,accountOwner){
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1),915)',[guestOwner]);
     await client.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in)
       SELECT $1,style_weights,false FROM frontline.uic_profiles WHERE visitor_id=$2
-      ON CONFLICT (visitor_id) DO NOTHING`,[accountOwner,guestOwner]);
+      ON CONFLICT (visitor_id) DO UPDATE SET
+        style_weights=EXCLUDED.style_weights || frontline.uic_profiles.style_weights,
+        updated_at=NOW()`,[accountOwner,guestOwner]);
     await client.query('UPDATE frontline.uic_projects SET visitor_id=$1 WHERE visitor_id=$2',[accountOwner,guestOwner]);
     await client.query('UPDATE frontline.reference_selections SET visitor_id=$1 WHERE visitor_id=$2',[accountOwner,guestOwner]);
     await client.query('UPDATE frontline.generated_prompts SET visitor_id=$1 WHERE visitor_id=$2',[accountOwner,guestOwner]);
