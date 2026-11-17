@@ -156,23 +156,38 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
   // The free router may select a thinking model. A 650-token completion could
   // spend its entire budget reasoning and return an empty visible answer.
   // Ask for low reasoning effort and reserve enough tokens for user-facing text.
+  // Free-routing models can be temporarily unresponsive. Try the SAME
+  // OpenRouter endpoint once more only on timeout. Do not transfer prompts
+  // to Gemini/Groq, retry auth/rate-limit errors, or allow unbounded loops.
+  let attempts=0;
   const complete=async maxTokens=>{
-    const r=await request('https://openrouter.ai/api/v1/chat/completions',{
-      method:'POST',
-      headers:{
-        Authorization:'Bearer '+env.OPENROUTER_API_KEY,
-        'Content-Type':'application/json',
-        ...(env.APP_PUBLIC_URL?{'HTTP-Referer':env.APP_PUBLIC_URL}:{}),
-      },
-      signal:AbortSignal.timeout(networkTimeout(env)),
-      body:JSON.stringify({
-        model,temperature:isPrompt?0.75:0.65,max_tokens:maxTokens,
-        reasoning:{effort:'low'},
-        messages:messagesForModel,
-      }),
-    });
-    if(!r.ok)throw await errorFor('openrouter',r);
-    return r.json();
+    const requestOnce=async timeoutMs=>{
+      attempts++;
+      const r=await request('https://openrouter.ai/api/v1/chat/completions',{
+        method:'POST',
+        headers:{
+          Authorization:'Bearer '+env.OPENROUTER_API_KEY,
+          'Content-Type':'application/json',
+          ...(env.APP_PUBLIC_URL?{'HTTP-Referer':env.APP_PUBLIC_URL}:{}),
+        },
+        signal:AbortSignal.timeout(timeoutMs),
+        body:JSON.stringify({
+          model,temperature:isPrompt?0.75:0.65,max_tokens:maxTokens,
+          reasoning:{effort:'low'},
+          messages:messagesForModel,
+        }),
+      });
+      if(!r.ok)throw await errorFor('openrouter',r);
+      return r.json();
+    };
+    try{
+      return await requestOnce(Math.max(35000,networkTimeout(env)));
+    }catch(error){
+      if(!['TimeoutError','AbortError'].includes(error?.name)||attempts>=3)throw error;
+      // One shorter retry avoids making an already slow first response
+      // wait another full request window. The global request cap is three.
+      return requestOnce(25000);
+    }
   };
   const visibleText=data=>{
     const message=data?.choices?.[0]?.message;
@@ -185,7 +200,7 @@ async function openRouterReply({brief,messages,styles,task,env,request}){
   const choice=data?.choices?.[0];
   // Retry at most once with OPENROUTER ONLY for a blank completion. Do not retry
   // refusals or content-filtered responses. No private prompt reaches Gemini/Groq.
-  if(!answer&&choice?.finish_reason!=='content_filter'&&!choice?.message?.refusal){
+  if(!answer&&attempts<3&&choice?.finish_reason!=='content_filter'&&!choice?.message?.refusal){
     data=await complete(isPrompt?6500:2800);
     answer=visibleText(data);
   }
