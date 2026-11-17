@@ -84,12 +84,14 @@ test('Milestone 07 guest feedback is private, editable, pausable and deletable w
     assert.equal(existing.status,200,'Clearing preferences must not delete existing projects');
     assert.equal(existing.data.project.brief,brief);
     assert.equal((await bob('/api/projects/'+id)).status,404);
-  }finally{await env.close();}
+  }finally{
+    await Promise.allSettled([alice('/api/profile','DELETE'),bob('/api/profile','DELETE')]);
+    await env.close();
+  }
 });
 test('Aggregated learning requires five distinct opted-in contributors and honors revoked consent',async()=>{
-  const env=await setup();
+  const env=await setup(),clients=Array.from({length:5},()=>env.client());
   try{
-    const clients=Array.from({length:5},()=>env.client());
     for(let i=0;i<clients.length;i++){
       const call=clients[i];
       const project=await call('/api/projects','POST',{brief:'Create a modern team productivity dashboard for work'});
@@ -110,7 +112,10 @@ test('Aggregated learning requires five distinct opted-in contributors and honor
     assert.equal(revoke.data.globalOptIn,false);
     const after=await clients[1]('/api/insights');
     assert.equal(after.data.publicPatterns.length,0,'Prior eligible feedback must be excluded after opting out');
-  }finally{await env.close();}
+  }finally{
+    await Promise.allSettled(clients.map(call=>call('/api/profile','DELETE')));
+    await env.close();
+  }
 });
 
 
@@ -131,13 +136,15 @@ test('One guest with many projects is never treated as five independent contribu
     }
     assert.deepEqual((await call('/api/insights')).data.publicPatterns,[],
       'A single guest cookie cannot independently meet the minimum cohort');
-  }finally{await env.close();}
+  }finally{
+    await call('/api/profile','DELETE').catch(()=>{});
+    await env.close();
+  }
 });
 
 test('Current shared cohort reflects latest reaction, not a past like',async()=>{
-  const env=await setup();
+  const env=await setup(),clients=Array.from({length:5},()=>env.client()),ids=[];
   try{
-    const clients=Array.from({length:5},()=>env.client()),ids=[];
     for(const call of clients){
       const created=await call('/api/projects','POST',{brief:'Design a simple education dashboard with accessible assignments'});
       ids.push(created.data.project.id);
@@ -156,5 +163,8 @@ test('Current shared cohort reflects latest reaction, not a past like',async()=>
       projectId:ids[0],styles:['minimal'],reaction:'like',detail:'I prefer it now'
     });
     assert.equal((await clients[1]('/api/insights')).data.publicPatterns[0].contributorsBand,'5–9');
-  }finally{await env.close();}
+  }finally{
+    await Promise.allSettled(clients.map(call=>call('/api/profile','DELETE')));
+    await env.close();
+  }
 });
