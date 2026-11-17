@@ -25,8 +25,9 @@ const cookieName=isProd?'__Host-uic_guest':'uic_guest';
 const authGateway=createAuthGateway({
   url:process.env.FRONTLINE_SUPABASE_URL||'',
   key:process.env.FRONTLINE_SUPABASE_PUBLISHABLE_KEY||'',
-  siteUrl:process.env.FRONTLINE_SITE_URL||(isProd?'https://ui-compass-studio.onrender.com':'http://127.0.0.1:3000'),
-  googleEnabled:process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED==='true',prod:isProd
+  siteUrl:process.env.FRONTLINE_SITE_URL||'https://ui-compass-studio.onrender.com',
+  googleEnabled:process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED==='true',
+  prod:isProd||Boolean(process.env.RENDER_SERVICE_ID)
 });
 let pg=null;
 
