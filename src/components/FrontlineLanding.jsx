@@ -14,7 +14,7 @@ const CHAPTERS=[
   {no:'01',overline:'01 / SELECT UI & UX',headline:['FIND YOUR','DIRECTION.'],accent:'Discover what fits.',description:'Explore curated real-world references. Understand the visual ideas behind every match. Save the inspirations worth carrying forward.',subtitle:'REAL REFERENCES · PERSONAL CHOICES',mode:'select'},
   {no:'02',overline:'02 / GENERATE UI & UX',headline:['A THOUGHT','BECOMES','A VISION.'],accent:'Words into wonder.',description:'Bring a simple brief. Shape an original, detailed design direction with structure, typography, interactions, and the human experience in mind.',subtitle:'FROM A BRIEF TO A CREATIVE BLUEPRINT',mode:'generate'},
   {no:'03',overline:'03 / DESIGN FUSION',headline:['MANY IDEAS.','ONE VISION.'],accent:'Designed to belong.',description:'Select different references and styles. Combine their strongest ideas into one cohesive, original direction—without copying another website.',subtitle:'SELECT · COMBINE · REFINE',mode:'fusion'},
-  {no:'04',overline:'04 / DESIGN PREFERENCES · THE CREATIVE SPIRAL',headline:['IMAGINE','WHAT’S NEXT.'],accent:'Your story begins here.',description:'Every direction, every possibility, one space to create. Keep scrolling to reveal your design studio.',subtitle:'SCROLL TO REVEAL YOUR CANVAS',mode:null}
+  {no:'04',overline:'04 / DESIGN PREFERENCES · THE CREATIVE SPIRAL',headline:['IMAGINE','WHAT’S NEXT.'],accent:'Your story begins here.',description:'Every direction, every possibility, one space to create. Keep scrolling until the spiral opens your gateway.',subtitle:'SCROLL TO REVEAL YOUR GATEWAY',mode:null}
 ];
 const clamp=(n,min=0,max=1)=>Math.max(min,Math.min(max,n));
 // Quintic easing keeps each chapter still long enough to read, then softly hands
@@ -90,7 +90,7 @@ export default function FrontlineLanding({locked=false,effectsReady=false,onBegi
       setStyle(el,'--fl-cloud-drift',(p*28).toFixed(2)+'vw');
       setStyle(el,'--fl-orb-scale',(1-p*.35).toFixed(4));
       // The spiral starts as a seed and takes almost two viewport heights
-      // to mature. The chat starts much later, after the spiral has grown.
+      // to mature. The entry gateway waits until the spiral has grown.
       const spiral=ease(.767,.947,p);
       setStyle(el,'--fl-spiral-progress',spiral.toFixed(5));
       setStyle(el,'--fl-spiral-opacity',ease(.773,.827,p).toFixed(5));
@@ -240,12 +240,12 @@ export default function FrontlineLanding({locked=false,effectsReady=false,onBegi
     </nav>
     <div className="fl-story-scroll-guide" aria-hidden="true">
       <span>{tour.status==='playing'?'A GUIDED JOURNEY THROUGH DESIGN':
-        frame===4?'YOUR STUDIO IS EMERGING':'SCROLL TO EXPLORE'}</span><ArrowDown size={14}/>
+        frame===4?'YOUR GATEWAY IS EMERGING':'SCROLL TO EXPLORE'}</span><ArrowDown size={14}/>
     </div>
     {!locked&&!reduceMotion&&<div className="fl-tour-ui" data-tour-state={tour.status}
       aria-label="Cinematic introduction controls">
       <span className="fl-tour-caption">{tour.status==='playing'?'CINEMATIC TOUR':
-        tour.status==='completed'?'YOUR DESIGN STUDIO':'EXPLORE AT YOUR PACE'}</span>
+        tour.status==='completed'?'YOUR GATEWAY IS READY':'EXPLORE AT YOUR PACE'}</span>
       {tour.status==='playing'?
         <button type="button" onClick={tour.pause} aria-label="Pause cinematic tour">
           <Pause size={13} aria-hidden="true"/> Pause
@@ -254,7 +254,7 @@ export default function FrontlineLanding({locked=false,effectsReady=false,onBegi
           <RotateCcw size={13} aria-hidden="true"/> Replay
         </button>}
       {tour.status==='playing'&&<button type="button" onClick={tour.skip}
-        aria-label="Skip cinematic journey to design studio">
+        aria-label="Skip cinematic journey to login gateway">
         <SkipForward size={13} aria-hidden="true"/> Skip
       </button>}
     </div>}
