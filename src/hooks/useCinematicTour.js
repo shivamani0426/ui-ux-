@@ -93,7 +93,7 @@ export function useCinematicTour({enabled,reducedMotion}){
     // No background/autoplay outside a visible, deliberately opened portal.
     start(true);
     const interrupt=event=>{
-      if(event.target?.closest?.('.fl-tour-ui'))return;
+      if(event.type!=='wheel'&&event.target?.closest?.('.fl-tour-ui'))return;
       if(event.type==='keydown'&&![
         'ArrowDown','ArrowUp','PageDown','PageUp','Home','End',' ','Escape',
       ].includes(event.key))return;
