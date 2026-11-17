@@ -307,7 +307,7 @@ function App(){
           <Menu size={18}/><span>Menu</span>
         </button>
       </div>
-    </header>
+    </header>}
 
     {isLanding&&<FrontlineLanding locked={portalState!=='done'} effectsReady={portalState==='done'} onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
     {isLanding&&<div className="landing-scrollspace scroll-story-space" aria-hidden="true"/>}
@@ -396,7 +396,7 @@ function App(){
           <div ref={endRef}/>
         </div>
       </section>}
-      {active&&<div ref={composerDockRef} className={'composer-position '+(active?'docked':'spiral-emerging'+(landingComposerReady?' is-ready':''))}>
+      {active&&<div ref={composerDockRef} className="composer-position docked">
         <StarBorder as="div" theme={theme}
           backgroundColor={active?(theme==='dark'?'#382a2b':'#fff8ec'):'#fff8eb'}
           textColor={active?(theme==='dark'?'#f9e7ce':'#4b312b'):'#45302a'}
@@ -417,10 +417,27 @@ function App(){
             </div>
           </form>
           </StarBorder>
-        {!active&&<div className="landing-hint">A design universe, shaped by you. Tap to begin.</div>}
-        {active&&<p className="composer-disclaimer">Frontline UX/UI can make mistakes. Validate recommendations before building.</p>}
+        <p className="composer-disclaimer">Frontline UX/UI can make mistakes. Validate recommendations before building.</p>
+      </div>}
+      {isLanding&&landingFrame===4&&<div inert={!landingComposerReady} className={'fl-landing-gateway'+(landingComposerReady?' is-ready':'')} aria-label="Frontline studio gateway">
+        <StarBorder as="div" theme="light" className="fl-gateway-star"
+          backgroundColor="#fff8ec" textColor="#493127" borderColor="#e1ae70"
+          color="#ffe1a2" trailColor="#c07d50" duration={4.8} thickness={1.7}
+          radius={26} stars={2} trailLength={0.34} glow={0.96} hover="lap" sparkle clickPulse>
+          <div className="fl-gateway-content">
+            <span className="fl-gateway-kicker"><FrontlineMark size={18}/> THE NEXT CHAPTER BEGINS HERE</span>
+            <div className="fl-gateway-actions">
+              <button type="button" className="fl-gateway-primary" onClick={()=>enterGateway('studio')}>Enter Studio <ArrowUp size={17} aria-hidden="true"/></button>
+              <button type="button" className="fl-gateway-secondary" onClick={()=>enterGateway('login')}>Login <ChevronRight size={17} aria-hidden="true"/></button>
+            </div>
+            <p>Explore as a guest or enter your account. Your vision leads the way.</p>
+          </div>
+        </StarBorder>
       </div>}
     </main>
+
+    {mode==='login'&&<FrontlineLogin onBack={backToStory} onGuest={()=>enterGateway('studio')}/>}
+    {gatePhase&&<div className={'fl-blackhole-transition '+(gatePhase.startsWith('expand')?'is-expanding':'is-revealing')} aria-hidden="true"><div className="fl-blackhole-disc"/></div>}
 
     {menuOpen&&<div className="menu-layer">
       <button className="menu-shade" onClick={()=>setMenuOpen(false)} aria-label="Close menu"/>
