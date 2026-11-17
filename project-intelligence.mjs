@@ -32,7 +32,9 @@ const featureRules=[
 ['commerce','Product discovery and checkout','Browse and checkout','compare products and complete checkout',/\b(products?|catalog|cart|checkout|shopping)\b/i],
 ['payments','Payments and transactions','Payments','review and complete a transaction',/\b(payments?|transactions?|invoices?|billing)\b/i],
 ['portfolio','Work and case studies','Work and case studies','inspect a case study and contact its creator',/\b(portfolio|case studies|project gallery)\b/i],
-['settings','Settings and preferences','Settings','adjust preferences',/\b(settings?|preferences?|themes?|profiles?)\b/i],
+['notifications','Notification center','Notifications','review notifications and find unread items',/\b(notifications?|unread count|alerts?|reminders?)\b/i],
+['profile','Student and user profiles','Profile','review and edit the user profile',/\b(student profiles?|user profiles?|account profiles?|profile pages?|student account)\b/i],
+['settings','Settings and preferences','Settings','adjust preferences',/\b(settings?|preferences?|themes?)\b/i],
 ['search','Search and filtering','Search and results','find and filter content',/\b(search|filters?|discover)\b/i]
 ];
 const constraints=[
@@ -49,7 +51,7 @@ const constraints=[
 ];
 const pagesByCategory={
 Healthcare:['Overview and appointments','Patient records','Care team','Settings'],
-Education:['Learning overview','Courses and assignments','Progress and insights','Teacher workspace'],
+Education:['Learning overview','Courses and content','Progress and insights','Teacher workspace'],
 Commerce:['Discover products','Product details','Checkout','Orders and account'],
 Portfolio:['Introduction','Work and case studies','About','Contact'],
 Finance:['Account overview','Transactions','Budgets and insights','Settings'],
@@ -63,9 +65,13 @@ export function analyzeProject(brief,{category}={}){
   const audience=roles.filter(([,re])=>re.test(text)).map(([label])=>label);
   const features=featureRules.filter(x=>x[4].test(text)).map(([id,label,page,action])=>({id,label,page,action,evidence:'Explicitly mentioned'}));
   const limits=constraints.filter(([,re])=>re.test(text)).map(([label])=>label);
-  const defaults=pagesByCategory[kind];
-  const pages=unique([defaults[0],...features.map(x=>x.page),...defaults.slice(1)]).slice(0,10);
-  const workflows=features.slice(0,5).map(f=>({name:f.label,steps:['Open '+f.page,'Find the relevant action','Use the interface to '+f.action,'Confirm success or recover from error']}));
+  const defaults=pagesByCategory[kind].filter(page=>
+    page!=='Teacher workspace'||audience.includes('Teachers / educators'));
+  const rolePages=audience.includes('Administrators')?['Administration']: [];
+  // Explicit modules come before proposed defaults. Related course/assignment
+  // pages collapse to a single destination, not two overlapping navigation items.
+  const pages=unique([defaults[0],...features.map(x=>x.page),...rolePages,...defaults.slice(1)]).slice(0,15);
+  const workflows=features.slice(0,9).map(f=>({name:f.label,steps:['Open '+f.page,'Find the relevant action','Use the interface to '+f.action,'Confirm success or recover from error']}));
   if(!workflows.length)workflows.push({name:'Primary task (suggested)',steps:['Open overview','Find primary action','Complete the action','Review confirmation']});
   const questions=[];
   if(!audience.length)questions.push('Who is the primary user?');
@@ -75,7 +81,7 @@ export function analyzeProject(brief,{category}={}){
   const requestedStyles=unique([/\b(glassmorphism|glass ui|glass panels|neon|futuristic|immersive|3d)\b/i.test(text)?'glass':null,/\b(minimal|clean|simple|apple.style)\b/i.test(text)?'minimal':null,/\b(creative|playful|editorial|bold)\b/i.test(text)?'creative':null]);
   return {category:kind,audience:audience.length?audience:['Primary audience not stated — confirm'],
     audienceSource:audience.length?'explicit':'suggested',features,constraints:limits,pages,workflows,
-    goals:features.length?features.slice(0,3).map(f=>'Help users '+f.action):['Make the primary task discoverable (to confirm)'],
+    goals:features.length?features.slice(0,6).map(f=>'Help users '+f.action):['Make the primary task discoverable (to confirm)'],
     explicitDecisions:decisions,requestedStyles,openQuestions:questions,evidenceLevel:features.length&&audience.length?'brief-specific':'partly-inferred',
     note:'Suggested pages and heuristic assessments are not findings from user testing or scanned websites.'};
 }
@@ -124,6 +130,8 @@ const FEATURE_ALIASES={
  commerce:['product','shopping','checkout'],
  payments:['payment','transaction','invoice'],
  portfolio:['portfolio','case study','case studies'],
+ profile:['profile','student account','user account'],
+ notifications:['notification','alert','unread'],
  settings:['settings','preferences'],
  search:['search','filter']
 };
