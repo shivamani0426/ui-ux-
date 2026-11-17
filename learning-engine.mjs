@@ -109,11 +109,13 @@ export function preferenceHints(profile){
   const p=effectivePreferences(profile);
   if(!p.personalization.enabled)return [];
   const s=p.personalization;
+  // Defaults are not positive evidence of a person's taste. Do not
+  // misrepresent untouched settings as learned preferences.
   const hints=[
-    'Motion preference: '+s.motion+' (honor explicit reduced-motion requirements)',
-    'Information density preference: '+s.density,
-    'Contrast preference: '+s.contrast+' (validate real color contrast independently)',
-    'Color atmosphere preference: '+s.colorMood,
+    ...(s.motion!==DEFAULT_PERSONALIZATION.motion?['Motion preference: '+s.motion+' (honor explicit reduced-motion requirements)']:[]),
+    ...(s.density!==DEFAULT_PERSONALIZATION.density?['Information density preference: '+s.density]:[]),
+    ...(s.contrast!==DEFAULT_PERSONALIZATION.contrast?['Contrast preference: '+s.contrast+' (validate contrast independently)']:[]),
+    ...(s.colorMood!==DEFAULT_PERSONALIZATION.colorMood?['Color atmosphere preference: '+s.colorMood]:[]),
   ];
   const ranked=STYLE_IDS.filter(id=>(p.styleWeights[id]||0)!==0)
     .sort((a,b)=>Math.abs(p.styleWeights[b])-Math.abs(p.styleWeights[a]));
