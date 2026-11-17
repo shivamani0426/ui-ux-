@@ -31,16 +31,6 @@ export function createAuthGateway({url='',key='',siteUrl='',googleEnabled=false,
     &&typeof key==='string'&&key.length>20;
   const ready=configured&&googleEnabled;
   const accessName=secret('fl_access',prod),refreshName=secret('fl_refresh',prod),verifierName=secret('fl_pkce',prod);
-  async function authRequest(path,{method='GET',accessToken,body}={}){
-    const response=await request(endpoint+'/auth/v1'+path,{
-      method,headers:{apikey:key,'Content-Type':'application/json',...(accessToken?Authorization:'Bearer '+accessToken?{}:{})},
-      // @ts-ignore
-      body:body===undefined?undefined:JSON.stringify(body),
-      signal:AbortSignal.timeout(8000)
-    });
-    const data=await response.json().catch(()=>({}));
-    return {status:response.status,ok:response.ok,data};
-  }
   async function requestAuth(path,opts={}){
     try{
       const headers={apikey:key,'Content-Type':'application/json'};
