@@ -53,7 +53,7 @@ export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=fals
             <LockKeyhole size={14} aria-hidden="true"/>
             <span>{authError==='sync_failed'?'Your Google sign-in succeeded, but guest projects could not be transferred. Your guest data is still safe.':authError==='not_configured'?'Google sign-in is not configured yet.':'Google sign-in was cancelled or could not complete. Please try again.'}</span>
           </div>}
-          {authError==='sync_failed'&&<button type="button" className="fl-login-guest" onClick={onRetrySync}>Retry private project sync <ArrowUpRight size={18} aria-hidden="true"/></button>
+          {authError==='sync_failed'&&<button type="button" className="fl-login-guest" onClick={onRetrySync}>Retry private project sync <ArrowUpRight size={18} aria-hidden="true"/></button>}
           <div className="fl-login-separator"><span/>OR STEP INTO THE STUDIO<span/></div>
           <button type="button" className="fl-login-guest" onClick={onGuest}>
             <span>Enter Studio as Guest</span><ArrowUpRight size={18} aria-hidden="true"/>
