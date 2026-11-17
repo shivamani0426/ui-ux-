@@ -24,6 +24,9 @@ test('Vite frontend, exact React Bits assets and SPA fallback',async()=>{
     const spa=await fetch(base+'/studio');
     assert.equal(spa.status,200,'SPA URLs should resolve');
     assert.match(await spa.text(),/<div id="root"/);
+    const login=await fetch(base+'/login');
+    assert.equal(login.status,200,'Login route must resolve to the existing SPA');
+    assert.match(await login.text(),/<div id="root"/);
     const health=await (await fetch(base+'/api/health')).json();
     assert.equal(health.status,'ok');
     const unknown=await fetch(base+'/untrusted.js');
