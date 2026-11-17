@@ -55,6 +55,7 @@ function App(){
   const [viewPreview,setViewPreview]=useState(false);
   const [mobilePreview,setMobilePreview]=useState(false);
   const [search,setSearch]=useState('');
+  const [historyQuery,setHistoryQuery]=useState('');
   const [rise,setRise]=useState(false);
   const [landingFrame,setLandingFrame]=useState(0);
   const [landingComposerReady,setLandingComposerReady]=useState(false);
@@ -252,6 +253,7 @@ function App(){
       setProjects([]);setProfile({styleWeights:{},globalOptIn:false,personalization:{enabled:true}});setPreferenceEvidence([]);newChat();notice('Your workspace data has been deleted.');
     }catch(e){notice(e.message);}
   };
+  const filteredProjects=projects.filter(p=>(String(p.title||'')+' '+String(p.brief||'')).toLowerCase().includes(historyQuery.trim().toLowerCase()));
   const recommendations=project?.recommendations?.designs||[];
   const references=(catalog.references||[]).filter(x=>(x.name+' '+x.category+' '+x.tags.join(' ')).toLowerCase().includes(search.toLowerCase()));
   const showMenu=next=>{setPanel(next);setMenuOpen(true);};
@@ -422,7 +424,8 @@ function App(){
         </div>}
         {panel==='projects'&&<div className="menu-subcontent">
           <p className="menu-intro">Continue an earlier design conversation in this browser.</p>
-          {projects.length===0?<p className="empty-panel">No conversations yet. Describe an idea to start one.</p>:projects.map(p=><button className="history-item" key={p.id} onClick={()=>openProject(p)}><span>{p.title}</span><small>{new Date(p.createdAt).toLocaleDateString()}</small><ChevronRight size={14}/></button>)}
+          {projects.length>0&&<label className="search-box"><Search size={15}/><input aria-label="Search saved conversations" value={historyQuery} onChange={e=>setHistoryQuery(e.target.value)} placeholder="Search saved conversations"/></label>}
+          {projects.length===0?<p className="empty-panel">No conversations yet. Describe an idea to start one.</p>:filteredProjects.length===0?<p className="empty-panel">No matching conversations. Try a different search.</p>:filteredProjects.map(p=><button className="history-item" key={p.id} onClick={()=>openProject(p)}><span>{p.title}</span><small>{new Date(p.createdAt).toLocaleDateString()}</small><ChevronRight size={14}/></button>)}
         </div>}
         {panel==='references'&&<div className="menu-subcontent">
           <p className="menu-intro">Explore credited reference sites. Patterns inspire original results, not exact reproductions.</p>
