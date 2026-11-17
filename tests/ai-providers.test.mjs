@@ -120,3 +120,32 @@ test('Latest model configuration is still overridable with a safe model ID',asyn
   }});
   assert.ok(url.endsWith('/gemini-3.8-flash:generateContent'));
 });
+
+test('HTTP 400 Gemini diagnostics expose only safe status and known class, never upstream details',async()=>{
+  const env={GEMINI_API_KEY:'secret-not-for-logs'};
+  const logged=[];
+  const original=console.warn;console.warn=(...args)=>logged.push(args.join(' '));
+  try{
+    const answer=await designAiReply({brief,messages,env,request:async()=>response(400,{
+      error:{code:400,status:'FAILED_PRECONDITION',message:'Gemini API free tier is not available in your country. Secret secret-not-for-logs',
+        details:[{reason:'FREE_TIER_REGION_RESTRICTED'}]}
+    })});
+    assert.equal(answer,null);
+    assert.match(logged[0],/gemini HTTP 400 FAILED_PRECONDITION FREE_TIER_REGION_RESTRICTED free-tier-region/);
+    assert.ok(!logged[0].includes('secret-not-for-logs'));
+    assert.ok(!logged[0].includes('free tier is not available in your country'));
+  }finally{console.warn=original}
+});
+test('OpenRouter alternate content parts and safe network diagnosis',async()=>{
+  const env={OPENROUTER_API_KEY:'private-key',AI_PRIMARY_PROVIDER:'openrouter'};
+  const answer=await designAiReply({brief,messages,env,request:async()=>response(200,{
+    choices:[{message:{content:[{type:'text',text:'An original usable design'}]}}]
+  })});
+  assert.equal(answer.text,'An original usable design');
+  const logged=[];const original=console.warn;console.warn=(...args)=>logged.push(args.join(' '));
+  try{
+    const failed=await designAiReply({brief,messages,env,request:async()=>{const e=new TypeError('some private server message');e.cause={code:'ECONNRESET'};throw e}});
+    assert.equal(failed,null);assert.match(logged[0],/network ECONNRESET/);
+    assert.ok(!logged[0].includes('some private'));
+  }finally{console.warn=original}
+});
