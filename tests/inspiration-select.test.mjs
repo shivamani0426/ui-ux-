@@ -82,3 +82,14 @@ test('Select API saves private inspirations, exports prompt, and respects guest 
     assert.equal(deleted.status,404);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('Saved inspiration prompts retain explicit requirements without claiming visual scans',()=>{
+  const p={brief:'Design a student learning dashboard with an AI tutor and calendar. Must keep existing backend.'};
+  const prompt=makeSelectionPrompt(p,REFERENCES.slice(0,2));
+  assert.match(prompt,/PROJECT UNDERSTANDING/);
+  assert.match(prompt,/Students \/ learners/);
+  assert.match(prompt,/AI tutor/);
+  assert.match(prompt,/Calendar and schedule/);
+  assert.match(prompt,/Preserve existing backend/);
+  assert.match(prompt,/Do not copy layouts/);
+});

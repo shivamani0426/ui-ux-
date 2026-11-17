@@ -7,6 +7,7 @@ import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
 import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
+import {analyzeProject,compareDirections} from './project-intelligence.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const PORT=Number(process.env.PORT||3000);
@@ -144,14 +145,31 @@ function validateText(text,min,max){return typeof text==='string'&&text.trim().l
 async function chatReply(brief,messages,styleIds){
   const latest=messages.at(-1)?.content||'';
   const chosen=styleIds.map(i=>STYLES.find(s=>s.id===i)).filter(Boolean);
-  // CI/build tests must never consume real API quotas or transmit test data.
+  // Tests never consume real API quotas or send content to model providers.
   const ai=process.env.NODE_ENV==='test'?null:await designAiReply({brief,messages,styles:chosen});
   if(ai)return ai;
-  const s=latest.toLowerCase();
-  if(/color|palette|theme/.test(s))return {text:`For this project, begin with ${chosen[0]?.name||'Minimal SaaS'} and establish a four-color system: one neutral background, one surface, one readable text color, and one primary accent. Keep text contrast high and validate accessible combinations. If you select all three styles, use one as the base and borrow selective details from the others.`,source:'guide'};
-  if(/page|navigation|layout|dashboard/.test(s))return {text:'Start with an overview page and one primary user workflow. Create a clear left navigation for large screens and a compact bottom or drawer navigation for mobile. Prioritize content hierarchy before decoration: page title, primary action, key information, and supporting details.',source:'guide'};
-  if(/motion|animation|glass|transition/.test(s))return {text:'Use animation as feedback, not decoration. Keep hover and press reactions quick, page transitions subtle, and honor reduced-motion preferences. For glass effects, keep opaque surfaces behind important text to preserve readability.',source:'guide'};
-  return {text:`I would approach “${latest.slice(0,130)}” by clarifying the user's most important task, then improving the hierarchy, components and responsive behavior around it. ${chosen.length?`Your selected directions are ${chosen.map(x=>x.name).join(', ')}. `:''}Which page or user journey should we design first?`,source:'guide'};
+  const analysis=analyzeProject(brief);
+  const module=analysis.features[0]?.label||'the primary user task';
+  const page=analysis.features[0]?.page||analysis.pages[0];
+  const audience=analysis.audienceSource==='explicit'?analysis.audience.join(', '):'the intended audience (still to confirm)';
+  const constraints=analysis.constraints.slice(0,2).join(' and ');
+  const style=chosen[0]?.name||'Minimal SaaS';
+  const lower=latest.toLowerCase();
+  const context='For '+analysis.category.toLowerCase()+' users ('+audience+'), prioritize '+module+' on the '+page+' page. ';
+  let advice;
+  if(/\b(color|palette|theme|contrast)\b/.test(lower)){
+    advice='Use '+style+' as the art-direction starting point. Define accessible surface, text and accent tokens. Validate contrast and avoid visual noise behind labels. ';
+  }else if(/\b(navigation|layout|dashboard|page|sidebar|mobile)\b/.test(lower)){
+    advice='Use a clear desktop navigation pattern and a compact mobile destination menu. Place the top task, its status and one primary action above supporting information. ';
+  }else if(/\b(motion|animation|glass|transition)\b/.test(lower)){
+    advice='Use motion only to explain navigation and feedback. Keep task-critical surfaces opaque, preserve focus visibility and provide reduced-motion alternatives. ';
+  }else if(/\b(improve|refine|change|simplify|keep|preserve)\b/.test(lower)){
+    advice='Change only the requested visual or interaction detail. Keep the earlier approved task flow, data assumptions and reusable components unless you explicitly replace them. ';
+  }else{
+    advice='Start with the user journey: entry point, action, confirmation and error recovery. Define the interface states before choosing decoration. ';
+  }
+  return {text:context+advice+(constraints?'Honor the stated constraint: '+constraints+'. ':'')+
+    'This is offline guidance; the AI provider did not return a usable response.',source:'guide'};
 }
 async function serveFile(req,res){
   const pathname=new URL(req.url,'http://localhost').pathname;
@@ -272,7 +290,20 @@ const server=http.createServer(async(req,res)=>{
       if(projectMatch){
         const id=projectMatch[1],action=projectMatch[2];const p=await getProject(owner,id);
         if(!p)return json(res,404,{error:'Project not found'});
-        if(req.method==='GET'&&!action)return json(res,200,{project:p});
+        if(req.method==='GET'&&!action){
+          // Older saved projects did not have an intelligence snapshot. Enrich the
+          // response without writing to the user's PostgreSQL project history.
+          const prefs=await profile(owner);
+          const analysis=p.recommendations?.analysis||analyzeProject(p.brief,{category:p.recommendations?.category});
+          const comparison=compareDirections(analysis,STYLES,prefs);
+          const recommendations={...p.recommendations,analysis,comparison,
+            designs:(p.recommendations?.designs||[]).map(d=>{
+              const found=comparison.find(c=>c.id===d.id);
+              return found?{...d,match:found.match,tradeoff:found.tradeoff,strengths:found.strengths,
+                criteria:found.criteria,scoring:found.scoring,reasons:found.reasons}:d;
+            })};
+          return json(res,200,{project:{...p,recommendations}});
+        }
         if(req.method==='POST'&&action==='/messages'){
           const b=await readBody(req);if(!validateText(b.message,2,1200))return json(res,400,{error:'Message must be 2–1,200 characters.'});
           if(!Array.isArray(b.styles)||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Invalid styles'});

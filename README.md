@@ -104,3 +104,22 @@ Designed to expand toward a richer AI Design Fusion experience, authenticated te
 ### Important limitations
 
 Generate mode currently offers design guidance and original illustrative concepts, not exported running React apps. The saved preference system depends on persistent PostgreSQL; temporary in-memory Render storage is not durable. Implicit final-choice learning is planned, not yet implemented. Do not describe these as shipped features.
+
+
+## Milestone 06 — contextual design intelligence (November 2026)
+
+This release builds on the existing OpenRouter-first, prompt-only studio. This product is not an automatic website-code generator.
+
+- Brief understanding: evidence-linked user roles, requested modules, constraints, proposed sitemap and workflows, plus unanswered questions. Inferences are marked as proposals.
+- Select UI/UX: recommendations and copyable prompts include brief-specific pages, goals, constraints and tradeoffs. Inspiration is ranked from curated metadata; no screenshot/site crawl is implied.
+- Generate UI/UX: three original design directions, responsive components, acceptance checklist and requirements-preserving refinements.
+- Design Fusion: an explainable structural anchor and supporting styles blended into one cohesive result.
+- Review: prompt-only section coverage checks prevent short/incomplete model drafts from replacing the full structured specification. The UI identifies fallback.
+- Studio: a Project Intelligence panel shows project facts, pages, clarification questions and style comparisons. Ratings are heuristic indicators, not calibrated statistics, accessibility audits or user-test outcomes.
+- Persistence/privacy: no schema changes, no changes to guest ownership or cross-user learning. Older projects are enriched on read without rewriting stored history.
+- Testing: unit/API regression plus Chromium/Firefox. The opt-in diagnostic release validates the exact Render deployed SHA, two real fictional OpenRouter chats, two fictional Generate/Fusion specifications, and deletion of the synthetic guest.
+
+To keep OpenRouter as the only live provider: AI_PRIMARY_PROVIDER=openrouter, OPENROUTER_MODEL=openrouter/free, AI_FALLBACK_ENABLED=false. Never paste secrets into GitHub issues or logs.
+
+### Limitations
+Brief extraction is a rule-based baseline, not verified comprehension. Missing details must be confirmed. AI responses are nondeterministic and free-model availability can change. Prompt section checks are safeguards, not proof of correctness or a live-device usability/accessibility audit. Authentication, live website screenshot analysis and running-app generation remain out of scope.

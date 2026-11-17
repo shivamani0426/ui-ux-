@@ -1,3 +1,4 @@
+import {analyzeProject,compareDirections,inferProjectCategory,planFusion} from './project-intelligence.mjs';
 // Original, explainable recommendation baseline; independent of any LLM provider.
 export const STYLES = [
   { id:'minimal', name:'Minimal SaaS', short:'Precise, calm, and useful', icon:'layers', tag:'Best for clarity', accent:'#4859da', soft:'#eef0ff', colors:['#F8FAFC','#FFFFFF','#4859DA','#151B38'], fonts:'Inter / DM Sans', layout:'Structured two-column workspace', motion:'Subtle hover states and purposeful reveals', tags:['saas','dashboard','productivity','education','finance','professional','enterprise','healthcare'], description:'Clear hierarchy, generous whitespace, beautifully restrained UI.' },
@@ -26,35 +27,62 @@ export const REFERENCES = [
 
 const clean = text => String(text ?? '').trim().replace(/\s+/g,' ').slice(0,2500);
 const keywords = txt => new Set(txt.toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>2));
-export function inferCategory(text){
-  const s=text.toLowerCase();
-  if(/health|clinic|hospital|patient|medical|wellness/.test(s))return 'Healthcare';
-  if(/student|school|college|course|learning|education|teacher/.test(s))return 'Education';
-  if(/store|shop|fashion|marketplace|ecommerce|product catalog/.test(s))return 'Commerce';
-  if(/portfolio|personal website|resume/.test(s))return 'Portfolio';
-  if(/finance|bank|payment|budget|invest/.test(s))return 'Finance';
-  if(/ai|agent|model|machine learning|chatbot/.test(s))return 'AI Product';
-  if(/dashboard|analytics|saas|business|crm/.test(s))return 'SaaS';
-  return 'Digital product';
-}
-export function recommend(brief, preferences={}, library=REFERENCES){
-  const prompt=clean(brief);
-  const words=keywords(prompt);
-  const category=inferCategory(prompt);
-  const specialStyle= /dark|neon|glass|futuristic|3d/.test(prompt.toLowerCase())?'glass':/playful|fun|bright|colorful|bold|creative/.test(prompt.toLowerCase())?'creative':/clean|minimal|simple|professional|enterprise/.test(prompt.toLowerCase())?'minimal':null;
-  const weights=preferences.styleWeights||{};
-  const designs=STYLES.map(style=>{
-    const matched=style.tags.filter(tag=>words.has(tag)||prompt.toLowerCase().includes(tag));
-    const score=Math.min(98,69+Math.min(16,matched.length*5)+(style.id===specialStyle?10:0)+Math.min(7,(weights[style.id]||0)*2));
-    const refs=library.filter(r=>r.styles.includes(style.id)).sort((a,b)=>{
-      const ka=a.tags.filter(t=>words.has(t)).length;const kb=b.tags.filter(t=>words.has(t)).length;
-      return kb-ka || (b.score||0)-(a.score||0);
-    }).slice(0,3).map(r=>({id:r.id,name:r.name,award:r.award,site:r.site,rank:r.rank}));
-    return {...style,match:score,reasons:[`${category} projects benefit from ${style.layout.toLowerCase()}.`,matched.length?`Matched your brief on ${matched.slice(0,3).join(', ')}.`:'A complementary direction worth comparing.',`Motion: ${style.motion.toLowerCase()}.`],references:refs};
-  }).sort((a,b)=>b.match-a.match);
-  return {category,brief:prompt,designs,mode:'curated',recommendation:`For a ${category.toLowerCase()} project, start with ${designs[0].name} for the clearest fit, then explore both alternatives. You can select all three to compare or combine their strengths.`,suggestions:['Who is your primary audience?','Which pages are essential?','Would you prefer a light, dark, or adaptive theme?']};
+export const inferCategory=inferProjectCategory;
+export function recommend(brief,preferences={},library=REFERENCES){
+  const prompt=clean(brief),words=keywords(prompt);
+  const analysis=analyzeProject(prompt);
+  const category=analysis.category;
+  const comparison=compareDirections(analysis,STYLES,preferences);
+  const designs=comparison.map(c=>{
+    const style=STYLES.find(s=>s.id===c.id);
+    const refs=(Array.isArray(library)?library:[]).filter(ref=>Array.isArray(ref.styles)&&ref.styles.includes(style.id))
+      .sort((a,b)=>b.tags.filter(tag=>words.has(tag)).length-a.tags.filter(tag=>words.has(tag)).length || (b.score||0)-(a.score||0))
+      .slice(0,3).map(ref=>({id:ref.id,name:ref.name,award:ref.award,site:ref.site,rank:ref.rank}));
+    return {...style,match:c.match,reasons:c.reasons,tradeoff:c.tradeoff,
+      strengths:c.strengths,criteria:c.criteria,scoring:c.scoring,references:refs};
+  });
+  return {category,brief:prompt,designs,analysis,comparison,
+    mode:'curated',
+    recommendation:'For this '+category.toLowerCase()+' brief, '+designs[0].name+
+      ' provides the strongest explainable fit. Compare the trade-offs before making your final selection.',
+    suggestions:analysis.openQuestions.length?analysis.openQuestions:
+      ['Which workflow should we prioritize?','What should the mobile layout do first?'],
+    scoring:'Heuristic fit indicators, not measured usability, accessibility audits, or user-testing results'};
 }
 export function exportPrompt(project,selectedIds){
-  const chosen=project.recommendations.designs.filter(d=>selectedIds.includes(d.id));
-  return `Build an original, responsive ${project.recommendations.category} website.\n\nProject brief: ${project.brief}\n\nSelected design direction(s): ${chosen.map(c=>c.name).join(', ')}.\n\nDesign principles:\n${chosen.map(c=>`- ${c.name}: ${c.description} Layout: ${c.layout}. Type: ${c.fonts}. Motion: ${c.motion}. Palette: ${c.colors.join(', ')}.`).join('\n')}\n\nCombine these directions into a cohesive, accessible design rather than copying any reference website. Include a landing page, intuitive navigation, task-specific dashboards where relevant, responsive mobile layouts, thoughtful empty/error/loading states, accessible focus styles, and reduced-motion support. Provide a page map and reusable component specification. Use React, TypeScript and Tailwind CSS; keep dependencies reasonable.\n`;
+  const choices=project.recommendations?.designs||[];
+  const chosen=choices.filter(d=>selectedIds.includes(d.id));
+  const analysis=analyzeProject(project.brief,{category:project.recommendations?.category});
+  const fusion=planFusion(analysis,chosen);
+  return [
+    'FRONTLINE UX/UI — ORIGINAL SELECTED DESIGN SPECIFICATION',
+    '',
+    'PROJECT BRIEF',
+    project.brief,
+    '',
+    'AUDIENCE & USER GOALS',
+    'Users: '+analysis.audience.join(', ')+' ('+analysis.audienceSource+').',
+    'Key goals: '+analysis.goals.join('; '),
+    'Unknowns: '+(analysis.openQuestions.join('; ')||'Validate the inferred page choices with users.'),
+    '',
+    'INFORMATION ARCHITECTURE AND WORKFLOWS',
+    ...analysis.pages.map((p,i)=>(i+1)+'. '+p+': describe a primary user task, navigation, content hierarchy, loading/empty/error states and mobile behavior.'),
+    ...analysis.workflows.map(f=>f.name+' workflow: '+f.steps.join(' → ')),
+    '',
+    'SELECTED DESIGN DIRECTIONS & TRADEOFFS',
+    ...chosen.map(c=>'- '+c.name+': '+c.description+' Layout: '+c.layout+'. Type: '+c.fonts+'. Motion: '+c.motion+'. Palette: '+c.colors.join(', ')+'.'+
+      (c.tradeoff?' Tradeoff: '+c.tradeoff+'.':'')),
+    'If combining styles, use '+fusion.anchor+' as the structural anchor and only borrow complementary traits from other choices.',
+    '',
+    'APPROVED REQUIREMENTS & CONSTRAINTS',
+    ...(analysis.constraints.length?analysis.constraints:['Clarify any special constraints before implementation.']),
+    ...(analysis.explicitDecisions.length?analysis.explicitDecisions:['No explicit preservation decisions identified.']),
+    '',
+    'RESPONSIVE COMPONENTS, ACCESSIBILITY AND QUALITY',
+    'Specify design tokens, typography scale, 4/8 spacing system, navigation, buttons, inputs, cards, feedback and error recovery.',
+    'Explain desktop/tablet/mobile adaptations, accessible contrast, keyboard and focus states, screen-reader labels and reduced-motion alternatives.',
+    'Include a detailed acceptance checklist tied to the named user goals and modules.',
+    'Deliver one original copyable UI/UX PROMPT only, not executable code.',
+    'Combine these directions into a cohesive experience rather than copying any reference website.',
+  ].join('\n');
 }

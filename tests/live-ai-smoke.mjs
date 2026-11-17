@@ -1,7 +1,8 @@
 /**
  * One-time production AI check. Uses fictional design briefs, a fresh anonymous
  * guest cookie and deletion in finally. NEVER log provider text or credentials.
- * AI_LIVE_CHECK=1 explicitly opts into 2 real OpenRouter requests.
+ * AI_LIVE_CHECK=1 opts into 2 real OpenRouter requests; AI_DESIGN_LIVE_CHECK=1
+ * additionally validates original Generate and Fusion prompts (fictional briefs only).
  */
 const target=process.env.AI_LIVE_CHECK==='1'?'https://ui-compass-studio.onrender.com':null;
 if(!target){
@@ -36,7 +37,7 @@ async function run(){
     check(health.data?.revision===process.env.EXPECTED_COMMIT_SHA.slice(0,12),'wrong-production-revision');
   }
   const created=await call('/api/projects','POST',{
-    brief:'Design a fictional seaside learning museum with an accessibility map and exhibits.',
+    brief:'Design a fictional student learning museum with assignments, AI tutor, calendar, accessibility, and mobile navigation.',
   });
   check(created.status===201&&typeof created.data?.project?.id==='string','project-create-failed');
   projectId=created.data.project.id;
@@ -58,6 +59,27 @@ async function run(){
   const saved=await call('/api/projects/'+encodeURIComponent(projectId));
   check(saved.status===200&&saved.data?.project?.messages?.length===4,'chat-not-persisted');
   console.log('LIVE_AI_SMOKE two real OpenRouter replies received and chat persisted');
+  if(process.env.AI_DESIGN_LIVE_CHECK==='1'){
+    const sources=[];
+    for(const mode of ['generate','fusion']){
+      const result=await call('/api/projects/'+encodeURIComponent(projectId)+'/design-prompt','POST',{
+        mode,styles:['minimal','glass'],refinement:'Keep the assignment workflow simple and accessible.',
+      });
+      check(result.status===200,'design-http-'+mode);
+      const data=result.data;
+      check(data?.mode===mode,'design-mode-'+mode);
+      check(typeof data?.prompt==='string'&&data.prompt.length>=2200,'design-too-short-'+mode);
+      check(data?.review?.passed===true,'design-quality-'+mode);
+      const source=data?.source==='ai'?'ai':data?.source==='guide'?'guide':'unknown';
+      sources.push(source);
+      console.log('LIVE_DESIGN_SMOKE mode='+mode+' source='+source+' quality=passed');
+      check(data.prompt.toLowerCase().includes('accessib'),'design-accessibility-'+mode);
+      check(data.prompt.toLowerCase().includes('assignment'),'design-requirements-'+mode);
+      check(!/^\s*(?:import React|<html|<!doctype html>)/im.test(data.prompt),'design-code-leak-'+mode);
+    }
+    check(sources.includes('ai'),'design-provider-not-accepted');
+    console.log('LIVE_DESIGN_SMOKE Generate/Fusion specifications passed quality review; at least one from OpenRouter');
+  }
 }
 try{
   await run();

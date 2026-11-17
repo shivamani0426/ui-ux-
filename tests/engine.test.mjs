@@ -26,3 +26,15 @@ test('build prompt respects all three selected directions',()=>{
   for(const s of STYLES)assert.ok(prompt.includes(s.name));
   assert.ok(prompt.includes('without copying')||prompt.includes('rather than copying'));
 });
+
+test('Select prompt includes project requirements and does not treat fit as measured evidence',()=>{
+  const brief='Create a student dashboard with assignments and a calendar. Must preserve existing backend.';
+  const p={brief,recommendations:recommend(brief)};
+  const prompt=exportPrompt(p,['minimal','glass']);
+  assert.match(prompt,/Students \/ learners/);
+  assert.match(prompt,/Assignments and tasks/);
+  assert.match(prompt,/Calendar and schedule/);
+  assert.match(prompt,/Preserve existing backend/);
+  assert.match(prompt,/structural anchor/);
+  assert.match(prompt,/not executable code/i);
+});

@@ -23,6 +23,9 @@ test('project creation, all-three feedback, history isolation and deletion',asyn
     assert.equal(created.status,201);
     const id=created.data.project.id;
     assert.equal(created.data.project.recommendations.designs.length,3);
+    assert.equal(created.data.project.recommendations.analysis.category,'Education');
+    assert.equal(created.data.project.recommendations.comparison.length,3);
+    assert.ok(created.data.project.recommendations.designs.every(d=>d.tradeoff&&d.criteria));
     const other=await call(1,`/api/projects/${id}`);assert.equal(other.status,404);
     const selection=['minimal','glass','creative'];
     const feedback=await call(0,'/api/feedback','POST',{projectId:id,styles:selection,reaction:'like',detail:'Love all three'});

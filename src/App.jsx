@@ -8,6 +8,7 @@ import FrontlineDomePortal from './components/FrontlineDomePortal.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
 import DesignPromptPanel from './components/DesignPromptPanel.jsx';
+import ProjectIntelligencePanel from './components/ProjectIntelligencePanel.jsx';
 import './styles.css';
 import './frontline-studio.css';
 import './inspiration-explorer.css';
@@ -233,6 +234,7 @@ function App(){
               <strong>Explore. Select. Make it yours.</strong>
               <p>Explore real inspiration sites first, then combine complementary style directions. We never copy other websites.</p>
             </div>
+            <ProjectIntelligencePanel project={project}/>
             {(designMode==='select'||designMode==='fusion')&&<InspirationExplorer key={project.id} project={project} api={api} notice={notice}/>}
             <div className="result-actions">
               <button className={selected.length===3?'quiet-active':''} onClick={()=>setSelected(styleKeys)}><CheckCheck size={15}/> Select all three</button>
@@ -243,7 +245,7 @@ function App(){
               {recommendations.map((d,index)=><button key={d.id} className={'design-option '+(selected.includes(d.id)?'picked':'')} onClick={()=>toggleStyle(d.id)} aria-pressed={selected.includes(d.id)}>
                 <span className={'color-orb '+d.id} aria-hidden="true"><span/></span>
                 <span className="design-description"><span className="design-rank">{String(index+1).padStart(2,'0')} / RECOMMENDED</span><strong>{d.name}</strong><small>{d.description}</small></span>
-                <span className="design-score">{d.match}% fit</span>
+                <span className="design-score" title="Heuristic match indicator; not a measured usability score">{d.match}/100 match</span>
                 <span className="select-check">{selected.includes(d.id)?<Check size={13}/>:null}</span>
               </button>)}
             </div>
@@ -289,7 +291,7 @@ function App(){
             {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="DESIGN BEGINS WITH YOU" fontSize={38} fontWeight={650} reveal="letter" reach={0} labels={false} selection={false} draggable={false} specks={0} sweep={false} clickKick={false} color="currentColor" accentColor="#bd7444" /></div></div>}
             <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent?.isComposing){e.preventDefault();send(e.currentTarget.value);}}} placeholder="Describe your website, app, or design idea…" rows={active?2:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
-              <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?'AI configured · fallback ready':'Design guidance ready'}</span>
+              <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?(config.aiPrimary==='openrouter'?'OpenRouter configured':'AI configured'):'Design guidance ready'}</span>
               <div className="composer-buttons">
                 <button type="button" className="tool-button" title="Explore tools" onClick={()=>showMenu('tools')} aria-label="Open design tools"><Plus size={19}/></button>
                 <button className="submit-button" type="submit" disabled={working||brief.trim().length<2} aria-label="Send message">{working?<RotateCcw size={18} className="spin"/>:<ArrowUp size={19}/>}</button>
