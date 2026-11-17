@@ -151,3 +151,31 @@ Stage 07A–07C foundation. The existing profile/feedback tables and guest-scope
 - **Chat UI:** Docked composer is ~660px max width, starts as one line, grows on demand, and reserves conversation scrolling clearance. Original gold StarBorder/glow/canvas, light/dark appearance, buttons, landing spiral and cinematic entrance remain unchanged.
 
 **Limitations:** Rule-based preference signals, not new trained model weights or validated matching scores. Guest identity is tied to the browser cookie; it does not authenticate users across devices. Collective model training and account-based memory migration remain out of scope.
+
+
+## Milestone 07D — preference learning quality and privacy release gate (17 Nov 2026)
+
+This release does not create a new AI model. Design learning is deterministic and explainable, uses the existing per-guest profile and feedback records, and always treats the current project brief as primary.
+
+### Feedback quality and control
+
+- One project + one design style = one current reaction. Identical Like/Dislike/Improve submissions do not earn extra style weight. Changing Like to Dislike reverses the previous +1 signal; changing to Improve produces a neutral signal. Old feedback records are retained as history. No user projects are rewritten.
+- Private feedback evidence and public opt-in patterns use only the latest reaction per project/style, rather than counting historical Likes after a reversal. Prior duplicates may have inflated older stored weights: users can correct weights in Learning & Privacy or clear only preference memory without deleting projects.
+- The feedback API returns saved (selected styles) and changed (recorded changes). The frontend explains repeated unchanged reactions instead of awarding imaginary points.
+- Design comparisons show the *actual bounded heuristic point change* from private feedback, including saturation at the 48–96 score limits. Scores are not usability audits or empirical evidence.
+
+### Shared-pattern privacy and limitations
+
+- Aggregate results remain opt-in only, with at least five distinct currently opted-in GUEST VISITOR IDs. Raw chats, private feedback text and visitor identifiers are not returned.
+- Public counts are coarse ranges: 5–9, 10–24, 25+. A revised or withdrawn Like no longer counts; revoking consent or pausing learning excludes prior feedback.
+- Guest browser IDs are NOT verified people. Five-ID minimum is a basic disclosure gate, not proven k-anonymity, independent research, or a guarantee against multiple browser identities. Do not use these patterns to train a shared model before a separate privacy review.
+- Cookie-authorized write routes reject cross-origin browser origins and require JSON request bodies. Existing SameSite and HttpOnly cookie protections remain unchanged.
+
+### Reproducible validation
+
+- npm run evaluate:learning runs nine synthetic product briefs and checks deterministic brief-first ranking, all-three-style coverage, bounded scoring and monotonic personal feedback effects; the command fails if a contract regresses.
+- Node/API tests cover idempotent feedback, reversals, user isolation, consent revocation and cohort disclosure limits.
+- Chromium/Firefox tests cover the actual UI. After an exact deployed SHA is verified, a disposable-guest smoke test checks real PostgreSQL feedback, revisions, pause/reset and cleanup without making any OpenRouter requests.
+- Synthetic benchmark pass rates measure deterministic software contracts, NOT real-world UX quality, model precision, accessibility conformance or verified improvements for actual users.
+
+Deferred: verified account identity, consent-based longitudinal evaluation, cross-device learning and rigorous formal privacy guarantees for aggregated community patterns. OpenRouter free-model quotas remain independent. The compact golden StarBorder composer, cinematic landing, three design modes and existing data remain intact.
