@@ -41,6 +41,10 @@ test('chat-first frontend uses upstream React Bits and keeps features accessible
   assert.match(app,/composer-position/);
   assert.match(app,/floating/);
   assert.match(app,/Save refinement/);
+  // Milestone 09: a one-click project restore uses the existing scoped API path.
+  assert.match(app,/Continue recent conversation/);
+  assert.match(app,/projects\.length>0&&<button className="nav-resume" onClick=\{\(\)=>openProject\(projects\[0\]\)\}/);
+  assert.match(app,/api\('\/api\/projects\/'\+encodeURIComponent\(p\.id\)\)/);
   assert.match(app,/Optional refinement notes/);
   for(const content of components){assert.match(content,/'use client'/);assert.match(content,/import React, \{ useEffect, useRef \} from 'react';/);}
 });
