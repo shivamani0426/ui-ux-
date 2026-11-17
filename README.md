@@ -237,3 +237,56 @@ guest-to-account data migration are integrated and tested. No password is collec
 no user is falsely marked signed-in, and the guest workspace remains available.
 Do not claim cross-device account sync has shipped.
 
+
+
+## Milestone 10B — real Supabase Auth / Google sign-in
+
+The Frontline server owns the OAuth PKCE code verifier and validated account
+session; no browser JavaScript receives the Supabase access or refresh token.
+On successful Google callback the server verifies the identity using
+`/auth/v1/user`, transactionally migrates the guest browser's saved projects,
+selections, prompts, feedback and learning profile to a stable account owner,
+then opens `/studio`. Existing account projects are retained. Opt-in to
+aggregated feedback is never transferred silently. Login is optional: guest
+entry, studio design workflows and cinematic effects remain available.
+
+### Required provider setup (cannot be simulated in application code)
+
+1. In [Google Auth Platform](https://console.cloud.google.com/auth/clients),
+   choose the correct Google Cloud project, configure the OAuth consent screen
+   and create **Web application** OAuth credentials. Set Authorized JavaScript
+   origin to `https://ui-compass-studio.onrender.com` and Authorized redirect
+   URI to **exactly**:
+   `https://jzlgdxkefabahwecejov.supabase.co/auth/v1/callback`.
+   The Google Cloud client secret is PRIVATE; never paste it into an issue,
+   repo, chat, frontend code or a Render public environment variable.
+2. In [Supabase Google provider](https://supabase.com/dashboard/project/jzlgdxkefabahwecejov/auth/providers?provider=Google),
+   enable Google and enter the client ID and secret there. In Supabase
+   Authentication → URL Configuration, set Site URL to
+   `https://ui-compass-studio.onrender.com` and allow the exact app redirect
+   URL `https://ui-compass-studio.onrender.com/auth/callback`.
+3. In **Render service environment** configure:
+   - `FRONTLINE_SUPABASE_URL=https://jzlgdxkefabahwecejov.supabase.co`
+   - `FRONTLINE_SUPABASE_PUBLISHABLE_KEY` (only the publishable project key)
+   - `FRONTLINE_SITE_URL=https://ui-compass-studio.onrender.com`
+   - `FRONTLINE_GOOGLE_LOGIN_ENABLED=true` **only after** Google OAuth
+     credentials and both redirect allowlists are working.
+   These values are read server-side. Do not use a service-role key.
+4. Test with a Google account explicitly allowed by the Google consent screen.
+   If the OAuth app is in Testing mode, add the account as a test user.
+   Verify sign-in, back/forward navigation, account project history in
+   another browser, guest→account migration, logout, and inability to read
+   another visitor's project ID.
+
+The provider feature flag defaults OFF until external credentials are ready.
+`GET /api/auth/status` reports readiness without revealing API keys.
+`GET /api/auth/me` returns only verified account display details.
+`POST /api/auth/claim` can safely retry a failed guest transfer.
+`POST /api/auth/logout` signs out and clears HttpOnly session cookies.
+
+Security: short-lived access and rotating refresh cookies use `HttpOnly`,
+`SameSite=Lax`, `Secure` plus the `__Host-` cookie prefix in production;
+CSRF protection on state-changing APIs, PKCE S256, verified account identity,
+private owner-scoped queries, and atomic guest migration. Keep this feature
+unexposed until live real-account testing completes.
+
