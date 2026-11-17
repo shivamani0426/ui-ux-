@@ -21,7 +21,7 @@ async function setup(){
 test('Milestone 07 guest feedback is private, editable, pausable and deletable without deleting projects',async()=>{
   const env=await setup(),alice=env.client(),bob=env.client();
   try{
-    const brief='Create an original creative web platform for team collaboration and messaging';
+    const brief='Create a general web platform for team collaboration, document sharing and messaging';
     const a=await alice('/api/projects','POST',{brief});
     const b=await bob('/api/projects','POST',{brief});
     assert.equal(a.status,201);assert.equal(b.status,201);
