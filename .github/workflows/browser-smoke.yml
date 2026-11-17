@@ -28,9 +28,10 @@ jobs:
           EXPECTED_COMMIT_SHA: ${{ github.sha }}
         run: node tests/live-release-smoke.mjs
       - name: Test live OpenRouter with disposable fictional guest (diagnostic release only)
-        if: github.event_name == 'push' && contains(github.event.head_commit.message, 'AI provider diagnostics')
+        if: github.event_name == 'push' && (contains(github.event.head_commit.message, 'AI provider diagnostics') || contains(github.event.head_commit.message, 'Milestone 06 design intelligence'))
         env:
           AI_LIVE_CHECK: '1'
+          AI_DESIGN_LIVE_CHECK: ${{ contains(github.event.head_commit.message, 'Milestone 06 design intelligence') && '1' || '0' }}
           EXPECTED_COMMIT_SHA: ${{ github.sha }}
         run: node tests/live-ai-smoke.mjs
       - name: Verify live Render site in real browsers
