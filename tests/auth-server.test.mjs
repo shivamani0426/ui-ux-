@@ -7,12 +7,16 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
     FRONTLINE_SUPABASE_URL:process.env.FRONTLINE_SUPABASE_URL,
     FRONTLINE_SUPABASE_PUBLISHABLE_KEY:process.env.FRONTLINE_SUPABASE_PUBLISHABLE_KEY,
     FRONTLINE_SITE_URL:process.env.FRONTLINE_SITE_URL,
-    FRONTLINE_GOOGLE_LOGIN_ENABLED:process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED
+    FRONTLINE_GOOGLE_LOGIN_ENABLED:process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED,
+    RENDER_SERVICE_ID:process.env.RENDER_SERVICE_ID
   };
   process.env.FRONTLINE_SUPABASE_URL='https://example.supabase.co';
   process.env.FRONTLINE_SUPABASE_PUBLISHABLE_KEY='sb_publishable_test_frontline_signin_123456';
   process.env.FRONTLINE_SITE_URL='http://127.0.0.1:3000';
   process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED='true';
+  // This mock server uses local HTTP; do not let Render's production-host flag
+  // activate Secure-only cookies inside an isolated Node integration test.
+  process.env.RENDER_SERVICE_ID='';
   const account='11111111-1111-4111-8111-111111111111';
   const calls=[];
   globalThis.fetch=async(url,options={})=>{
