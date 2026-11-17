@@ -46,9 +46,9 @@ test('Portal opens before guided scrolling and existing manual story controls su
   const landing=read('src/components/FrontlineLanding.jsx');
   const hook=read('src/hooks/useCinematicTour.js');
   const portalCss=read('src/components/FrontlineDomePortal.css');
-  for(const element of ['locked={portalState!==\\'done\\'}','effectsReady={portalState===\\'done\\'}',
+  for(const element of ["locked={portalState!=='done'}","effectsReady={portalState==='done'}",
     "setPortalState('charging')","setPortalState('opening')","setPortalState('done')"]){
-    assert.ok(app.includes(element.replaceAll('\\\\','')),'missing entrance gate '+element);
+    assert.ok(app.includes(element),'missing entrance gate '+element);
   }
   for(const term of ['useCinematicTour','fl-tour-ui','Pause cinematic tour','Replay cinematic tour',
     'Skip cinematic journey','goToChapter','onComposeReady'])assert.ok(landing.includes(term));
