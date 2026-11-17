@@ -33,7 +33,7 @@ test('AI prompt can replace fallback without exposing secrets, in correct mode',
   const result=await createDesignPrompt({
     project,mode:'generate',styles:['minimal'],env:{GEMINI_API_KEY:'test',AI_PRIMARY_PROVIDER:'gemini'},
     request:async()=>({ok:true,json:async()=>({candidates:[{content:{parts:[{text:
-      'Product purpose and audience. Information architecture and page plan. Desktop and mobile responsive layouts. Accessibility and keyboard support. UI components, buttons and navigation. Acceptance checklist. Minimal SaaS, Glass UI, Creative UI. Each distinct direction has appropriate constraints and implementation guidance. '.repeat(8)}]}}]})})
+      'Product purpose and audience. Information architecture and page plan. Desktop and mobile responsive layouts. Accessibility and keyboard support. UI components, buttons and navigation. Acceptance checklist. Minimal SaaS, Glass UI, Creative UI. Course progress tracking and responsive analytics. Each distinct direction has appropriate constraints and implementation guidance. '.repeat(8)}]}}]})})
   });
   assert.equal(result.source,'ai');assert.equal(result.provider,'gemini');
   assert.ok(result.prompt.length>500);
@@ -82,4 +82,17 @@ test('Fusion chooses a context-fitting structural anchor rather than first selec
   assert.equal(b.fusion.anchor,'Minimal SaaS');
   const out=deterministicDesignPrompt({project:p,mode:'fusion',styles:['glass','minimal']});
   assert.match(out,/Minimal SaaS as the structural anchor/);
+});
+
+test('a plausible AI prompt that omits a confirmed module cannot replace the complete specification',async()=>{
+ const briefing='Design a student dashboard with assignments, calendar and AI tutor. Must preserve existing backend.';
+ const p={brief:briefing,recommendations:recommend(briefing)};
+ const looksComplete=('Audience and information architecture with page plan. Responsive mobile navigation, accessibility and keyboard input. Components, buttons, acceptance checklist. Minimal SaaS Glass UI Creative UI. ').repeat(9);
+ const output=await createDesignPrompt({project:p,mode:'generate',styles:['minimal'],
+   env:{OPENROUTER_API_KEY:'test'},
+   request:async()=>({ok:true,json:async()=>({choices:[{message:{content:looksComplete}}]})})
+ });
+ assert.equal(output.source,'guide');
+ assert.ok(output.review.reason.some(item=>item==='feature:calendar'||item==='feature:tutor'));
+ assert.equal(output.review.passed,true);
 });
