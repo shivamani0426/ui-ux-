@@ -1,0 +1,86 @@
+/* Frontline account gateway: original black / sand / copper visual language. */
+.fl-login-page{position:fixed;inset:0;z-index:85;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;color:#faecd9;background:#0e0c10;font-family:'DM Sans',sans-serif;isolation:isolate}
+.fl-login-atmosphere{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;background:radial-gradient(ellipse 70% 60% at 27% 52%,#3e2929 0%,#1b151a 59%,#0e0c10 100%)}
+.fl-login-horizon{position:absolute;inset:44% 0 0;background:radial-gradient(ellipse 62% 38% at 34% 0%,rgba(199,129,75,.15),transparent 78%),linear-gradient(180deg,transparent,rgba(0,0,0,.33))}
+.fl-login-orb{position:absolute;left:27%;top:49%;width:min(45vw,650px);aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle at 38% 30%,#ffe2a5 0%,#e4ad70 21%,#a45f43 53%,#21151a 77%,#0d0b10 89%);box-shadow:0 0 85px rgba(191,100,57,.19),0 0 160px rgba(219,152,84,.11);opacity:.88;animation:fl-login-orb-drift 13s ease-in-out infinite alternate}
+.fl-login-orb-inner{position:absolute;inset:17%;border-radius:50%;border:1px solid rgba(255,243,208,.32);box-shadow:inset 22px 22px 45px rgba(255,255,214,.12),0 0 65px rgba(255,217,167,.1)}
+.fl-login-ring{position:absolute;left:27%;top:49%;width:min(69vw,970px);aspect-ratio:1;border:1px solid rgba(242,192,124,.17);border-radius:50%;transform:translate(-50%,-50%) rotate(-18deg) scaleY(.71)}
+.fl-login-ring-two{width:min(90vw,1270px);transform:translate(-50%,-50%) rotate(23deg) scaleY(.74);border-color:rgba(242,192,124,.08)}
+.fl-login-starfield{position:absolute;inset:0;opacity:.28;background-image:radial-gradient(#f8d9a7 1px,transparent 1px);background-size:81px 93px;mask-image:linear-gradient(90deg,#000,transparent 80%)}
+.fl-login-header,.fl-login-bottomline{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:28px clamp(22px,5vw,78px);position:relative;z-index:1}
+.fl-login-signature{display:flex;align-items:center;gap:14px;color:#eed1a1;font:800 14px/1.1 Manrope,sans-serif;letter-spacing:.065em}
+.fl-login-signature span{display:flex;flex-direction:column;color:#faf2e1}
+.fl-login-signature small{font-size:9px;margin-top:6px;letter-spacing:.3em;color:#cca882}
+.fl-login-back{color:#ead0af;border:1px solid rgba(245,215,180,.27);background:rgba(20,16,20,.44);border-radius:100px;display:flex;gap:9px;align-items:center;padding:12px 17px;font-size:12px;transition:background .24s,transform .24s}
+.fl-login-back:hover{background:rgba(184,129,83,.18);transform:translateY(-2px)}
+.fl-login-layout{width:min(1370px,100%);min-height:calc(100svh - 166px);margin:0 auto;padding:40px clamp(24px,6vw,86px) 35px;display:grid;grid-template-columns:minmax(0,1.12fr) minmax(350px,.88fr);align-items:center;gap:clamp(40px,7vw,130px);position:relative;z-index:1}
+.fl-login-editorial{max-width:610px;padding:50px 0 60px;position:relative}
+.fl-login-overline{display:inline-flex;align-items:center;gap:12px;font:700 10px/1.5 Manrope,sans-serif;letter-spacing:.21em;color:#ebc89b}
+.fl-login-overline-dot{height:7px;width:7px;border-radius:50%;background:#f2c78a;box-shadow:0 0 18px #eaa66a}
+.fl-login-editorial h1{font:500 clamp(66px,7.3vw,132px)/.88 'Cormorant Garamond',Georgia,serif;letter-spacing:-.055em;color:#fff2df;margin:29px 0 24px}
+.fl-login-editorial h1 em{display:block;font-weight:400;color:#ebaf74}
+.fl-login-editorial>p{font-size:clamp(13px,1.15vw,16px);line-height:1.9;color:#ddc7b1;max-width:435px;letter-spacing:.005em}
+.fl-login-editorial-footer{display:flex;gap:23px;flex-wrap:wrap;margin-top:57px;font:700 9px/1.5 Manrope,sans-serif;letter-spacing:.18em;color:#deb98e}
+.fl-login-card-area{width:100%;max-width:450px;justify-self:end}
+.fl-login-card{background:linear-gradient(153deg,rgba(59,44,46,.94),rgba(25,21,26,.98) 73%);border:1px solid rgba(236,181,116,.29);border-radius:30px;padding:clamp(25px,3.5vw,43px);box-shadow:0 28px 90px rgba(4,2,7,.45),0 0 64px rgba(226,164,99,.08),inset 0 1px rgba(255,224,181,.13);backdrop-filter:blur(24px)}
+.fl-login-card-kicker{display:inline-flex;align-items:center;gap:8px;font:700 10px/1.4 Manrope,sans-serif;letter-spacing:.19em;color:#f2c48f}
+.fl-login-card h2{font:500 clamp(38px,3.5vw,54px)/1.05 'Cormorant Garamond',Georgia,serif;letter-spacing:-.025em;color:#ffeed8;margin:24px 0 12px}
+.fl-login-card h2 em{font-weight:400;color:#e9b177}
+.fl-login-card-copy{font-size:12px;line-height:1.9;color:#d8c5b4;margin:0 0 29px;max-width:320px}
+.fl-login-google-star.star-border{width:100%;display:block;border-radius:19px!important;padding:2px;overflow:visible}
+.fl-login-google{width:100%;border:0;background:#2f2729;color:#fff1d8;border-radius:17px;padding:16px 15px;display:flex;align-items:center;justify-content:center;gap:16px;font:700 12px/1.2 Manrope,sans-serif}
+.fl-login-google svg{margin-left:auto}
+.fl-login-google .fl-google-letter{display:grid;place-items:center;width:25px;height:25px;border-radius:50%;font:bold 17px Arial,sans-serif;color:#4a89e8;background:#fff}
+.fl-login-google:disabled{opacity:.68;cursor:not-allowed}
+.fl-login-availability{color:#d3b9a6;font-size:10px;line-height:1.65;display:flex;align-items:flex-start;gap:9px;margin:14px 0 0}
+.fl-login-availability svg{flex:none;color:#e6b581;margin-top:1px}
+.fl-login-separator{display:flex;align-items:center;gap:12px;color:#c3a48b;font:700 9px/1.4 Manrope,sans-serif;letter-spacing:.08em;white-space:nowrap;margin:26px 0}
+.fl-login-separator span{height:1px;flex:1;background:rgba(235,185,137,.19)}
+.fl-login-guest{width:100%;padding:17px 20px;border:1px solid #dba66c;border-radius:17px;color:#2e201e;background:linear-gradient(130deg,#fff0ce,#e9b777 70%,#d38b53);font:800 13px/1.2 Manrope,sans-serif;display:flex;align-items:center;justify-content:space-between;transition:transform .3s,box-shadow .3s}
+.fl-login-guest:hover{transform:translateY(-3px);box-shadow:0 16px 36px rgba(213,145,84,.26)}
+.fl-login-privacy{display:flex;align-items:flex-start;gap:10px;color:#bfa999;font:500 10px/1.75 'DM Sans',sans-serif;margin-top:21px}
+.fl-login-privacy svg{flex:none;color:#e3b181;margin-top:2px}
+.fl-login-under-card{font:700 9px/1.6 Manrope,sans-serif;letter-spacing:.24em;text-align:center;color:#c2a587;margin:21px auto}
+.fl-login-bottomline{font:700 9px/1.6 Manrope,sans-serif;letter-spacing:.2em;color:#a68a77;min-height:48px;padding-top:12px;padding-bottom:20px}
+@keyframes fl-login-orb-drift{from{transform:translate(-50%,-50%) translateY(-5px)}to{transform:translate(-50%,-50%) translateY(13px)}}
+/* Same composited gateway for either login or guest studio entry. From a tiny
+   bottom-centre singularity to an opaque full-screen black field. */
+.fl-blackhole-transition{position:fixed;inset:0;z-index:450;pointer-events:all;overflow:hidden}
+.fl-blackhole-disc{position:absolute;left:50%;top:100%;width:100vmax;height:100vmax;border-radius:50%;background:radial-gradient(circle at 50% 45%,#060508 0%,#0b090e 44%,#151015 67%,#251c21 100%);transform:translate(-50%,-50%) scale(.012);will-change:transform;box-shadow:0 0 90px rgba(191,124,76,.25)}
+.fl-blackhole-transition.is-expanding .fl-blackhole-disc{animation:fl-blackhole-expand 1050ms cubic-bezier(.18,.69,.14,1) both}
+.fl-blackhole-transition.is-revealing{background:#09070b;animation:fl-blackhole-fade 760ms ease-in-out both}
+.fl-blackhole-transition.is-revealing .fl-blackhole-disc{transform:translate(-50%,-50%) scale(3);will-change:auto}
+@keyframes fl-blackhole-expand{from{transform:translate(-50%,-50%) scale(.012)}to{transform:translate(-50%,-50%) scale(3)}}
+@keyframes fl-blackhole-fade{from{opacity:1}to{opacity:0}}
+.app.studio-arriving .conversation,.app.studio-arriving .composer-position.docked{animation:fl-studio-emerge 1000ms cubic-bezier(.17,.86,.2,1) both}
+@keyframes fl-studio-emerge{from{opacity:.12;transform:translateY(45px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.app.studio-arriving .composer-position.docked{animation-name:fl-studio-composer-emerge}
+@keyframes fl-studio-composer-emerge{from{opacity:0;transform:translate(-50%,calc(-100% + 65px)) scale(.96)}to{opacity:1;transform:translate(-50%,-100%) scale(1)}}
+@media(max-width:950px){
+  .fl-login-layout{grid-template-columns:1fr;gap:16px;min-height:0;max-width:660px;padding-top:18px;padding-bottom:38px}
+  .fl-login-editorial{padding:33px 0 0;max-width:580px}
+  .fl-login-editorial h1{font-size:clamp(58px,11vw,97px);margin:16px 0}
+  .fl-login-editorial-footer{margin-top:25px}
+  .fl-login-card-area{justify-self:center;max-width:530px}
+  .fl-login-orb{left:50%;top:33%;width:min(87vw,620px);opacity:.53}
+  .fl-login-ring{left:50%;top:33%;width:99vw}
+}
+@media(max-width:600px){
+  .fl-login-header{padding:19px 20px}.fl-login-back{font-size:11px;padding:10px 12px}
+  .fl-login-layout{padding:0 18px 35px;gap:20px}
+  .fl-login-editorial{padding:31px 6px 3px}
+  .fl-login-overline{font-size:8px}
+  .fl-login-editorial h1{font-size:clamp(58px,13.4vw,78px)}
+  .fl-login-editorial>p{font-size:12px;line-height:1.75}
+  .fl-login-editorial-footer{gap:14px;margin-top:24px;font-size:8px}
+  .fl-login-card{padding:23px;border-radius:24px}
+  .fl-login-card h2{font-size:39px;margin-top:17px}
+  .fl-login-card-copy{margin-bottom:20px}
+  .fl-login-bottomline{padding:8px 19px 20px;font-size:7px;gap:8px}
+  .fl-login-under-card{font-size:7px;letter-spacing:.14em}
+}
+@media(prefers-reduced-motion:reduce){
+  .fl-login-orb{animation:none!important}
+  .fl-blackhole-transition.is-expanding .fl-blackhole-disc,.fl-blackhole-transition.is-revealing,
+  .app.studio-arriving .conversation,.app.studio-arriving .composer-position.docked{animation-duration:.01ms!important}
+}
