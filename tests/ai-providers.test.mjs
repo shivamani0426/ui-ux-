@@ -423,3 +423,24 @@ test('A normal complete chat reply is accepted with exactly one free-model reque
   assert.equal(result.provider,'openrouter');
   assert.equal(count,1);
 });
+
+
+test('real shared free key enters a brief 429 cooldown without another upstream request',async()=>{
+  const nativeFetch=globalThis.fetch;
+  const originalWarn=console.warn;
+  let calls=0;
+  const failures=[];
+  globalThis.fetch=async()=>{
+    calls++;
+    return response(429,{error:{status:'RESOURCE_EXHAUSTED',message:'Rate limit exceeded'}});
+  };
+  console.warn=()=>{};
+  try{
+    const env={OPENROUTER_API_KEY:'test-only',AI_PRIMARY_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'false'};
+    assert.equal(await designAiReply({brief,messages,env,onFailure:x=>failures.push(x)}),null);
+    assert.equal(await designAiReply({brief,messages,env,onFailure:x=>failures.push(x)}),null);
+    assert.equal(calls,1,'During a shared 429 cooldown, do not waste another free request');
+    assert.equal(failures.length,2);
+    assert.ok(failures.every(x=>x.reason==='rate-limited'&&x.retryAfterSeconds>0));
+  }finally{globalThis.fetch=nativeFetch;console.warn=originalWarn;}
+});
