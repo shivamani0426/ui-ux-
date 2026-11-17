@@ -41,6 +41,7 @@ async function run(){
   });
   check(created.status===201&&typeof created.data?.project?.id==='string','project-create-failed');
   projectId=created.data.project.id;
+  const failures=[];
   const questions=[
     'For this fictional museum, recommend a clear mobile navigation layout.',
     'Suggest an original accessible color palette and page hierarchy for the same museum.',
@@ -49,16 +50,18 @@ async function run(){
     const result=await call('/api/projects/'+encodeURIComponent(projectId)+'/messages','POST',{
       message:questions[i],styles:['minimal','glass'],
     });
-    check(result.status===200,'chat-http-'+(i+1));
+    if(result.status!==200){failures.push('chat-http-'+(i+1));continue;}
     const answer=result.data?.answer;
     const source=answer?.source==='ai'?'ai':answer?.source==='guide'?'guide':'unknown';
     const provider=answer?.provider==='openrouter'?'openrouter':'none';
     console.log('LIVE_AI_SMOKE step='+(i+1)+' source='+source+' provider='+provider);
-    check(source==='ai'&&provider==='openrouter'&&typeof answer.text==='string'&&answer.text.trim().length>=20,'ai-not-delivered-'+(i+1));
+    if(!(source==='ai'&&provider==='openrouter'&&typeof answer.text==='string'&&answer.text.trim().length>=20))
+      failures.push('ai-not-delivered-'+(i+1));
   }
   const saved=await call('/api/projects/'+encodeURIComponent(projectId));
   check(saved.status===200&&saved.data?.project?.messages?.length===4,'chat-not-persisted');
-  console.log('LIVE_AI_SMOKE two real OpenRouter replies received and chat persisted');
+  if(!failures.length)console.log('LIVE_AI_SMOKE two real OpenRouter replies received and chat persisted');
+  else console.log('LIVE_AI_SMOKE chat persistence checked, but at least one reply did not pass');
   if(process.env.AI_DESIGN_LIVE_CHECK==='1'){
     const sources=[];
     for(const mode of ['generate','fusion']){
@@ -80,6 +83,7 @@ async function run(){
     check(sources.includes('ai'),'design-provider-not-accepted');
     console.log('LIVE_DESIGN_SMOKE Generate/Fusion specifications passed quality review; at least one from OpenRouter');
   }
+  check(failures.length===0,failures[0]||'unknown-chat-failure');
 }
 try{
   await run();
