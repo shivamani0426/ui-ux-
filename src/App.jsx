@@ -338,7 +338,7 @@ function App(){
             {key:'select',name:'Select UI/UX',description:'Explore, save and combine matching inspiration websites from our library.'},
             {key:'generate',name:'Generate UI/UX',description:'Create three original design directions and a detailed copyable prompt.'},
             {key:'fusion',name:'Design Fusion',description:'Fuse saved inspirations and chosen styles into one original prompt.'}
-          ].map(item=><button className={'tool-mode '+(designMode===item.key?'active':'')} key={item.key} onClick={()=>{setDesignMode(item.key);setSelected(item.key==='fusion'?styleKeys:selected);setMenuOpen(false);focusChat();notice(item.name+' ready. Describe your idea in chat.');}}>
+          ].map(item=><button className={'tool-mode '+(designMode===item.key?'active':'')} key={item.key} onClick={()=>{setDesignMode(item.key);setSelected(item.key==='fusion'?styleKeys:selected);setMenuOpen(false);focusChat();notice(item.name+' ready. '+(project?'Use the design panel to create your specification.':'Describe your idea in chat.'));if(project&&item.key!=='select')setTimeout(()=>document.querySelector('.di-panel')?.scrollIntoView({behavior:'smooth',block:'start'}),180);}}>
             <span className="mode-symbol">{item.key==='select'?'◈':item.key==='generate'?'✧':<FrontlineMark size={23}/>}</span>
             <span><strong>{item.name}</strong><small>{item.description}</small></span>
             {designMode===item.key&&<Check size={17}/>}
