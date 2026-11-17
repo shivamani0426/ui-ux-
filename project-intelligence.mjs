@@ -72,7 +72,7 @@ export function analyzeProject(brief,{category}={}){
   if(!features.length)questions.push('What is the single most important task?');
   if(!limits.length)questions.push('Any device, accessibility, or performance constraints?');
   const decisions=unique((text.match(/(?:^|[.!?]\s+)([^.!?]{0,15}\b(?:must|keep|preserve|only|do not|without|should)\b[^.!?]{4,160})/gi)||[]).map(x=>clean(x,175))).slice(0,6);
-  const requestedStyles=unique([/\b(glassmorphism|glass ui|glass panels|neon)\b/i.test(text)?'glass':null,/\b(minimal|clean|simple|apple.style)\b/i.test(text)?'minimal':null,/\b(creative|playful|editorial|bold)\b/i.test(text)?'creative':null]);
+  const requestedStyles=unique([/\b(glassmorphism|glass ui|glass panels|neon|futuristic|immersive|3d)\b/i.test(text)?'glass':null,/\b(minimal|clean|simple|apple.style)\b/i.test(text)?'minimal':null,/\b(creative|playful|editorial|bold)\b/i.test(text)?'creative':null]);
   return {category:kind,audience:audience.length?audience:['Primary audience not stated — confirm'],
     audienceSource:audience.length?'explicit':'suggested',features,constraints:limits,pages,workflows,
     goals:features.length?features.slice(0,3).map(f=>'Help users '+f.action):['Make the primary task discoverable (to confirm)'],
