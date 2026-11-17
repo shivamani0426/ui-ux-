@@ -111,7 +111,7 @@ export function formatRequirementTrace(trace){
 export function reviewRequirementTrace(text,trace){
   const raw=String(text||'');
   const start=raw.indexOf('\nREQUIREMENT TRACEABILITY MATRIX\n');
-  const end=raw.indexOf('\n\nINFORMATION ARCHITECTURE & PAGE PLAN',start+1);
+  const end=raw.indexOf('\nINFORMATION ARCHITECTURE & PAGE PLAN',start+1);
   const section=start>=0?raw.slice(start,end>=0?end:undefined):'';
   const missing=trace.rows.filter(row=>!section.includes('['+row.id+']')).map(row=>row.id);
   if(trace.missingAudience&&!section.includes('[QUESTION-AUDIENCE]'))missing.push('QUESTION-AUDIENCE');
