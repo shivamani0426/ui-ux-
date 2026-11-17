@@ -273,7 +273,7 @@ function App(){
       </div>
     </header>
 
-    {!active&&<FrontlineLanding locked={portalState!=='done'} onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
+    {!active&&<FrontlineLanding locked={portalState!=='done'} effectsReady={portalState==='done'} onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
     {!active&&<div className="landing-scrollspace scroll-story-space" aria-hidden="true"/>}
     {!active&&portalState!=='done'&&<FrontlineDomePortal phase={portalState} onEnter={enterPortal}/>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>

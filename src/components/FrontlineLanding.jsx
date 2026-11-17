@@ -1,9 +1,11 @@
 import React, {useEffect,useRef,useState} from 'react';
-import {ArrowDown,ArrowUpRight} from 'lucide-react';
+import {ArrowDown,ArrowUpRight,Pause,RotateCcw,SkipForward} from 'lucide-react';
+import {useCinematicTour} from '../hooks/useCinematicTour.js';
 import SolarFluidCanvas from './SolarFluidCanvas.jsx';
 import FrontlineMark from './FrontlineMark.jsx';
 import './FrontlineLanding.css';
 import './FrontlineScrollStory.css';
+import './FrontlineCinematicTour.css';
 
 /* Original Frontline composition: user-provided Solare recording informs pacing,
  * oversized kinetic typography, golden sphere and editorial spiral, not source assets. */
@@ -50,10 +52,11 @@ function spiralPath(){
 const SPIRAL_PATH=spiralPath();
 const SPIRAL_WORDS=('FRONTLINE  ·  SELECT  ·  GENERATE  ·  FUSE  ·  DESIGN INTELLIGENCE  ·  ').repeat(12);
 
-export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneChange,onComposeReady}){
+export default function FrontlineLanding({locked=false,effectsReady=false,onBegin,onMode,onSceneChange,onComposeReady}){
   const root=useRef(null),frameRef=useRef(0),readyRef=useRef(false);
   const [frame,setFrame]=useState(0);
   const [reduceMotion,setReduceMotion]=useState(false);
+  const [fluidStage,setFluidStage]=useState(0);
   useEffect(()=>{
     const query=window.matchMedia?.('(prefers-reduced-motion: reduce)');
     setReduceMotion(Boolean(query?.matches));
@@ -61,6 +64,15 @@ export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneCha
     query?.addEventListener?.('change',onChange);
     return()=>query?.removeEventListener?.('change',onChange);
   },[]);
+  useEffect(()=>{
+    if(!effectsReady){setFluidStage(0);return undefined;}
+    // Do not compile either GPU shader behind the black portal. Stage the
+    // subtle embellishments after reveal, while the CSS sun/water are complete.
+    const sun=window.setTimeout(()=>setFluidStage(1),380);
+    const water=window.setTimeout(()=>setFluidStage(2),1030);
+    return ()=>{clearTimeout(sun);clearTimeout(water)};
+  },[effectsReady]);
+  const tour=useCinematicTour({enabled:!locked,reducedMotion:reduceMotion});
   useEffect(()=>{
     let raf=0,pointerFrame=0,tx=0,ty=0,sx=0,sy=0;
     let scrollRange=1,previousReveal='';
@@ -125,7 +137,7 @@ export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneCha
       if(Math.abs(tx-sx)>.006||Math.abs(ty-sy)>.006)pointerFrame=requestAnimationFrame(smoothPointer);
     };
     const move=event=>{
-      if(reduceMotion||event.pointerType==='touch'||!root.current)return;
+      if(locked||reduceMotion||event.pointerType==='touch'||!root.current)return;
       tx=(event.clientX/Math.max(1,window.innerWidth)-.5)*2;
       ty=(event.clientY/Math.max(1,window.innerHeight)-.5)*2;
       if(!pointerFrame)pointerFrame=requestAnimationFrame(smoothPointer);
@@ -143,9 +155,12 @@ export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneCha
       if(pointerFrame)cancelAnimationFrame(pointerFrame);
       document.documentElement.style.removeProperty('--fl-compose-reveal');
     };
-  },[onSceneChange,onComposeReady,reduceMotion]);
+  },[onSceneChange,onComposeReady,reduceMotion,locked]);
   const available=()=>Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
-  const goToChapter=n=>window.scrollTo({top:available()*CHAPTER_STOPS[n],behavior:reduceMotion?'instant':'smooth'});
+  const goToChapter=n=>{
+    tour.pause();
+    window.scrollTo({top:available()*CHAPTER_STOPS[n],behavior:reduceMotion?'instant':'smooth'});
+  };
   return <section ref={root} inert={locked} aria-hidden={locked} className={'fl-world fl-scroll-story fl-chapter-'+frame} aria-label="Frontline UX/UI cinematic scroll introduction">
     <div className="fl-atmosphere" aria-hidden="true">
       <div className="fl-sky"/><div className="fl-grain"/><div className="fl-aura"/>
@@ -156,10 +171,10 @@ export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneCha
         <div className="fl-floor"/>
       </div>
       <div className="fl-sun-wrap">
-        <div className="fl-sun-halo"/><div className="fl-sun"><SolarFluidCanvas mode="sun"/></div>
+        <div className="fl-sun-halo"/><div className="fl-sun">{fluidStage>=1&&<SolarFluidCanvas mode="sun"/>}</div>
       </div>
       <div className="fl-basin"><div className="fl-water">
-        <SolarFluidCanvas mode="water"/><div className="fl-sun-reflection"/>
+        {fluidStage>=2&&<SolarFluidCanvas mode="water"/>}<div className="fl-sun-reflection"/>
         <div className="fl-ripple fl-ripple-a"/><div className="fl-ripple fl-ripple-b"/><div className="fl-ripple fl-ripple-c"/>
       </div></div>
       <div className="fl-clouds"/><div className="fl-shimmer"/>
@@ -193,7 +208,7 @@ export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneCha
       </div>
       <div className="fl-story-footnote">{chapter.subtitle}<span>0{Math.min(i+1,5)} / 05</span></div>
     </article>)}
-    <div className="fl-spiral-stage" aria-hidden="true">
+    {frame>=3&&<div className="fl-spiral-stage" aria-hidden="true">
       <div className="fl-spiral-aura"/>
       <svg className="fl-spiral-art" viewBox="0 0 900 900" role="img" aria-label="Rotating Frontline typographic golden spiral">
         <defs>
@@ -213,7 +228,7 @@ export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneCha
         <circle cx="450" cy="450" r="83" stroke="#d8a16c" strokeOpacity=".5" strokeWidth="1" fill="none"/>
         <circle cx="450" cy="450" r="4" fill="#fff1cb"/>
       </svg>
-    </div>
+    </div>}
     <div className="fl-story-corner fl-story-corner-left">DESIGN, IN AN INFINITE FIELD <span className="fl-corner-monogram"><FrontlineMark size={21}/></span></div>
     <div className="fl-story-corner fl-story-corner-right">THINK · CHOOSE · CREATE</div>
     <nav className="fl-chapter-nav fl-story-nav" aria-label="Landing page chapters">
@@ -224,7 +239,24 @@ export default function FrontlineLanding({locked=false,onBegin,onMode,onSceneCha
       </button>)}
     </nav>
     <div className="fl-story-scroll-guide" aria-hidden="true">
-      <span>{frame===4?'KEEP SCROLLING · YOUR STUDIO IS EMERGING':'SCROLL TO EXPLORE'}</span><ArrowDown size={14}/>
+      <span>{tour.status==='playing'?'A GUIDED JOURNEY THROUGH DESIGN':
+        frame===4?'YOUR STUDIO IS EMERGING':'SCROLL TO EXPLORE'}</span><ArrowDown size={14}/>
     </div>
+    {!locked&&!reduceMotion&&<div className="fl-tour-ui" data-tour-state={tour.status}
+      aria-label="Cinematic introduction controls">
+      <span className="fl-tour-caption">{tour.status==='playing'?'CINEMATIC TOUR':
+        tour.status==='completed'?'YOUR DESIGN STUDIO':'EXPLORE AT YOUR PACE'}</span>
+      {tour.status==='playing'?
+        <button type="button" onClick={tour.pause} aria-label="Pause cinematic tour">
+          <Pause size={13} aria-hidden="true"/> Pause
+        </button>:
+        <button type="button" onClick={tour.replay} aria-label="Replay cinematic tour from beginning">
+          <RotateCcw size={13} aria-hidden="true"/> Replay
+        </button>}
+      {tour.status==='playing'&&<button type="button" onClick={tour.skip}
+        aria-label="Skip cinematic journey to design studio">
+        <SkipForward size={13} aria-hidden="true"/> Skip
+      </button>}
+    </div>}
   </section>;
 }

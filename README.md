@@ -179,3 +179,14 @@ This release does not create a new AI model. Design learning is deterministic an
 - Synthetic benchmark pass rates measure deterministic software contracts, NOT real-world UX quality, model precision, accessibility conformance or verified improvements for actual users.
 
 Deferred: verified account identity, consent-based longitudinal evaluation, cross-device learning and rigorous formal privacy guarantees for aggregated community patterns. OpenRouter free-model quotas remain independent. The compact golden StarBorder composer, cinematic landing, three design modes and existing data remain intact.
+
+
+## Cinematic landing quality: guided autoplay and smooth rendering
+
+The original all-black sculpted F portal is click-only. Its approximately 2.7-second white-light charge and three-second inside-out reveal are unchanged. The site now begins a **41.5-second five-chapter scroll journey automatically after the portal fully opens**; it uses quintic-eased motion and separate 2.2–3.2-second chapter reading holds rather than rushing or skipping over typography. The final chapter matures the original golden typographic spiral and reveals the existing star-border chat composer.
+
+**Visitor control:** Pause, Replay and Skip are visible in a quiet accessible overlay. Wheel, touch, click/drag, keyboard scroll keys and tab hiding immediately pause autoplay; ordinary manual scrolling stays available. Reduced-motion preferences disable autoplay entirely. A visitor can stop and explore at any point, and the studio is not auto-entered.
+
+**Performance without shrinking the visual design:** WebGL solar shaders are delayed until after the black portal is fully revealed, then staged. CSS sun and water are still complete fallbacks. Hidden canvases and background tabs no longer schedule perpetual WebGL RAF draws, and canvas dimensions/scroll range are cached until resize. Entrance glows retain full white luminous end frames but use composited static shadow layers whose opacity/scale changes instead of repainting large soft shadows at every frame. Only the current and neighboring text scenes are marked as priority compositor layers. Gold/cream color, architecture, editorial headings, star-border, scrolling spiral, all three tools, privacy memory, API and data are preserved.
+
+**Validation:** node tests for all five chapter holds and continuous monotonic easing, original portal phases, visibility-based GPU pausing, and real Chromium/Firefox desktop + mobile autoplay, pause, replay, user interruption and reduced-motion navigation. This is software behavior validation: do not claim a particular FPS on untested hardware. For a real-device review, use browser performance profiling to inspect long tasks and dropped frames on the user's GPU and mobile browser.
