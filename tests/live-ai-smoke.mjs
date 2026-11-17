@@ -1,55 +1,86 @@
 /**
- * One-time, opt-in live AI smoke test. Requires AI_LIVE_CHECK=1 and makes exactly
- * one synthetic chat request against the PUBLIC Frontline app. Uses a fresh guest
- * cookie and deletes only that synthetic guest's workspace in finally.
- * Never reads secrets or prints model content/private response data.
+ * One-time production AI check. Uses fictional design briefs, a fresh anonymous
+ * guest cookie and deletion in finally. NEVER log provider text or credentials.
+ * AI_LIVE_CHECK=1 explicitly opts into 2 real OpenRouter requests.
  */
-const target=process.env.AI_LIVE_CHECK==='1'
-  ?'https://ui-compass-studio.onrender.com':null;
+const target=process.env.AI_LIVE_CHECK==='1'?'https://ui-compass-studio.onrender.com':null;
 if(!target){
-  console.log('Live AI probe disabled (set AI_LIVE_CHECK=1 for a deliberate run).');
+  console.log('LIVE_AI_SMOKE skipped: no explicit opt-in.');
   process.exit(0);
 }
-const prompt='Design a fictional lighthouse visitors center with a tide forecast, accessible exhibits, wayfinding and marine-life information. Recommend an original responsive UI direction.';
 let cookie='';
-let project='';
+let projectId='';
+let cleanupAttempted=false;
 const headers=()=>cookie?{Cookie:cookie}:{};
-async function request(path,method='GET',payload){
+async function call(path,method='GET',payload){
   const response=await fetch(target+path,{
     method,
     headers:{...headers(),...(payload?{'Content-Type':'application/json'}:{})},
     body:payload?JSON.stringify(payload):undefined,
-    signal:AbortSignal.timeout(100000)
+    signal:AbortSignal.timeout(100000),
   });
-  const setCookie=response.headers.get('set-cookie');
-  if(setCookie&&!cookie)cookie=setCookie.split(';')[0];
-  const body=await response.json();
-  return {code:response.status,body};
+  const received=response.headers.get('set-cookie');
+  if(received&&!cookie)cookie=received.split(';')[0];
+  return {status:response.status,data:await response.json()};
+}
+function check(ok,code){if(!ok)throw Error(code)}
+async function run(){
+  const config=await call('/api/config');
+  check(config.status===200,'config-http');
+  check(config.data?.aiPrimary==='openrouter','wrong-primary');
+  check(config.data?.aiProviders?.openrouter===true,'openrouter-not-configured');
+  check(config.data?.aiFallbackEnabled===false,'unexpected-provider-fallback');
+  const health=await call('/api/health');
+  check(health.status===200&&health.data?.database==='connected','database-not-connected');
+  if(process.env.EXPECTED_COMMIT_SHA){
+    check(health.data?.revision===process.env.EXPECTED_COMMIT_SHA.slice(0,12),'wrong-production-revision');
+  }
+  const created=await call('/api/projects','POST',{
+    brief:'Design a fictional seaside learning museum with an accessibility map and exhibits.',
+  });
+  check(created.status===201&&typeof created.data?.project?.id==='string','project-create-failed');
+  projectId=created.data.project.id;
+  const questions=[
+    'For this fictional museum, recommend a clear mobile navigation layout.',
+    'Suggest an original accessible color palette and page hierarchy for the same museum.',
+  ];
+  for(let i=0;i<questions.length;i++){
+    const result=await call('/api/projects/'+encodeURIComponent(projectId)+'/messages','POST',{
+      message:questions[i],styles:['minimal','glass'],
+    });
+    check(result.status===200,'chat-http-'+(i+1));
+    const answer=result.data?.answer;
+    const source=answer?.source==='ai'?'ai':answer?.source==='guide'?'guide':'unknown';
+    const provider=answer?.provider==='openrouter'?'openrouter':'none';
+    console.log('LIVE_AI_SMOKE step='+(i+1)+' source='+source+' provider='+provider);
+    check(source==='ai'&&provider==='openrouter'&&typeof answer.text==='string'&&answer.text.trim().length>=20,'ai-not-delivered-'+(i+1));
+  }
+  const saved=await call('/api/projects/'+encodeURIComponent(projectId));
+  check(saved.status===200&&saved.data?.project?.messages?.length===4,'chat-not-persisted');
+  console.log('LIVE_AI_SMOKE two real OpenRouter replies received and chat persisted');
 }
 try{
-  const created=await request('/api/projects','POST',{brief:prompt});
-  if(created.code!==201||!created.body.project?.id)throw Error('Synthetic project create HTTP '+created.code);
-  project=created.body.project.id;
-  const chat=await request('/api/projects/'+encodeURIComponent(project)+'/messages','POST',{
-    message:'For this fictional project, explain navigation and accessibility.',
-    styles:['minimal','glass'],
-  });
-  if(chat.code!==200)throw Error('Synthetic chat HTTP '+chat.code);
-  const reply=chat.body.answer||{};
-  const source=['ai','guide','error'].includes(reply.source)?reply.source:'unknown';
-  const provider=['gemini','openrouter'].includes(reply.provider)?reply.provider:'none';
-  console.log('LIVE_AI_SMOKE source='+source+' provider='+provider+' (fictional project; no answer text logged)');
-  if(source!=='ai')console.log('LIVE_AI_SMOKE AI service still returned deterministic fallback; check Render provider diagnostics.');
+  await run();
 }catch(error){
-  // No upstream body, response headers, request payload or secret values logged.
-  console.log('LIVE_AI_SMOKE request failed: '+(error?.name==='TimeoutError'?'timeout':'HTTP or transport'));
+  // Only fixed error codes from this test are logged. No response bodies or secrets.
+  const code=/^[a-z0-9-]{3,50}$/.test(error?.message||'')?error.message:
+    error?.name==='TimeoutError'?'timeout':'transport-or-json';
+  console.error('LIVE_AI_SMOKE FAILED code='+code);
+  process.exitCode=1;
 }finally{
   if(cookie){
+    cleanupAttempted=true;
     try{
-      const deleted=await request('/api/profile','DELETE');
-      console.log('LIVE_AI_SMOKE synthetic guest cleanup: '+(deleted.code===200?'complete':'failed'));
+      const removed=await call('/api/profile','DELETE');
+      if(removed.status!==200||removed.data?.deleted!==true)throw Error('cleanup-status');
+      console.log('LIVE_AI_SMOKE synthetic guest cleanup=complete');
     }catch{
-      console.log('LIVE_AI_SMOKE synthetic guest cleanup: failed');
+      console.error('LIVE_AI_SMOKE synthetic guest cleanup=failed');
+      process.exitCode=1;
     }
+  }
+  if(!cleanupAttempted&&projectId){
+    console.error('LIVE_AI_SMOKE synthetic guest cleanup=not-attempted');
+    process.exitCode=1;
   }
 }
