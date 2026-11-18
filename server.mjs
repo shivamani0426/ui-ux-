@@ -27,6 +27,23 @@ const authGateway=createAuthGateway({
   key:process.env.FRONTLINE_SUPABASE_PUBLISHABLE_KEY||'',
   siteUrl:process.env.FRONTLINE_SITE_URL||'https://ui-compass-studio.onrender.com',
   googleEnabled:process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED==='true',
+  adminKey:process.env.FRONTLINE_SUPABASE_ADMIN_KEY||'',
+  signingSecret:process.env.FRONTLINE_ACTION_SIGNING_SECRET||'',
+  // Strict server session checks can be enabled after verifying the DB role.
+  sessionVerifier:process.env.FRONTLINE_STRICT_SESSION_CHECK==='true'?async(user,accessToken)=>{
+    if(!pg)return false;
+    let payload;
+    try{
+      const parts=accessToken.split('.');
+      if(parts.length!==3)return false;
+      payload=JSON.parse(Buffer.from(parts[1],'base64url').toString());
+    }catch{return false;}
+    if(payload.sub!==user.id||typeof payload.session_id!=='string'||
+      !/^[a-f0-9-]{36}$/i.test(payload.session_id))return false;
+    const match=await pg.query('SELECT 1 FROM auth.sessions WHERE id=$1 AND user_id=$2 LIMIT 1',
+      [payload.session_id,user.id]);
+    return match.rowCount===1;
+  }:null,
   prod:isProd||Boolean(process.env.RENDER_SERVICE_ID)
 });
 let pg=null;
@@ -541,10 +558,43 @@ const server=http.createServer(async(req,res)=>{
           name:String(signedIn.user_metadata?.full_name||'').slice(0,120),
           picture:googleProfileImage(signedIn.user_metadata?.avatar_url||signedIn.user_metadata?.picture)}:null
       });
+      if(req.method==='GET'&&pathname==='/api/auth/security'){
+        return json(res,200,{authenticated:!!signedIn,
+          accountDeletionAvailable:!!signedIn&&authGateway.deletionAvailable,
+          recentGoogleVerification:!!signedIn&&authGateway.recentlyVerified(req,signedIn),
+          strictSessionValidation:process.env.FRONTLINE_STRICT_SESSION_CHECK==='true'});
+      }
       if(req.method==='POST'&&pathname==='/api/auth/logout'){
-        await readBody(req);
-        await authGateway.logout(req,res);
-        return json(res,200,{signedOut:true});
+        const body=await readBody(req);
+        const scope=body.scope===undefined?'local':body.scope;
+        if(!['local','global','others'].includes(scope))
+          return json(res,400,{error:'Invalid sign-out scope.'});
+        if(scope!=='local'&&!signedIn)
+          return json(res,401,{error:'Sign in before managing other devices.'});
+        if(scope==='global'&&body.confirmation!=='SIGN OUT EVERYWHERE')
+          return json(res,400,{error:'Confirm signing out of all devices.'});
+        const result=await authGateway.logout(req,res,{scope});
+        return json(res,200,{signedOut:scope!=='others',scope:result.scope});
+      }
+      if(req.method==='DELETE'&&pathname==='/api/auth/account'){
+        const body=await readBody(req);
+        if(!signedIn)return json(res,401,{error:'Sign in to delete your account.'});
+        if(!authGateway.deletionAvailable)
+          return json(res,503,{error:'Permanent account deletion requires secure administrator setup. No data was changed.'});
+        if(!authGateway.recentlyVerified(req,signedIn))
+          return json(res,403,{error:'Verify your identity with Google again before deleting your account.'});
+        if(body.confirmation!=='DELETE FRONTLINE ACCOUNT'||body.email!==signedIn.email)
+          return json(res,400,{error:'Type the exact confirmation phrase and account email.'});
+        // Preflight the server-only Admin API before any destructive operation.
+        await authGateway.verifyDeleteAbility(signedIn);
+        // Delete every owner-scoped table transactionally. This cannot be
+        // atomic with the external Supabase Auth API, so failed auth cleanup
+        // returns a retryable, truthful partial failure.
+        await eraseProfile(owner);
+        try{await authGateway.deleteAuthUser(signedIn);}
+        catch{return json(res,503,{error:'Your Frontline workspace was erased, but account sign-in removal could not finish. Please retry account deletion after re-verifying with Google.'});}
+        authGateway.clearLocalSession(res);
+        return json(res,200,{accountDeleted:true,workspaceDeleted:true});
       }
       if(req.method==='POST'&&pathname==='/api/auth/claim'){
         await readBody(req);
