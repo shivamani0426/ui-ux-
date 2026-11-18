@@ -41,3 +41,55 @@
 
 /* Milestone 07D: readable, optional explanation of actual feedback effect. */
 .pi-feedback-impact{display:block;margin-top:9px;color:var(--muted);font-size:11px;line-height:1.55}
+
+
+/* Milestone 11: explainable comparison + scoped refinement, accessible in
+   the original friendly blue light/dark Frontline design system. */
+.pi-confidence{display:flex;align-items:center;gap:7px;margin-top:11px;font:500 10px/1.5 Manrope,sans-serif;color:var(--muted)}
+.pi-confidence svg{flex:none;color:var(--fl-brass)}
+.pi-confidence strong{text-transform:capitalize;color:var(--fl-ember)}
+.pi-top-pick{border:1px solid var(--fl-surface-edge);border-radius:13px;padding:13px 15px;
+  background:linear-gradient(120deg,var(--soft),var(--fl-surface-glass));margin:11px 0}
+.pi-top-pick strong{display:block;font:800 15px/1.5 Manrope,sans-serif;color:var(--text)}
+.pi-top-pick p{margin:4px 0 0;font-size:11px}
+.pi-exclusions{border:1px solid rgba(208,149,106,.35);border-radius:13px;padding:12px 13px;margin:14px 0;
+ background:var(--surface)}
+.pi-exclusions>strong{display:flex;align-items:center;gap:7px;font:750 11px/1.5 Manrope,sans-serif;color:var(--text)}
+.pi-exclusions>strong svg{color:var(--fl-ember)}
+.pi-exclusions>div{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.pi-exclusion-chip{padding:6px 9px;border-radius:99px;border:1px solid var(--fl-surface-edge);
+ color:var(--text);background:var(--soft);font:700 10px/1.4 Manrope,sans-serif}
+.pi-exclusions p{margin:9px 0 0;color:var(--muted);font-size:10px}
+.pi-refine{border:1px solid var(--fl-surface-edge);border-radius:14px;padding:15px;background:var(--bg);margin:15px 0}
+.pi-refine>label{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.pi-refine>label strong{font:800 12px/1.4 Manrope,sans-serif}
+.pi-refine>label span{color:var(--muted);font:500 11px/1.5 'DM Sans',sans-serif}
+.pi-refine textarea{box-sizing:border-box;display:block;width:100%;min-height:68px;
+ border-radius:12px;border:1px solid var(--fl-surface-edge);background:var(--surface);
+ padding:11px 12px;font:500 12px/1.65 'DM Sans',sans-serif;color:var(--text);
+ resize:vertical}
+.pi-refine textarea:focus-visible{outline:2px solid var(--fl-brass);outline-offset:2px}
+.pi-refine textarea::placeholder{color:var(--muted)}
+.pi-refine-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px}
+.pi-refine-actions small{font-size:10px;line-height:1.5;color:var(--muted);margin-right:auto}
+.pi-refine-actions button{border:1px solid var(--fl-brass);border-radius:10px;padding:10px 13px;
+ display:inline-flex;align-items:center;gap:6px;font:750 11px/1.4 Manrope,sans-serif;
+ background:var(--fl-brass);color:var(--bg);cursor:pointer}
+.pi-refine-actions button.pi-refine-reset{background:var(--surface);color:var(--text);border-color:var(--fl-surface-edge)}
+.pi-refine-actions button:disabled{opacity:.52;cursor:default}
+.pi-refine-actions button:focus-visible{outline:2px solid var(--fl-brass);outline-offset:3px}
+.pi-mitigations{padding-left:17px;margin:9px 0;color:var(--muted);font-size:10px;line-height:1.7}
+.pi-factor-details{margin:11px 0;padding:8px 9px;border:1px solid var(--fl-surface-edge);border-radius:9px}
+.pi-factor-details summary{cursor:pointer;font-size:10px;font-weight:750;color:var(--fl-ember);list-style:revert}
+.pi-factor-details summary:focus-visible{outline:2px solid var(--fl-brass);outline-offset:3px}
+.pi-factor-details ul{padding:0;list-style:none;margin:8px 0}
+.pi-factor-details li{display:flex;align-items:center;justify-content:space-between;gap:10px;
+ border-top:1px solid var(--fl-surface-edge);padding:6px 0;font-size:10px;line-height:1.4;color:var(--muted)}
+.pi-factor-details li strong{color:var(--text);font-variant-numeric:tabular-nums}
+.pi-factor-details small{font-size:9px;color:var(--muted)}
+@media(max-width:650px){
+ .pi-refine{padding:12px}
+ .pi-refine-actions{justify-content:flex-start}
+ .pi-refine-actions small{width:100%}
+ .pi-refine-actions button{flex:1;justify-content:center}
+}

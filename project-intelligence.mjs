@@ -10,7 +10,58 @@ const categories=[
 ['AI Product',/\b(ai|llm|chatbot|agent|machine learning|generative)\b/i],
 ['SaaS',/\b(saas|dashboard|analytics|crm|enterprise)\b/i]
 ];
-export const inferProjectCategory=brief=>categories.find(([,re])=>re.test(clean(brief)))?.[0]||'Digital product';
+// A phrase like "without chat" must never become a recommended chat module.
+// Interpret the last explicit mention, so a later refinement can deliberately
+// replace an earlier requirement. No model calls or third-party data involved.
+const NEGATION=/\b(?:no|without|exclude(?:d)?|omit|avoid|remove|never|do\s+not|does\s+not|must\s+not|should\s+not|don't|not\s+(?:include|use|need|require|allow))\b/gi;
+const PRESERVATION=/\b(?:do\s+not|must\s+not|should\s+not|don't|never)\s+(?:remove|exclude|omit|drop|delete)\b/i;
+const sentences=text=>String(text||'').split(/[.!?;\n]+|\b(?:but|however|instead)\b/gi).filter(Boolean);
+const ruleStatus=(text,re)=>{
+  let latest=null,position=0;
+  for(const clause of sentences(text)){
+    const matches=[...clause.matchAll(new RegExp(re.source,'gi'))];
+    for(const m of matches){
+      const before=clause.slice(Math.max(0,m.index-75),m.index);
+      const negative=[...before.matchAll(NEGATION)].some(hit=>{
+        if(before.length-(hit.index+hit[0].length)>66)return false;
+        // A "don't remove assignments" clause doesn't cancel a later,
+        // independent "avoid glass" or "exclude messages" instruction.
+        const immediate=before.slice(hit.index);
+        if(/^\s*(?:do\s+not|must\s+not|should\s+not|don't|never)\s+(?:remove|exclude|omit|drop|delete)\b/i.test(immediate))
+          return false;
+        // "remove" is also a standalone negation keyword: do not count it
+        // again when it is protected by a preceding "don't".
+        const beforeHit=before.slice(Math.max(0,hit.index-22),hit.index);
+        if(/^(?:remove|exclude|omit|drop|delete)$/i.test(hit[0])&&
+          /(?:do\s+not|must\s+not|should\s+not|don't|never)\s+$/i.test(beforeHit))
+          return false;
+        return true;
+      });
+      latest={excluded:negative,position:position+m.index,
+        excerpt:clause.trim().replace(/\s+/g,' ').slice(0,145)};
+    }
+    position+=clause.length+1;
+  }
+  return latest;
+};
+export const inferProjectCategory=brief=>{
+  const text=clean(brief);
+  const choices=categories.map(([name,re],order)=>{
+    const matches=[...text.matchAll(new RegExp(re.source,'gi'))];
+    // "Ecommerce catalog without checkout" is still Commerce. Score
+    // positive category clues individually, not just the last category word.
+    const positive=matches.filter(m=>ruleStatus(text,
+      new RegExp('\\b'+m[0]+'\\b','i'))?.excluded===false);
+    return {
+      name,order,
+      evidence:positive.reduce((score,m)=>score+
+        (name==='SaaS'&&/^(dashboard|analytics)$/i.test(m[0])?.35:
+          name==='SaaS'?2.5:2.2),0)
+    };
+  }).filter(c=>c.evidence>0)
+    .sort((a,b)=>b.evidence-a.evidence||a.order-b.order);
+  return choices[0]?.name||'Digital product';
+};
 const roles=[
 ['Students / learners',/\b(students?|learners?)\b/i],
 ['Teachers / educators',/\b(teachers?|instructors?|professors?)\b/i],
@@ -28,8 +79,9 @@ const featureRules=[
 ['calendar','Calendar and scheduling','Calendar and schedule','schedule and review an event',/\b(calendars?|schedules?|appointments?|bookings?)\b/i],
 ['progress','Progress and insights','Progress and insights','review progress and identify next actions',/\b(progress|analytics|reports?|insights?|grades?|metrics?)\b/i],
 ['courses','Courses and content','Courses and content','find and resume learning material',/\b(courses?|lessons?|curriculum|modules?)\b/i],
-['messages','Messages and conversations','Messages','send and return to a conversation',/\b(messages?|chats?|conversations?|inbox)\b/i],
-['commerce','Product discovery and checkout','Browse and checkout','compare products and complete checkout',/\b(products?|catalog|cart|checkout|shopping)\b/i],
+['messages','Messages and conversations','Messages','send and return to a conversation',/\b(messag(?:es?|ing)|chats?|conversations?|inbox)\b/i],
+['commerce','Product discovery and catalog','Product catalog','browse and compare products',/\b(products?|catalog|shopping|storefront|marketplace)\b/i],
+['checkout','Cart and checkout','Checkout','review cart and complete checkout',/\b(cart|checkout|place (?:an )?order|purchase flow)\b/i],
 ['payments','Payments and transactions','Payments','review and complete a transaction',/\b(payments?|transactions?|invoices?|billing)\b/i],
 ['portfolio','Work and case studies','Work and case studies','inspect a case study and contact its creator',/\b(portfolio|case studies|project gallery)\b/i],
 ['notifications','Notification center','Notifications','review notifications and find unread items',/\b(notifications?|unread count|alerts?|reminders?)\b/i],
@@ -67,15 +119,34 @@ SaaS:['Overview dashboard','Primary workflow','Reports and analytics','Team sett
 export function analyzeProject(brief,{category}={}){
   const text=clean(brief);
   const kind=pagesByCategory[category]?category:inferProjectCategory(text);
-  const audience=roles.filter(([,re])=>re.test(text)).map(([label])=>label);
-  const features=featureRules.filter(x=>x[4].test(text)).map(([id,label,page,action])=>({id,label,page,action,evidence:'Explicitly mentioned'}));
+  const audience=roles.filter(([,re])=>{
+    const status=ruleStatus(text,re);return status&&!status.excluded;
+  }).map(([label])=>label);
+  const interpreted=featureRules.map(([id,label,page,action,re])=>({
+    id,label,page,action,status:ruleStatus(text,re)
+  })).filter(x=>x.status);
+  const features=interpreted.filter(x=>!x.status.excluded)
+    .sort((a,b)=>a.status.position-b.status.position)
+    .map(({id,label,page,action})=>({id,label,page,action,evidence:'Explicitly mentioned'}));
+  const excludedFeatures=interpreted.filter(x=>x.status.excluded).map(x=>({
+    id:x.id,label:x.label,evidence:'Explicitly excluded',excerpt:x.status.excerpt
+  }));
   const limits=constraints.filter(([,re])=>re.test(text)).map(([label])=>label);
   const defaults=pagesByCategory[kind].filter(page=>
     page!=='Teacher workspace'||audience.includes('Teachers / educators'));
   const rolePages=audience.includes('Administrators')?['Administration']: [];
   // Explicit modules come before proposed defaults. Related course/assignment
   // pages collapse to a single destination, not two overlapping navigation items.
-  const pages=unique([defaults[0],...features.map(x=>x.page),...rolePages,...defaults.slice(1)]).slice(0,15);
+  // Excluded capabilities cannot quietly return through generic category pages.
+  const disallowed=excludedFeatures.flatMap(f=>({
+    payments:[/transactions/i,/payments/i],
+    checkout:[/checkout/i],
+    commerce:[/discover products/i,/product details/i,/checkout/i,/orders and account/i],
+    messages:[/conversations and results/i],
+    tutor:[/ai assistance/i]
+  }[f.id]||[]));
+  const pages=unique([defaults[0],...features.map(x=>x.page),...rolePages,...defaults.slice(1)])
+    .filter(page=>!disallowed.some(rule=>rule.test(page))).slice(0,15);
   const workflows=features.slice(0,9).map(f=>({name:f.label,steps:['Open '+f.page,'Find the relevant action','Use the interface to '+f.action,'Confirm success or recover from error']}));
   if(!workflows.length)workflows.push({name:'Primary task (suggested)',steps:['Open overview','Find primary action','Complete the action','Review confirmation']});
   const questions=[];
@@ -85,11 +156,16 @@ export function analyzeProject(brief,{category}={}){
   if(features.some(f=>f.id==='tutor'))questions.push('What sources, accuracy checks and escalation path should the AI tutor use when uncertain?');
   if(!limits.length)questions.push('Any device, accessibility, or performance constraints?');
   const decisions=unique((text.match(/(?:^|[.!?]\s+)([^.!?]{0,15}\b(?:must|keep|preserve|only|do not|without|should)\b[^.!?]{4,160})/gi)||[]).map(x=>clean(x,175))).slice(0,6);
-  const requestedStyles=unique([/\b(glassmorphism|glass ui|glass panels|neon|futuristic|immersive|3d)\b/i.test(text)?'glass':null,/\b(minimal|clean|simple|apple.style)\b/i.test(text)?'minimal':null,/\b(creative|playful|editorial|bold)\b/i.test(text)?'creative':null]);
+  const requestedStyles=unique([
+    ruleStatus(text,/\b(glassmorphism|glass ui|glass panels|neon|futuristic|immersive|3d)\b/i)?.excluded===false?'glass':null,
+    ruleStatus(text,/\b(minimal|clean|simple|apple.style)\b/i)?.excluded===false?'minimal':null,
+    ruleStatus(text,/\b(creative|playful|editorial|bold)\b/i)?.excluded===false?'creative':null
+  ]);
   return {category:kind,audience:audience.length?audience:['Primary audience not stated — confirm'],
-    audienceSource:audience.length?'explicit':'suggested',features,constraints:limits,pages,workflows,
+    audienceSource:audience.length?'explicit':'suggested',features,excludedFeatures,constraints:limits,pages,workflows,
     goals:features.length?features.slice(0,6).map(f=>'Help users '+f.action):['Make the primary task discoverable (to confirm)'],
     explicitDecisions:decisions,requestedStyles,openQuestions:questions,evidenceLevel:features.length&&audience.length?'brief-specific':'partly-inferred',
+    confidence:features.length>=2&&audience.length?'high':features.length||audience.length?'medium':'low',
     note:'Suggested pages and heuristic assessments are not findings from user testing or scanned websites.'};
 }
 const tradeoffs={
@@ -110,9 +186,19 @@ export function compareDirections(analysis,styles,preferences={}){
     const prior=Math.max(-5,Math.min(5,Number(weights[s.id])||0));
     const base=task?(s.id==='minimal'?17:7):(s.id==='creative'?17:s.id==='glass'?14:12);
     const requested=(a.requestedStyles||[]).includes(s.id);
-    const baseScore=65+base+(repeated&&s.id==='minimal'?5:0)
-      +(accessibility&&s.id==='minimal'?4:0)-(performance&&s.id==='glass'?12:0)
-      -(repeated&&s.id==='creative'?4:0)+(requested?18:0);
+    const factors=[
+      {label:'Neutral starting point',points:65,source:'heuristic'},
+      {label:'Product type '+key,points:base,source:'inferred category'},
+      {label:'Repeatable workflows',points:repeated?(s.id==='minimal'?5:s.id==='creative'?-4:0):0,
+        source:'explicit modules'},
+      {label:'Accessibility requirement',points:accessibility&&s.id==='minimal'?4:0,
+        source:'brief constraint'},
+      {label:'Performance and reduced motion',points:performance&&s.id==='glass'?-12:0,
+        source:'brief constraint'},
+      {label:'Explicit style preference',points:requested?18:0,source:'brief style direction'},
+      {label:'Private learned preference',points:prior*2,source:'account-only feedback'}
+    ].filter(f=>f.points!==0);
+    const baseScore=factors.reduce((total,f)=>total+f.points,0)-prior*2;
     const bound=n=>Math.max(48,Math.min(96,n));
     const baseline=bound(baseScore),score=bound(baseScore+prior*2);
     const appliedPoints=score-baseline;
@@ -122,10 +208,32 @@ export function compareDirections(analysis,styles,preferences={}){
       appliedPointAdjustment:appliedPoints,
       scoreBounded:appliedPoints!==prior*2,
     };
+    const applicableFeatures=(a.features||[]).slice(0,2).map(f=>f.label);
+    const mitigations=s.id==='glass'
+      ?['Use opaque controls and text layers; limit backdrop blur, especially on mobile.',
+        'Provide a low-motion, low-power path without sacrificing the primary task.']
+      :s.id==='creative'
+        ?['Keep primary navigation and form actions predictable despite expressive visuals.',
+          'Offer a restrained mode for frequent or accessibility-critical workflows.']
+        :['Avoid making information dense by default; validate task hierarchy with actual users.',
+          'Use distinctive but accessible brand accents without hiding important actions.'];
     return {id:s.id,name:s.name,match:score,personalization,
+      scoreFactors:[
+        ...factors,
+        ...(score!==baseScore+prior*2?[{
+          label:'Bounded score adjustment',points:score-(baseScore+prior*2),
+          source:'heuristic score limit'
+        }]:[])
+      ],
+      evidence:{category:key,requestedModules:applicableFeatures,
+        constraints:(a.constraints||[]).slice(0,4),confidence:a.confidence||'low'},
+      mitigations,comparisonSummary:applicableFeatures.length
+        ?s.name+' is assessed for '+applicableFeatures.join(' and ')+'; its score is a bounded heuristic, not a tested result.'
+        :s.name+' is provisional until the primary workflow is confirmed.',
       criteria:{...t.criteria,projectFit:Math.max(2,Math.min(5,Math.round(score/20)))},
       strengths:t.strength,tradeoff:t.risk,reasons:[
         'For '+key.toLowerCase()+' requirements: '+t.strength+'.',
+        ...(applicableFeatures.length?['Explicit work to support: '+applicableFeatures.join('; ')+'.']:[]),
         ...(repeated?['Repeated tasks need stable navigation and clear feedback.']:[]),
         ...(accessibility?['Validate keyboard order, contrast and assistive-technology labels.']:[]),
         ...(performance&&s.id==='glass'?['Avoid heavy blurs on low-power devices.']:[]),
@@ -135,6 +243,56 @@ export function compareDirections(analysis,styles,preferences={}){
           ' New project requirements remain primary.']:[])
       ],scoring:'Heuristic fit indicator, not a measured usability score',order:i};
   }).sort((x,y)=>y.match-x.match||x.order-y.order).map(({order,...x})=>x);
+}
+/** Transparent, brief-grounded decision support (not a model's hidden thoughts).
+ * No private data is shared with other users or external AI providers. */
+export function buildDecisionReport(analysis={},comparisons=[]){
+  const ranked=Array.isArray(comparisons)?comparisons:[];
+  const primary=ranked[0]||null;
+  const features=Array.isArray(analysis.features)?analysis.features:[];
+  const excluded=Array.isArray(analysis.excludedFeatures)?analysis.excludedFeatures:[];
+  const constraints=Array.isArray(analysis.constraints)?analysis.constraints:[];
+  return {
+    version:2,
+    status:analysis.confidence||'low',
+    primaryStyle:primary?{id:primary.id,name:primary.name,heuristicFit:primary.match,
+      tradeoff:primary.tradeoff,mitigations:primary.mitigations||[]}:null,
+    evidence:{
+      category:analysis.category||'Digital product',
+      audience:analysis.audienceSource==='explicit'?(analysis.audience||[]):[],
+      requestedFeatures:features.map(f=>f.label),
+      excludedCapabilities:excluded.map(f=>f.label),
+      constraints:constraints.slice(0,12),
+      unconfirmed:(analysis.openQuestions||[]).slice(0,6)
+    },
+    decisionRules:[
+      'Explicit requirements and exclusions take precedence over saved preferences.',
+      'Style fit uses disclosed heuristic factors, not live usability or accessibility measurements.',
+      'Keep the strongest task structure; borrow visual details from secondary directions only when they do not conflict.',
+      'Validate open questions and visual contrast with actual users before implementation.'
+    ],
+    alternatives:ranked.slice(1).map(item=>({
+      id:item.id,name:item.name,heuristicFit:item.match,tradeoff:item.tradeoff,
+      mitigations:item.mitigations||[]
+    }))
+  };
+}
+/** Guard against a provider enthusiastically re-adding explicitly forbidden
+ * functionality. This is a conservative lexical safety net, not a proof
+ * of semantic correctness. When uncertain, prefer complete guided output. */
+export function inspectAdvisorScope(text,analysis={}){
+  const reply=String(text||'').slice(0,5000);
+  const excluded=(Array.isArray(analysis.excludedFeatures)?analysis.excludedFeatures:[]);
+  const patterns={
+    messages:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:chats?|messages?|messaging|inbox)\b/i,
+    checkout:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:checkout|cart|buy\s+now|order\s+placement)\b/i,
+    payments:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:payments?|billing|transactions?)\b/i,
+    tutor:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:ai\s+tutor|chatbot|study\s+assistant)\b/i,
+    commerce:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:shopping|product\s+catalog|storefront)\b/i
+  };
+  const conflicting=excluded.filter(item=>patterns[item.id]?.test(reply)).map(item=>item.id);
+  return {passed:conflicting.length===0,conflicting,
+    warning:'Lexical scope check only; does not certify output correctness or security.'};
 }
 export function planFusion(analysis,styles,preferences={}){
  const ranked=compareDirections(analysis,styles,preferences);
@@ -150,7 +308,8 @@ const FEATURE_ALIASES={
  progress:['progress','analytics','insights','metrics'],
  courses:['course','lesson','curriculum'],
  messages:['messages','conversation','inbox'],
- commerce:['product','shopping','checkout'],
+ commerce:['product','shopping','catalog'],
+ checkout:['checkout','cart','purchase','place an order'],
  payments:['payment','transaction','invoice'],
  portfolio:['portfolio','case study','case studies'],
  profile:['profile','student account','user account'],

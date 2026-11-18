@@ -8,7 +8,7 @@ import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
 import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
-import {analyzeProject,compareDirections} from './project-intelligence.mjs';
+import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
   resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
@@ -167,6 +167,21 @@ async function getProject(owner,id){
   if(!pg){const p=live.get(id);return p?.owner===owner?p:null;}
   const r=await pg.query(`SELECT id,title,brief,recommendation AS recommendations,messages,created_at AS "createdAt" FROM frontline.uic_projects WHERE id=$1 AND visitor_id=$2`,[id,owner]);
   return r.rows[0]||null;
+}
+async function updateRecommendations(owner,id,recommendations){
+  if(!pg){
+    const entry=live.get(id);
+    if(!entry||entry.owner!==owner)return false;
+    entry.recommendations=recommendations;
+    entry.updatedAt=new Date().toISOString();
+    live.set(id,entry);
+    return true;
+  }
+  const result=await pg.query(
+    'UPDATE frontline.uic_projects SET recommendation=$1,updated_at=NOW() WHERE id=$2 AND visitor_id=$3',
+    [JSON.stringify(recommendations),id,owner]
+  );
+  return result.rowCount===1;
 }
 async function updateMessages(owner,id,messages){
   if(!pg){const p=live.get(id);if(p?.owner===owner){p.messages=messages;p.updatedAt=new Date().toISOString();live.set(id,p);}return;}
@@ -467,14 +482,19 @@ function validateText(text,min,max){return typeof text==='string'&&text.trim().l
 async function chatReply(brief,messages,styleIds,preferences={}){
   const latest=messages.at(-1)?.content||'';
   const chosen=styleIds.map(i=>STYLES.find(s=>s.id===i)).filter(Boolean);
+  const analysis=analyzeProject(brief);
+  const excluded=analysis.excludedFeatures?.map(f=>f.label)||[];
+  const scopedBrief=brief+(excluded.length?'\nExplicitly out of scope: '+excluded.join('; '):'');
   // Tests never consume real API quotas or send content to model providers.
   let failure={reason:'provider-unavailable',retryAfterSeconds:0};
   const ai=process.env.NODE_ENV==='test'?null:await designAiReply({
-    brief,messages,styles:chosen,designPreferences:preferenceHints(preferences),
+    brief:scopedBrief,messages,styles:chosen,designPreferences:preferenceHints(preferences),
     onFailure:info=>{failure=info}
   });
-  if(ai)return ai;
-  const analysis=analyzeProject(brief);
+  if(ai){
+    if(inspectAdvisorScope(ai.text,analysis).passed)return ai;
+    failure={reason:'scope-conflict',retryAfterSeconds:0};
+  }
   const audience=analysis.audienceSource==='explicit'
     ?analysis.audience.join(', '):'Primary users not yet confirmed';
   const preferred=compareDirections(analysis,chosen.length?chosen:STYLES,effectivePreferences(preferences));
@@ -499,12 +519,15 @@ async function chatReply(brief,messages,styleIds,preferences={}){
       ?'OpenRouter timed out on this request. Free models can be slow or overloaded; the structured guidance below remains available.'
       :failure.reason==='incomplete-output'
         ?'OpenRouter stopped before its answer was complete. An unfinished AI answer was not passed off as a final design.'
-        :'OpenRouter did not provide an answer for this request.';
+        :failure.reason==='scope-conflict'
+          ?'The AI suggestion contradicted an explicitly excluded capability, so Frontline used a scoped design guide instead.'
+          :'OpenRouter did not provide an answer for this request.';
   const lines=[
     '## Project understanding',
     '**Audience:** '+audience,
     '**Requested modules:** '+(analysis.features.length?analysis.features.map(f=>f.label).join('; '):'No modules explicitly identified yet.'),
     '**Constraints:** '+(analysis.constraints.length?analysis.constraints.join('; '):'Responsive, accessible defaults proposed.'),
+    '**Explicitly out of scope:** '+(excluded.length?excluded.join('; '):'No exclusions stated.'),
     '',
     '## Recommended UI/UX direction',
     '**'+(best?.name||'Minimal SaaS')+'** is the strongest starting point for these requirements. '+(best?.strengths||'Favor clear task hierarchy.')+'.',
@@ -704,6 +727,23 @@ const server=http.createServer(async(req,res)=>{
         }
         return json(res,405,{error:'Method not allowed'});
       }
+      const intelligenceMatch=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/intelligence$/);
+      if(intelligenceMatch){
+        const id=intelligenceMatch[1],project=await getProject(owner,id);
+        if(!project)return json(res,404,{error:'Project not found'});
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        const body=await readBody(req);
+        if(typeof body.refinement!=='string'||body.refinement.length>450)
+          return json(res,400,{error:'Refinement must be a string of 450 characters or fewer.'});
+        const refinement=body.refinement.trim();
+        if(refinement.length>0&&refinement.length<5)
+          return json(res,400,{error:'Describe your change in at least five characters, or leave it empty to reset.'});
+        const prefs=effectivePreferences(await profile(owner));
+        const next=recommend(project.brief,prefs,await listReferences(),{refinement});
+        const stored=await updateRecommendations(owner,id,next);
+        if(!stored)return json(res,404,{error:'Project not found'});
+        return json(res,200,{project:{...project,recommendations:next},decision:next.decision});
+      }
       const designMatch=new URL(req.url,'http://localhost').pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/design-prompt$/);
       if(designMatch){
         const id=designMatch[1],p=await getProject(owner,id);
@@ -753,17 +793,11 @@ const server=http.createServer(async(req,res)=>{
           // Older saved projects did not have an intelligence snapshot. Enrich the
           // response without writing to the user's PostgreSQL project history.
           const prefs=effectivePreferences(await profile(owner));
-          // Refresh derived intelligence for previously saved projects without mutating
-          // stored messages, recommendations, or their PostgreSQL rows.
-          const analysis=analyzeProject(p.brief,{category:p.recommendations?.category});
-          const comparison=compareDirections(analysis,STYLES,prefs);
-          const recommendations={...p.recommendations,analysis,comparison,
-            designs:(p.recommendations?.designs||[]).map(d=>{
-              const found=comparison.find(c=>c.id===d.id);
-              return found?{...d,match:found.match,tradeoff:found.tradeoff,strengths:found.strengths,
-                criteria:found.criteria,scoring:found.scoring,reasons:found.reasons,
-                personalization:found.personalization}:d;
-            })};
+          // Recompute only derived heuristic/evidence fields using the
+          // original brief plus the saved explicit refinement. Project text,
+          // private history and approved selections are never overwritten.
+          const recommendations=recommend(p.brief,prefs,await listReferences(),
+            {refinement:p.recommendations?.refinement||''});
           return json(res,200,{project:{...p,recommendations}});
         }
         if(req.method==='POST'&&action==='/messages'){
@@ -771,7 +805,9 @@ const server=http.createServer(async(req,res)=>{
           if(!Array.isArray(b.styles)||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Invalid styles'});
           const messages=(Array.isArray(p.messages)?p.messages:[]).slice(-24);
           messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
-          const response=await chatReply(p.brief,messages,b.styles,await profile(owner));messages.push({role:'assistant',content:response.text,source:response.source,
+          const activeBrief=p.brief+(p.recommendations?.refinement?
+            '\nLatest refinement: '+p.recommendations.refinement:'');
+          const response=await chatReply(activeBrief,messages,b.styles,await profile(owner));messages.push({role:'assistant',content:response.text,source:response.source,
             ...(response.provider?{provider:response.provider}:{}),
             ...(response.failureReason?{failureReason:response.failureReason}:{}),
             ...(response.retryAfterSeconds?{retryAfterUntil:new Date(Date.now()+response.retryAfterSeconds*1000).toISOString()}:{}),

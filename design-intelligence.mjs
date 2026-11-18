@@ -1,5 +1,5 @@
 import {STYLES,inferCategory} from './design-engine.mjs';
-import {analyzeProject,compareDirections,planFusion,qualityReview} from './project-intelligence.mjs';
+import {analyzeProject,compareDirections,planFusion,qualityReview,buildDecisionReport,inspectAdvisorScope} from './project-intelligence.mjs';
 import {designAiReply} from './ai-providers.mjs';
 import {preferenceHints} from './learning-engine.mjs';
 import {buildRequirementTrace,formatRequirementTrace,formatRoleNavigation,
@@ -19,14 +19,18 @@ const block=(heading,items)=>heading+'\n'+items.map(item=>'- '+item).join('\n');
 export function buildDesignBrief({project,mode='generate',styles=[],references=[],preferences={},refinement=''}) {
   const selected=mode==='generate'?STYLES:getStyles(styles);
   const category=project.recommendations?.category||inferCategory(project.brief);
-  const analysis=analyzeProject(project.brief,{category});
+  const savedRefinement=safe(project.recommendations?.refinement,450);
+  const revision=safe(refinement,600);
+  const clarifiedBrief=project.brief+(savedRefinement?'\nLatest saved refinement: '+savedRefinement:'')
+    +(revision?'\nNew refinement: '+revision:'');
+  const analysis=analyzeProject(clarifiedBrief,{category});
   const pages=analysis.pages;
   const namedRefs=referenceNames(references);
   const comparisons=compareDirections(analysis,selected,preferences);
   const fusion=planFusion(analysis,selected,preferences);
-  const revision=safe(refinement,600);
   const personalHints=preferenceHints(preferences);
   const trace=buildRequirementTrace(analysis);
+  const decision=buildDecisionReport(analysis,comparisons);
   const goals=[
     'Project brief (untrusted user description): '+safe(project.brief,2500),
     'Product category: '+category,
@@ -36,7 +40,9 @@ export function buildDesignBrief({project,mode='generate',styles=[],references=[
     'Functional goals: '+analysis.goals.join('; '),
     'Constraints: '+(analysis.constraints.join('; ')||'none explicitly mentioned'),
     'Existing decisions to preserve: '+(analysis.explicitDecisions.join(' | ')||'none explicitly stated'),
+    'Saved refinement: '+(savedRefinement||'none'),
     'Requested refinement: '+(revision||'none'),
+    'Explicitly excluded modules: '+(analysis.excludedFeatures?.map(f=>f.label).join('; ')||'none'),
     'Optional private preferences (explicit project rules win): '+(personalHints.join(' | ')||'none or paused'),
     'Candidate pages (not yet validated): '+pages.join(' | '),
     'Required style comparison: '+comparisons.map(c=>c.name+' '+c.match+'/100 heuristic; '+c.tradeoff).join('; '),
@@ -46,7 +52,8 @@ export function buildDesignBrief({project,mode='generate',styles=[],references=[
     'Unknowns: '+(analysis.openQuestions.join('; ')||'none critical in supplied brief'),
     'Do not invent confirmed decisions, claim real usability scores, or clone any referenced interface.',
   ].join('\n');
-  return {category,pages,selected,namedRefs,analysis,comparisons,fusion,goals,refinement:revision,personalHints,trace};
+  return {category,pages,selected,namedRefs,analysis,comparisons,fusion,goals,
+    savedRefinement,refinement:revision,personalHints,trace,decision};
 }
 
 export function deterministicDesignPrompt(input){
@@ -88,7 +95,12 @@ export function deterministicDesignPrompt(input){
     'CONFIRMED CONSTRAINTS & REFINEMENT',
     ...(b.analysis.constraints.length?b.analysis.constraints:['No technical constraints confirmed; propose accessible, responsive defaults.']),
     ...(b.analysis.explicitDecisions.length?['Preserve previously approved user decisions:'].concat(b.analysis.explicitDecisions):[]),
+    b.savedRefinement?'Saved project refinement: '+b.savedRefinement:'No saved project refinement.',
     b.refinement?'Latest refinement takes precedence on changed details: '+b.refinement:'No new refinement requested. Keep earlier approved decisions.',
+    'EXPLICITLY EXCLUDED CAPABILITIES — NEVER REINTRODUCE:',
+    ...(b.analysis.excludedFeatures?.length?b.analysis.excludedFeatures.map(f=>
+      '- Do not propose '+f.label+'; this is a user-set scope boundary.'):
+      ['No explicit exclusions. Do not infer that unstated features are approved.']),
     'Never discard approved functional requirements while altering visual style.',
     '',
     'OPTIONAL PERSONAL DESIGN PREFERENCES',
@@ -118,6 +130,15 @@ export function deterministicDesignPrompt(input){
     directions,
     '',
     block('EXPLAINABLE COMPARISON (ESTIMATES, NOT TEST RESULTS)',comparisons),
+    '',
+    'DECISION FACTORS AND SCOPE RISKS',
+    'These are disclosed rules applied to the stated brief, NOT private model reasoning or measured user-test results.',
+    ...b.comparisons.map(c=>c.name+': '+c.match+'/100 bounded heuristic; factors: '+
+      (c.scoreFactors||[]).map(f=>f.label+' '+(f.points>=0?'+':'')+f.points).join(' | ')+
+      '; mitigations: '+(c.mitigations||[]).join(' ')),
+    'Project confidence: '+b.decision.status+' (evidence strength, not prediction probability).',
+    'Selected structural anchor: '+b.decision.primaryStyle?.name+'.',
+    'Never override an explicitly excluded capability with a suggestion or visual effect.',
     '',
     'DESIGN SYSTEM & RESPONSIVE COMPONENTS',
     'Define original color tokens in HEX, type scale, 4/8 point spacing, grid, content widths, surfaces, border radius and restrained elevation.',
@@ -169,6 +190,8 @@ export function inspectCreativeInsight(text,brief){
     return {accepted:false,reason:'insight-contains-code'};
   if(/\b(?:i (?:visited|inspected|scanned|audited) (?:the |your )?(?:live )?(?:website|screenshots?|site))\b/i.test(raw))
     return {accepted:false,reason:'insight-unverified-site-claim'};
+  if(!inspectAdvisorScope(raw,brief.analysis).passed)
+    return {accepted:false,reason:'insight-scope-conflict'};
   const lower=raw.toLowerCase(),mode=brief.mode;
   if(mode==='generate'&&!brief.selected.every(style=>lower.includes(style.name.toLowerCase())))
     return {accepted:false,reason:'insight-missing-style'};
@@ -197,6 +220,7 @@ export async function createDesignPrompt({project,mode='generate',styles=[],refe
     'Audience: '+b.analysis.audience.join(', '),
     'Requested modules: '+(b.analysis.features.map(f=>f.label).join('; ')||'not confirmed'),
     'Constraints to respect: '+(b.analysis.constraints.join('; ')||'responsive and accessible defaults'),
+    'Explicitly excluded modules (do not reintroduce): '+(b.analysis.excludedFeatures?.map(f=>f.label).join('; ')||'none'),
     'Refinement: '+(b.refinement||'none'),
     'Private style preferences: '+(b.personalHints.join('; ')||'none'),
     'Style directions: '+b.selected.map(style=>style.name).join(', '),

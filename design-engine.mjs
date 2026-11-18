@@ -1,4 +1,4 @@
-import {analyzeProject,compareDirections,inferProjectCategory,planFusion} from './project-intelligence.mjs';
+import {analyzeProject,compareDirections,inferProjectCategory,planFusion,buildDecisionReport} from './project-intelligence.mjs';
 // Original, explainable recommendation baseline; independent of any LLM provider.
 export const STYLES = [
   { id:'minimal', name:'Minimal SaaS', short:'Precise, calm, and useful', icon:'layers', tag:'Best for clarity', accent:'#4859da', soft:'#eef0ff', colors:['#F8FAFC','#FFFFFF','#4859DA','#151B38'], fonts:'Inter / DM Sans', layout:'Structured two-column workspace', motion:'Subtle hover states and purposeful reveals', tags:['saas','dashboard','productivity','education','finance','professional','enterprise','healthcare'], description:'Clear hierarchy, generous whitespace, beautifully restrained UI.' },
@@ -28,9 +28,12 @@ export const REFERENCES = [
 const clean = text => String(text ?? '').trim().replace(/\s+/g,' ').slice(0,2500);
 const keywords = txt => new Set(txt.toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>2));
 export const inferCategory=inferProjectCategory;
-export function recommend(brief,preferences={},library=REFERENCES){
-  const prompt=clean(brief),words=keywords(prompt);
-  const analysis=analyzeProject(prompt);
+export function recommend(brief,preferences={},library=REFERENCES,options={}){
+  const prompt=clean(brief);
+  const refinement=typeof options.refinement==='string'?clean(options.refinement).slice(0,450):'';
+  const combined=refinement?prompt+'\nLatest refinement: '+refinement:prompt;
+  const words=keywords(combined);
+  const analysis=analyzeProject(combined);
   const category=analysis.category;
   const comparison=compareDirections(analysis,STYLES,preferences);
   const designs=comparison.map(c=>{
@@ -39,9 +42,12 @@ export function recommend(brief,preferences={},library=REFERENCES){
       .sort((a,b)=>b.tags.filter(tag=>words.has(tag)).length-a.tags.filter(tag=>words.has(tag)).length || (b.score||0)-(a.score||0))
       .slice(0,3).map(ref=>({id:ref.id,name:ref.name,award:ref.award,site:ref.site,rank:ref.rank}));
     return {...style,match:c.match,reasons:c.reasons,tradeoff:c.tradeoff,
-      strengths:c.strengths,criteria:c.criteria,scoring:c.scoring,personalization:c.personalization,references:refs};
+      strengths:c.strengths,criteria:c.criteria,scoring:c.scoring,
+      scoreFactors:c.scoreFactors,evidence:c.evidence,mitigations:c.mitigations,
+      comparisonSummary:c.comparisonSummary,personalization:c.personalization,references:refs};
   });
-  return {category,brief:prompt,designs,analysis,comparison,
+  return {category,brief:prompt,refinement,designs,analysis,comparison,
+    decision:buildDecisionReport(analysis,comparison),
     mode:'curated',
     recommendation:'For this '+category.toLowerCase()+' brief, '+designs[0].name+
       ' provides the strongest explainable fit. Compare the trade-offs before making your final selection.',
@@ -52,7 +58,9 @@ export function recommend(brief,preferences={},library=REFERENCES){
 export function exportPrompt(project,selectedIds){
   const choices=project.recommendations?.designs||[];
   const chosen=choices.filter(d=>selectedIds.includes(d.id));
-  const analysis=analyzeProject(project.brief,{category:project.recommendations?.category});
+  const refinement=String(project.recommendations?.refinement||'').slice(0,450);
+  const analysis=analyzeProject(project.brief+(refinement?'\nLatest refinement: '+refinement:''),{
+    category:project.recommendations?.category});
   const fusion=planFusion(analysis,chosen);
   return [
     'FRONTLINE UX/UI — ORIGINAL SELECTED DESIGN SPECIFICATION',
@@ -64,6 +72,10 @@ export function exportPrompt(project,selectedIds){
     'Users: '+analysis.audience.join(', ')+' ('+analysis.audienceSource+').',
     'Key goals: '+analysis.goals.join('; '),
     'Unknowns: '+(analysis.openQuestions.join('; ')||'Validate the inferred page choices with users.'),
+    'LATEST APPROVED REFINEMENT: '+(refinement||'None.'),
+    'EXPLICITLY OUT OF SCOPE — DO NOT ADD:',
+    ...(analysis.excludedFeatures?.length?analysis.excludedFeatures.map(f=>'- '+f.label):
+      ['No explicit exclusions provided. Do not invent extra requirements.']),
     '',
     'INFORMATION ARCHITECTURE AND WORKFLOWS',
     ...analysis.pages.map((p,i)=>(i+1)+'. '+p+': describe a primary user task, navigation, content hierarchy, loading/empty/error states and mobile behavior.'),
