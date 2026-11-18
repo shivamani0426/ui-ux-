@@ -28,7 +28,7 @@ export const REFERENCES = [
 const clean = text => String(text ?? '').trim().replace(/\s+/g,' ').slice(0,2500);
 const keywords = txt => new Set(txt.toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>2));
 export const inferCategory=inferProjectCategory;
-export function recommend(brief,preferences={},library=REFERENCES,options={}){
+export function recommend(brief,preferences={},library=[],options={}){
   const prompt=clean(brief);
   const refinement=typeof options.refinement==='string'?clean(options.refinement).slice(0,450):'';
   const combined=refinement?prompt+'\nLatest refinement: '+refinement:prompt;
