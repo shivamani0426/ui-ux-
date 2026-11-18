@@ -216,3 +216,11 @@
 .pw-github a,.pw-figma a{width:fit-content}
 @media(max-width:900px){.pw-github form{grid-template-columns:1fr}}
 @media(max-width:420px){.pw-github a,.pw-figma a{max-width:100%;white-space:normal}}
+
+.pw-device-warning{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+ border:1px solid var(--line,#d9e3f7);border-radius:11px;
+ padding:11px 13px;margin-top:13px;background:var(--soft,#eef4ff);
+ color:var(--text,#223451);font:650 11px/1.6 'DM Sans',sans-serif}
+.pw-device-warning button{border:1px solid var(--lav,#4868c6);
+ color:var(--lav,#4868c6);background:var(--surface,#fff);
+ border-radius:8px;padding:8px 11px;font:750 11px/1.4 Manrope,sans-serif}
