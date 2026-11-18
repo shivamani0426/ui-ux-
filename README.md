@@ -623,3 +623,18 @@ Render commit and run live guest smoke/browser checks. A successful pull-request
 CI run does not prove production has deployed. Earlier release checks observed
 Render still serving an old commit; resolve deployment configuration before
 claiming a new production release.
+
+
+## Milestone 15C — Native mobile installation icon compatibility
+
+The installable Frontline shell retains scalable SVG artwork while adding
+real, offline-cacheable PNG icons: `/pwa-icon-192.png` (Android),
+`/pwa-icon-maskable-512.png` (Android adaptive launcher icon), and
+`/apple-touch-icon.png` (180px iPhone home screen).
+The PWA install cache is versioned to `frontline-public-v3`; account,
+OAuth, and project API responses are never cached. Automated checks verify
+PNG signatures, dimensions, chunk CRCs, zlib decoding, and browser behavior.
+
+These changes improve installation compatibility but **are not a substitute**
+for hands-on Android Chrome and iPhone Safari installation tests or verified
+two-device Google account sign-in.

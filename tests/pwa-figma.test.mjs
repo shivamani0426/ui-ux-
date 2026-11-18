@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import {inflateSync} from 'node:zlib';
 import {server} from '../server.mjs';
 
 test('15A: installable manifest, scalable and maskable app icons',async()=>{
@@ -11,9 +12,23 @@ test('15A: installable manifest, scalable and maskable app icons',async()=>{
  assert.equal(m.display,'standalone');
  assert.ok(m.icons.some(i=>i.purpose==='any'));
  assert.ok(m.icons.some(i=>i.purpose==='maskable'));
+ assert.ok(m.icons.some(i=>i.type==='image/png'&&i.purpose==='any'&&i.sizes==='192x192'));
+ assert.ok(m.icons.some(i=>i.type==='image/png'&&i.purpose==='maskable'&&i.sizes==='512x512'));
+ assert.ok(m.icons.some(i=>i.type==='image/png'&&i.purpose==='any'&&i.sizes==='512x512'));
+
  for(const i of m.icons){
-   assert.match(await fs.readFile(new URL('../public'+i.src,import.meta.url),'utf8'),/<svg/);
+   const bytes=await fs.readFile(new URL('../public'+i.src,import.meta.url));
+   if(i.type==='image/svg+xml')assert.match(bytes.toString('utf8'),/<svg/);
+   else{
+     assert.deepEqual([...bytes.subarray(0,8)],[137,80,78,71,13,10,26,10],
+       'Native install icon must be real PNG bytes, not renamed SVG');
+     assert.equal(bytes.readUInt32BE(16),Number(i.sizes.split('x')[0]));
+     assert.equal(bytes.readUInt32BE(20),Number(i.sizes.split('x')[1]));
+   }
  }
+ const apple=await fs.readFile(new URL('../public/apple-touch-icon.png',import.meta.url));
+ assert.deepEqual([...apple.subarray(0,8)],[137,80,78,71,13,10,26,10]);
+ assert.equal(apple.readUInt32BE(16),180);
 });
 test('15A: public static PWA files served with correct cache policy',async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -23,7 +38,10 @@ test('15A: public static PWA files served with correct cache policy',async()=>{
      ['/manifest.webmanifest','application/manifest+json'],
      ['/service-worker.js','text/javascript'],
      ['/pwa-icon.svg','image/svg+xml'],
-     ['/pwa-icon-maskable.svg','image/svg+xml']
+     ['/pwa-icon-maskable.svg','image/svg+xml'],
+     ['/pwa-icon-192.png','image/png'],
+     ['/pwa-icon-maskable-512.png','image/png'],
+     ['/apple-touch-icon.png','image/png']
    ]){
      const response=await fetch(base+url);
      assert.equal(response.status,200,url);
@@ -34,6 +52,7 @@ test('15A: public static PWA files served with correct cache policy',async()=>{
    }
    const html=await (await fetch(base+'/')).text();
    assert.match(html,/<link rel="manifest"/);
+   assert.match(html,/<link rel="apple-touch-icon" sizes="180x180" href="\/apple-touch-icon\.png"/);
    const missing=await fetch(base+'/private-backup.json');
    assert.equal(missing.status,404,'Static allowlist must remain restrictive');
  }finally{await new Promise(resolve=>server.close(resolve));}
@@ -114,6 +133,7 @@ test('15B: first PWA installation precaches public JS/CSS before any controlled 
     requests.push(path);
     if(path==='/')return new Response(html,{status:200});
     if(['/favicon.svg','/pwa-icon.svg','/manifest.webmanifest',
+      '/pwa-icon-192.png','/pwa-icon-maskable-512.png','/apple-touch-icon.png',
       '/assets/index-abc123.css','/assets/index-def456.js'].includes(path))
       return new Response('public-asset',{status:200});
     throw Error('Unapproved cache request: '+path);
@@ -142,6 +162,8 @@ test('15B: first PWA installation precaches public JS/CSS before any controlled 
   await pending;
   assert.ok(requests.includes('/assets/index-def456.js'));
   assert.ok(requests.includes('/assets/index-abc123.css'));
+  assert.ok(requests.includes('/apple-touch-icon.png'));
+  assert.ok(requests.includes('/pwa-icon-maskable-512.png'));
   assert.ok(!requests.some(path=>path.startsWith('/api/')||path.startsWith('/auth/')));
   const shell=[...stored.values()].find(cache=>cache.has('/'));
   const assets=[...stored.values()].find(cache=>cache.has('/assets/index-def456.js'));
@@ -202,4 +224,45 @@ test('14C: full approved brief is not truncated and Figma importer rejects overs
  await figma.ui.onmessage({type:'import',payload:unsafe});
  assert.equal(figma.closed,false);
  assert.match(figma.ui.error,/Select a Frontline approved-design JSON file/);
+});
+
+
+test('15C: install PNG chunks pass CRC and decompress to complete indexed-pixel rows',async()=>{
+  const paths=['pwa-icon-192.png','pwa-icon-maskable-512.png','apple-touch-icon.png'];
+  const crc32=data=>{
+    let c=0xffffffff;
+    for(const value of data){
+      c^=value;
+      for(let i=0;i<8;i++)c=(c>>>1)^((c&1)?0xedb88320:0);
+    }
+    return (c^0xffffffff)>>>0;
+  };
+  for(const name of paths){
+    const bytes=await fs.readFile(new URL('../public/'+name,import.meta.url));
+    let pos=8,foundIHDR=false,foundIDAT=false,foundEnd=false,width=0,height=0;
+    const data=[];
+    while(pos<bytes.length){
+      assert.ok(pos+12<=bytes.length,name+' truncated PNG chunk');
+      const length=bytes.readUInt32BE(pos);
+      const end=pos+12+length;
+      assert.ok(end<=bytes.length,name+' invalid PNG chunk length');
+      const type=bytes.subarray(pos+4,pos+8).toString('ascii');
+      const payload=bytes.subarray(pos+8,pos+8+length);
+      assert.equal(bytes.readUInt32BE(pos+8+length),
+        crc32(bytes.subarray(pos+4,pos+8+length)),
+        name+' invalid '+type+' checksum');
+      if(type==='IHDR'){foundIHDR=true;width=payload.readUInt32BE(0);height=payload.readUInt32BE(4);
+        assert.equal(payload[8],2,'2-bit indexed color required');
+        assert.equal(payload[9],3,'indexed palette PNG required');}
+      if(type==='IDAT'){foundIDAT=true;data.push(payload);}
+      if(type==='IEND'){foundEnd=true;break;}
+      pos=end;
+    }
+    assert.ok(foundIHDR&&foundIDAT&&foundEnd,name+' missing essential PNG chunks');
+    const decoded=inflateSync(Buffer.concat(data));
+    assert.equal(decoded.length,(1+Math.ceil(width/4))*height,
+      name+' decompressed pixel data must have all scanlines');
+    for(let y=0;y<height;y++)assert.equal(decoded[y*(1+Math.ceil(width/4))],0,
+      name+' each row uses standard PNG filter zero');
+  }
 });
