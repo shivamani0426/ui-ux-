@@ -95,6 +95,10 @@ test('10D recently verified Google identity is HMAC-signed, short-lived and subj
   data.at-=11*60*1000;
   const tampered=Buffer.from(JSON.stringify(data)).toString('base64url')+'.'+mac;
   assert.equal(auth.recentlyVerified({headers:{cookie:'__Host-fl_recent_login='+tampered}},user),false);
+  const expiredPayload=Buffer.from(JSON.stringify({sub:ID,at:Date.now()-601000})).toString('base64url');
+  const expiredMac=crypto.createHmac('sha256',signing).update(expiredPayload).digest('base64url');
+  assert.equal(auth.recentlyVerified({headers:{cookie:'__Host-fl_recent_login='+expiredPayload+'.'+expiredMac}},user),false,
+    'A correctly signed Google verification must still expire after ten minutes');
   assert.equal(auth.recentlyVerified({headers:{cookie:'__Host-fl_recent_login='+'x'.repeat(600)}},user),false);
   assert.equal(await auth.verifyDeleteAbility(user),true);
   assert.deepEqual(await auth.deleteAuthUser(user),{deleted:true});
