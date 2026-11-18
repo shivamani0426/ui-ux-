@@ -314,6 +314,63 @@ async function workspaceExport(owner,authenticated){
 // Serialize feedback per visitor so concurrent clicks cannot award duplicate
 // learning points. PostgreSQL advisory locks work across Render instances.
 const memoryFeedbackGates=new Map();
+// Consent, pause, and erase must use the SAME visitor lock as feedback
+// writes. In PostgreSQL the operation is one transaction; neither a stale
+// opt-in nor a half-cleared profile should survive a concurrent request.
+async function updateLearningSettings(owner,{kind,value}){
+  const change=current=>{
+    if(kind==='consent')return {...current,
+      globalOptIn:value===true&&current.personalization.enabled};
+    if(kind==='settings')return applyPreferenceChanges(current,value);
+    if(kind==='reset')return resetPreferenceLearning(current);
+    throw new Error('Unknown learning operation');
+  };
+  if(!pg){
+    const previous=memoryFeedbackGates.get(owner)||Promise.resolve();
+    let release;
+    const pending=new Promise(resolve=>{release=resolve;});
+    memoryFeedbackGates.set(owner,pending);
+    await previous;
+    try{
+      const next=change(await profile(owner));
+      if(kind==='reset'){
+        for(let i=votes.length-1;i>=0;i--)
+          if(votes[i].owner===owner)votes.splice(i,1);
+      }
+      if(!next.globalOptIn||!next.personalization.enabled)
+        for(const vote of votes)if(vote.owner===owner)vote.optIn=false;
+      await saveProfile(owner,next);
+      return next;
+    }finally{
+      release();
+      if(memoryFeedbackGates.get(owner)===pending)memoryFeedbackGates.delete(owner);
+    }
+  }
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1),712)',[owner]);
+    const state=await client.query(`SELECT style_weights,global_opt_in FROM frontline.uic_profiles
+      WHERE visitor_id=$1 FOR UPDATE`,[owner]);
+    const current=normalizeProfile(state.rows[0]?{
+      styleWeights:state.rows[0].style_weights,globalOptIn:state.rows[0].global_opt_in
+    }:{});
+    const next=change(current);
+    if(kind==='reset')await client.query(
+      'DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);
+    if(!next.globalOptIn||!next.personalization.enabled)
+      await client.query('UPDATE frontline.uic_feedback SET eligible_global=false WHERE visitor_id=$1',[owner]);
+    await client.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in)
+      VALUES($1,$2,$3) ON CONFLICT(visitor_id) DO UPDATE
+      SET style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,
+      [owner,JSON.stringify(persistableWeights(next)),next.globalOptIn]);
+    await client.query('COMMIT');
+    return next;
+  }catch(error){
+    await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release();}
+}
 async function recordFeedback(owner,id,styles,reaction,detail){
   const saveVote=async(client,style,prefs)=>{
     const previous=client
@@ -716,13 +773,12 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
-        const data=await readBody(req);const old=await profile(owner);
+        const data=await readBody(req);
         if(typeof data.globalOptIn!=='boolean')return json(res,400,{error:'Choose whether to opt into aggregated learning.'});
         if(data.globalOptIn===true&&!signedIn)return json(res,403,{
           error:'Sign in with Google before opting into shared trends. Guest identities are not verified contributors.'});
-        const p={...old,globalOptIn:data.globalOptIn===true&&old.personalization.enabled};
-        if(!p.globalOptIn)await revokeSharedFeedback(owner);
-        await saveProfile(owner,p);return json(res,200,p);
+        const next=await updateLearningSettings(owner,{kind:'consent',value:data.globalOptIn});
+        return json(res,200,next);
       }
       if(req.method==='GET'&&req.url==='/api/preferences'){
         const [current,evidence,learning]=await Promise.all([
@@ -733,17 +789,13 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='PUT'&&req.url==='/api/preferences'){
         const input=await readBody(req);
         let next;
-        try{next=applyPreferenceChanges(await profile(owner),input);}
-        catch(error){return json(res,400,{error:error.message});}
-        if(!next.personalization.enabled)await revokeSharedFeedback(owner);
-        await saveProfile(owner,next);
+        try{next=await updateLearningSettings(owner,{kind:'settings',value:input});}
+        catch(error){if(/preference|learning|style/i.test(error.message))return json(res,400,{error:error.message});throw error;}
         return json(res,200,{profile:next,evidence:await feedbackEvidence(owner),
           learning:await learningOverview(owner)});
       }
       if(req.method==='DELETE'&&req.url==='/api/preferences'){
-        const next=resetPreferenceLearning(await profile(owner));
-        await clearPreferenceFeedback(owner);
-        await saveProfile(owner,next);
+        const next=await updateLearningSettings(owner,{kind:'reset'});
         return json(res,200,{profile:next,evidence:await feedbackEvidence(owner),
           learning:await learningOverview(owner),
           note:'Preferences and private feedback cleared. Projects and chats were preserved.'});
