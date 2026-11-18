@@ -9,6 +9,8 @@ import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
+import {derivePrivateLearning,contextForCategory,publicLearningSummary,
+  verifiedCohortBand,VERIFIED_COHORT_MIN,summarizeVerifiedPatterns} from './contextual-learning.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
   resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
@@ -159,6 +161,44 @@ async function feedbackEvidence(owner){
     refinements:rows.filter(x=>x.style===style&&x.reaction==='edit').reduce((sum,x)=>sum+x.total,0),
   }));
 }
+// Read only final feedback per owned project+style. This is NOT a transcript
+// mining job and never accepts an account/visitor ID from the browser.
+async function privateLearning(owner,excludedProjectId=null){
+  if(!pg){
+    const rows=latestFeedbackChoices(votes.filter(v=>v.owner===owner))
+      .filter(v=>v.id!==excludedProjectId)
+      .map(v=>({projectId:v.id,style:v.style,reaction:v.reaction,
+        category:live.get(v.id)?.recommendations?.category||'Digital product'}));
+    return derivePrivateLearning(rows);
+  }
+  const result=await pg.query(`WITH latest AS (
+    SELECT DISTINCT ON (f.project_id,f.style_id)
+      f.project_id::text AS "projectId",f.style_id AS style,f.reaction,
+      COALESCE(p.recommendation->>'category','Digital product') AS category,
+      f.created_at AS "createdAt"
+    FROM frontline.uic_feedback f
+    JOIN frontline.uic_projects p ON p.id=f.project_id AND p.visitor_id=$1
+    WHERE f.visitor_id=$1 AND ($2::uuid IS NULL OR f.project_id<>$2::uuid)
+    ORDER BY f.project_id,f.style_id,f.created_at DESC,f.id DESC
+  ) SELECT * FROM latest ORDER BY "createdAt" DESC LIMIT 600`,
+    [owner,excludedProjectId]);
+  return derivePrivateLearning(result.rows);
+}
+async function recommendationPreferences(owner,brief,excludedProjectId=null,raw=null){
+  const current=effectivePreferences(raw||await profile(owner));
+  if(!current.personalization.enabled)return current;
+  const category=analyzeProject(brief).category;
+  const learning=await privateLearning(owner,excludedProjectId);
+  return {...current,contextLearning:contextForCategory(learning,category,true)};
+}
+async function learningOverview(owner){
+  const raw=await profile(owner);
+  const model=await privateLearning(owner);
+  return {version:model.version,enabled:raw.personalization.enabled,
+    categories:publicLearningSummary(model),
+    projectChoices:model.projectChoices,
+    note:'Only your last explicit reaction per project/style. Signals require multiple projects and are not trained AI or measured usability.'};
+}
 async function saveProject(owner,p){
   if(!pg){live.set(p.id,{...p,owner});return;}
   await pg.query(`INSERT INTO frontline.uic_projects(id,visitor_id,title,brief,recommendation,messages) VALUES($1,$2,$3,$4,$5,$6)`,[p.id,owner,p.title,p.brief,JSON.stringify(p.recommendations),JSON.stringify(p.messages)]);
@@ -274,6 +314,63 @@ async function workspaceExport(owner,authenticated){
 // Serialize feedback per visitor so concurrent clicks cannot award duplicate
 // learning points. PostgreSQL advisory locks work across Render instances.
 const memoryFeedbackGates=new Map();
+// Consent, pause, and erase must use the SAME visitor lock as feedback
+// writes. In PostgreSQL the operation is one transaction; neither a stale
+// opt-in nor a half-cleared profile should survive a concurrent request.
+async function updateLearningSettings(owner,{kind,value}){
+  const change=current=>{
+    if(kind==='consent')return {...current,
+      globalOptIn:value===true&&current.personalization.enabled};
+    if(kind==='settings')return applyPreferenceChanges(current,value);
+    if(kind==='reset')return resetPreferenceLearning(current);
+    throw new Error('Unknown learning operation');
+  };
+  if(!pg){
+    const previous=memoryFeedbackGates.get(owner)||Promise.resolve();
+    let release;
+    const pending=new Promise(resolve=>{release=resolve;});
+    memoryFeedbackGates.set(owner,pending);
+    await previous;
+    try{
+      const next=change(await profile(owner));
+      if(kind==='reset'){
+        for(let i=votes.length-1;i>=0;i--)
+          if(votes[i].owner===owner)votes.splice(i,1);
+      }
+      if(!next.globalOptIn||!next.personalization.enabled)
+        for(const vote of votes)if(vote.owner===owner)vote.optIn=false;
+      await saveProfile(owner,next);
+      return next;
+    }finally{
+      release();
+      if(memoryFeedbackGates.get(owner)===pending)memoryFeedbackGates.delete(owner);
+    }
+  }
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1),712)',[owner]);
+    const state=await client.query(`SELECT style_weights,global_opt_in FROM frontline.uic_profiles
+      WHERE visitor_id=$1 FOR UPDATE`,[owner]);
+    const current=normalizeProfile(state.rows[0]?{
+      styleWeights:state.rows[0].style_weights,globalOptIn:state.rows[0].global_opt_in
+    }:{});
+    const next=change(current);
+    if(kind==='reset')await client.query(
+      'DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);
+    if(!next.globalOptIn||!next.personalization.enabled)
+      await client.query('UPDATE frontline.uic_feedback SET eligible_global=false WHERE visitor_id=$1',[owner]);
+    await client.query(`INSERT INTO frontline.uic_profiles(visitor_id,style_weights,global_opt_in)
+      VALUES($1,$2,$3) ON CONFLICT(visitor_id) DO UPDATE
+      SET style_weights=EXCLUDED.style_weights,global_opt_in=EXCLUDED.global_opt_in,updated_at=NOW()`,
+      [owner,JSON.stringify(persistableWeights(next)),next.globalOptIn]);
+    await client.query('COMMIT');
+    return next;
+  }catch(error){
+    await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release();}
+}
 async function recordFeedback(owner,id,styles,reaction,detail){
   const saveVote=async(client,style,prefs)=>{
     const previous=client
@@ -342,29 +439,42 @@ async function recordFeedback(owner,id,styles,reaction,detail){
     throw error;
   }finally{client.release()}
 }
+// Shared trends are deliberately display-only: NEVER feed them into the
+// personalized recommendation ranking. A browser cookie is not a person.
+// Ten distinct verified account identities must independently have positive
+// net feedback for one style, with currently active opt-in and consent on each
+// counted historical event. No names, project IDs or precise counts leave.
 async function insights(){
-  const counts=pg?(await pg.query(`WITH latest AS (
+  let counts;
+  if(pg){
+    const result=await pg.query(`WITH latest AS (
       SELECT DISTINCT ON (visitor_id,project_id,style_id)
         visitor_id,style_id,reaction,eligible_global
       FROM frontline.uic_feedback
+      WHERE visitor_id LIKE 'acct:%'
       ORDER BY visitor_id,project_id,style_id,created_at DESC,id DESC
+    ), eligible AS (
+      SELECT f.visitor_id,f.style_id,
+        SUM(CASE WHEN f.reaction='like' THEN 1
+                 WHEN f.reaction='dislike' THEN -1 ELSE 0 END)::int AS net
+      FROM latest f
+      JOIN frontline.uic_profiles p ON p.visitor_id=f.visitor_id
+      WHERE f.eligible_global=true AND p.global_opt_in=true
+        AND COALESCE(p.style_weights->'_personalization'->>'enabled','true')='true'
+      GROUP BY f.visitor_id,f.style_id
     )
-    SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS visitors
-    FROM latest f
-    JOIN frontline.uic_profiles p ON p.visitor_id=f.visitor_id
-    WHERE f.eligible_global=true AND f.reaction='like' AND p.global_opt_in=true
-      AND COALESCE(p.style_weights->'_personalization'->>'enabled','true')='true'
-    GROUP BY f.style_id`)).rows:latestFeedbackChoices(votes)
-    .filter(v=>v.optIn&&v.reaction==='like')
-    .reduce((arr,v)=>{
-      let x=arr.find(i=>i.style_id===v.style);
-      if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}
-      x.owners.add(v.owner);
-      return arr;
-    },[]).map(x=>({style_id:x.style_id,visitors:x.owners.size}));
-  // Avoid exposing exact small-cohort sizes, member IDs or free-form details.
-  return counts.filter(x=>x.visitors>=5).map(x=>({
-    style:x.style_id,contributorsBand:visitorCohortBand(x.visitors),
+    SELECT style_id,COUNT(*)::int AS contributors
+    FROM eligible WHERE net>0 GROUP BY style_id`);
+    counts=result.rows;
+  }else{
+    const acceptedOwners=[...new Set(votes.map(v=>v.owner))]
+      .filter(owner=>owner.startsWith('acct:'));
+    const eligibleProfiles=new Map();
+    for(const owner of acceptedOwners)eligibleProfiles.set(owner,await profile(owner));
+    return summarizeVerifiedPatterns(latestFeedbackChoices(votes),eligibleProfiles);
+  }
+  return counts.filter(x=>x.contributors>=VERIFIED_COHORT_MIN).map(x=>({
+    style:x.style_id,contributorsBand:verifiedCohortBand(x.contributors),
   }));
 }
 async function eraseProfile(owner){
@@ -653,39 +763,41 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
-        const data=await readBody(req);const old=await profile(owner);
+        const data=await readBody(req);
         if(typeof data.globalOptIn!=='boolean')return json(res,400,{error:'Choose whether to opt into aggregated learning.'});
-        const p={...old,globalOptIn:data.globalOptIn===true&&old.personalization.enabled};
-        if(!p.globalOptIn)await revokeSharedFeedback(owner);
-        await saveProfile(owner,p);return json(res,200,p);
+        if(data.globalOptIn===true&&!signedIn)return json(res,403,{
+          error:'Sign in with Google before opting into shared trends. Guest identities are not verified contributors.'});
+        const next=await updateLearningSettings(owner,{kind:'consent',value:data.globalOptIn});
+        return json(res,200,next);
       }
       if(req.method==='GET'&&req.url==='/api/preferences'){
-        return json(res,200,{profile:await profile(owner),evidence:await feedbackEvidence(owner),
-          note:'Only feedback and design choices from this visitor; no private conversations shared.'});
+        const [current,evidence,learning]=await Promise.all([
+          profile(owner),feedbackEvidence(owner),learningOverview(owner)]);
+        return json(res,200,{profile:current,evidence,learning,
+          note:'Contextual learning is private to this visitor. Explicit project requirements override learned style preferences.'});
       }
       if(req.method==='PUT'&&req.url==='/api/preferences'){
         const input=await readBody(req);
         let next;
-        try{next=applyPreferenceChanges(await profile(owner),input);}
-        catch(error){return json(res,400,{error:error.message});}
-        if(!next.personalization.enabled)await revokeSharedFeedback(owner);
-        await saveProfile(owner,next);
-        return json(res,200,{profile:next,evidence:await feedbackEvidence(owner)});
+        try{next=await updateLearningSettings(owner,{kind:'settings',value:input});}
+        catch(error){if(/preference|learning|style/i.test(error.message))return json(res,400,{error:error.message});throw error;}
+        return json(res,200,{profile:next,evidence:await feedbackEvidence(owner),
+          learning:await learningOverview(owner)});
       }
       if(req.method==='DELETE'&&req.url==='/api/preferences'){
-        const next=resetPreferenceLearning(await profile(owner));
-        await clearPreferenceFeedback(owner);
-        await saveProfile(owner,next);
+        const next=await updateLearningSettings(owner,{kind:'reset'});
         return json(res,200,{profile:next,evidence:await feedbackEvidence(owner),
+          learning:await learningOverview(owner),
           note:'Preferences and private feedback cleared. Projects and chats were preserved.'});
       }
       if(req.method==='DELETE'&&req.url==='/api/profile'){
         await eraseProfile(owner);return json(res,200,{deleted:true});
       }
       if(req.method==='GET'&&req.url==='/api/insights')return json(res,200,{
-        publicPatterns:await insights(),minimumContributors:5,
-        contributorUnit:'distinct guest visitor IDs, not verified people',
-        counts:'privacy bands only; not precise totals or statistical findings',
+        publicPatterns:await insights(),minimumContributors:VERIFIED_COHORT_MIN,
+        contributorUnit:'distinct authenticated Google-linked Frontline accounts; not proven unique humans',
+        counts:'coarse size bands only; no individual votes, account identifiers or chat data',
+        personalizationUsage:'Shared trends are informational and do not automatically steer any user recommendations',
       });
       if(req.method==='GET'&&pathname==='/api/workspace/overview')
         return json(res,200,{identity:signedIn?'account':'guest',...(await workspaceOverview(owner))});
@@ -699,7 +811,8 @@ const server=http.createServer(async(req,res)=>{
       }
       if(req.method==='POST'&&pathname==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
-        const prefs=effectivePreferences(await profile(owner));const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
+        const prefs=await recommendationPreferences(owner,b.brief);
+        const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
         await saveProject(owner,p);return json(res,201,{project:p});
       }
@@ -738,7 +851,7 @@ const server=http.createServer(async(req,res)=>{
         const refinement=body.refinement.trim();
         if(refinement.length>0&&refinement.length<5)
           return json(res,400,{error:'Describe your change in at least five characters, or leave it empty to reset.'});
-        const prefs=effectivePreferences(await profile(owner));
+        const prefs=await recommendationPreferences(owner,project.brief,id);
         const next=recommend(project.brief,prefs,await listReferences(),{refinement});
         const stored=await updateRecommendations(owner,id,next);
         if(!stored)return json(res,404,{error:'Project not found'});
@@ -792,7 +905,7 @@ const server=http.createServer(async(req,res)=>{
         if(req.method==='GET'&&!action){
           // Older saved projects did not have an intelligence snapshot. Enrich the
           // response without writing to the user's PostgreSQL project history.
-          const prefs=effectivePreferences(await profile(owner));
+          const prefs=await recommendationPreferences(owner,p.brief,id);
           // Recompute only derived heuristic/evidence fields using the
           // original brief plus the saved explicit refinement. Project text,
           // private history and approved selections are never overwritten.

@@ -48,6 +48,7 @@ function App(){
   const [projects,setProjects]=useState([]);
   const [profile,setProfile]=useState({styleWeights:{},globalOptIn:false,personalization:{enabled:true}});
   const [preferenceEvidence,setPreferenceEvidence]=useState([]);
+  const [learningOverview,setLearningOverview]=useState(null);
   const [preferencesBusy,setPreferencesBusy]=useState(false);
   const [composerClearance,setComposerClearance]=useState(138);
   const [config,setConfig]=useState({aiEnabled:false,persistent:false});
@@ -235,6 +236,7 @@ function App(){
       setNextProjectOffset(history.nextOffset??null);
       setProfile(preferences.profile);
       setPreferenceEvidence(preferences.evidence||[]);
+      setLearningOverview(preferences.learning||null);
       setWorkspaceOverview(summary);
       setLastSynced(Date.now());
       notice('Your private workspace is up to date.');
@@ -386,6 +388,7 @@ function App(){
     setPanel('learning');setMenuOpen(true);
     api('/api/preferences').then(data=>{
       setProfile(data.profile);setPreferenceEvidence(data.evidence||[]);
+      setLearningOverview(data.learning||null);
     }).catch(error=>notice(error.message));
   };
   const saveLearning=async changes=>{
@@ -404,6 +407,7 @@ function App(){
     try{
       const r=await api('/api/preferences',{method:'PUT',body:JSON.stringify(changes)});
       setProfile(r.profile);setPreferenceEvidence(r.evidence||[]);
+      setLearningOverview(r.learning||null);
       notice('Your private design preferences were updated.');
     }catch(error){setProfile(previous);notice(error.message)}
     finally{setPreferencesBusy(false)}
@@ -414,6 +418,7 @@ function App(){
     try{
       const r=await api('/api/preferences',{method:'DELETE'});
       setProfile(r.profile);setPreferenceEvidence(r.evidence||[]);
+      setLearningOverview(r.learning||null);
       notice('Your design preferences and feedback were cleared. Projects preserved.');
     }catch(error){notice(error.message)}
     finally{setPreferencesBusy(false)}
@@ -646,10 +651,15 @@ function App(){
         </div>}
         {panel==='learning'&&<div className="menu-subcontent">
           <p className="menu-intro">Feedback helps tailor future recommendations. Your projects stay private.</p>
-          <LearningPreferencesPanel profile={profile} evidence={preferenceEvidence} busy={preferencesBusy}
+          <LearningPreferencesPanel profile={profile} evidence={preferenceEvidence}
+            learning={learningOverview} busy={preferencesBusy}
             onChange={saveLearning} onClear={resetLearning}/>
           <label className="opt-in"><input type="checkbox" checked={profile.globalOptIn===true}
-          disabled={preferencesBusy||profile.personalization?.enabled===false} onChange={saveOptIn}/><span><strong>Contribute anonymous patterns</strong><small>Opt in to privacy-safe aggregated feedback, never raw private chats.</small></span></label>
+          disabled={preferencesBusy||profile.personalization?.enabled===false||!authState.authenticated}
+          onChange={saveOptIn}/><span><strong>Contribute opt-in shared trends</strong>
+          <small>{authState.authenticated?
+            'Only confirmed Google-linked accounts count; at least ten accounts per trend. Trends are display-only and never share private projects or chats.':
+            'Sign in with Google before contributing to shared trends. Guest feedback remains private.'}</small></span></label>
           <button type="button" className="menu-copy" onClick={exportWorkspace} disabled={workspaceExporting}>
             <Copy size={16}/> {workspaceExporting?'Preparing archive…':'Download all my private data (JSON)'}
           </button>

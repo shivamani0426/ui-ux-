@@ -411,3 +411,52 @@ model-output scope tests. Chromium and Firefox E2E tests cover the
 refinement form, comparison expansion, reset and existing studio flows.
 No database schema migration or additional paid AI provider was required.
 
+
+
+## Milestone 12 — Private, contextual feedback learning
+
+Frontline uses an auditable preference policy, not unlimited Likes, mining of
+personal conversations, or fine-tuning a large model.
+
+### Learning signals
+- Only the latest reaction on each owned project and design style counts.
+  A repeated Like is not new evidence; an edit is not a positive reaction.
+  When a user changes a Like to a Dislike, the earlier Like is removed.
+- Evidence is grouped by the project's original category (Education,
+  Healthcare, Finance, SaaS, AI Product, Commerce, Portfolio, Digital product).
+  It takes **two distinct project/style choices** to create a tentative
+  contextual adjustment, with contradictory evidence shrunk toward zero.
+- Every category-specific style signal is capped at ±3 heuristic points,
+  independent of editable general style preferences. Project requirements
+  and accessibility constraints remain higher priority.
+- A project does not reinforce its own historical recommendation using its
+  own vote: project reopening excludes that project from contextual learning.
+- The private dashboard exposes category, support, disagreement and evidence
+  confidence. No project IDs, raw chat text, or free-form feedback comments are
+  returned as learning evidence.
+
+### Consent, privacy, and collective trends
+- Pause learning at any time, or erase learning while retaining projects.
+- Shared trends require **explicit consent by an authenticated Google-linked
+  Frontline account**. Guests cannot opt in. A style trend is displayed only
+  when ten account identities have current consent and net-positive evidence.
+  Accounts do not necessarily represent ten independent humans.
+- Each account contributes at most one positive net vote per style, regardless
+  of its number of projects. Public trends are coarse bands with no precise
+  counts, identities, project text, or raw feedback.
+- Public trends are **display-only**; they do not train models or steer
+  individual recommendations. Wider cross-user learning requires validation
+  and stronger anti-abuse safeguards before any activation.
+- Consent, pause, and deletion of learning are serialized with feedback
+  writes using the same PostgreSQL visitor lock, with transactional
+  consent/profile updates. Revoked historical feedback cannot re-enter the
+  opted-in pool accidentally.
+- The existing project, feedback and profile tables are reused. There is
+  **no database schema migration** and no browser-side service-role access.
+
+### Validation
+The deterministic learning benchmark, Node/API and browser tests exercise
+sparse data, repeated and reversed feedback, category separation, bounded
+adjustments, manual pause/reset, aggregate cohort privacy, and full UI flows.
+Synthetic passing tests are **not** real-world recommendation accuracy,
+usability validation, statistical confidence, or AI-model training.

@@ -89,82 +89,87 @@ test('Milestone 07 guest feedback is private, editable, pausable and deletable w
     await env.close();
   }
 });
-test('Aggregated learning requires five distinct opted-in contributors and honors revoked consent',async()=>{
-  const env=await setup(),clients=Array.from({length:5},()=>env.client());
-  try{
-    for(let i=0;i<clients.length;i++){
-      const call=clients[i];
-      const project=await call('/api/projects','POST',{brief:'Create a modern team productivity dashboard for work'});
-      assert.equal(project.status,201);
-      const opted=await call('/api/profile','PUT',{globalOptIn:true});
-      assert.equal(opted.data.globalOptIn,true);
-      const saved=await call('/api/feedback','POST',{projectId:project.data.project.id,styles:['minimal'],reaction:'like'});
-      assert.equal(saved.status,200);
-      const aggregate=await call('/api/insights');
-      assert.equal(aggregate.status,200);
-      if(i<4)assert.equal(aggregate.data.publicPatterns.length,0,'Never publish a cohort below five');
-      else assert.ok(aggregate.data.publicPatterns.some(x=>x.style==='minimal'&&x.contributorsBand==='5–9'));
-      assert.equal(aggregate.data.contributorUnit,'distinct guest visitor IDs, not verified people');
-      assert.ok(aggregate.data.publicPatterns.every(x=>x.people===undefined),
-        'Public insights must not expose exact small guest cohort sizes');
-    }
-    const revoke=await clients[0]('/api/profile','PUT',{globalOptIn:false});
-    assert.equal(revoke.data.globalOptIn,false);
-    const after=await clients[1]('/api/insights');
-    assert.equal(after.data.publicPatterns.length,0,'Prior eligible feedback must be excluded after opting out');
-  }finally{
-    await Promise.allSettled(clients.map(call=>call('/api/profile','DELETE')));
-    await env.close();
-  }
-});
 
-
-test('One guest with many projects is never treated as five independent contributors',async()=>{
-  const env=await setup(),call=env.client();
-  try{
-    const opted=await call('/api/profile','PUT',{globalOptIn:true});
-    assert.equal(opted.data.globalOptIn,true);
-    for(let i=0;i<6;i++){
-      const project=await call('/api/projects','POST',{
-        brief:'Create an accessible task workspace for an education portal '+i
-      });
-      assert.equal(project.status,201);
-      const vote=await call('/api/feedback','POST',{
-        projectId:project.data.project.id,styles:['minimal'],reaction:'like'
-      });
-      assert.equal(vote.status,200);
-    }
-    assert.deepEqual((await call('/api/insights')).data.publicPatterns,[],
-      'A single guest cookie cannot independently meet the minimum cohort');
-  }finally{
-    await call('/api/profile','DELETE').catch(()=>{});
-    await env.close();
-  }
-});
-
-test('Current shared cohort reflects latest reaction, not a past like',async()=>{
-  const env=await setup(),clients=Array.from({length:5},()=>env.client()),ids=[];
+test('12: anonymous guests cannot impersonate verified opt-in contributors',async()=>{
+  const env=await setup();
+  const clients=Array.from({length:12},()=>env.client());
   try{
     for(const call of clients){
-      const created=await call('/api/projects','POST',{brief:'Design a simple education dashboard with accessible assignments'});
-      ids.push(created.data.project.id);
-      await call('/api/profile','PUT',{globalOptIn:true});
-      await call('/api/feedback','POST',{projectId:created.data.project.id,styles:['minimal'],reaction:'like'});
+      const project=await call('/api/projects','POST',{
+        brief:'Build a helpful accessible dashboard for student learning'
+      });
+      assert.equal(project.status,201);
+      const attempted=await call('/api/profile','PUT',{globalOptIn:true});
+      assert.equal(attempted.status,403,
+        'Anonymous browser cookies must not register as verified community contributors');
+      const prefs=await call('/api/profile');
+      assert.equal(prefs.data.globalOptIn,false);
+      const feedback=await call('/api/feedback','POST',{
+        projectId:project.data.project.id,styles:['minimal'],reaction:'like'
+      });
+      assert.equal(feedback.status,200,'Guest feedback remains private and useful');
     }
-    assert.equal((await clients[0]('/api/insights')).data.publicPatterns[0].contributorsBand,'5–9');
-    const reverse=await clients[0]('/api/feedback','POST',{
-      projectId:ids[0],styles:['minimal'],reaction:'dislike',detail:'Changed my mind'
-    });
-    assert.equal(reverse.status,200);
-    assert.equal(reverse.data.profile.styleWeights.minimal,-1);
-    assert.deepEqual((await clients[1]('/api/insights')).data.publicPatterns,[],
-      'A previously liked style must not remain eligible after feedback reversal');
-    await clients[0]('/api/feedback','POST',{
-      projectId:ids[0],styles:['minimal'],reaction:'like',detail:'I prefer it now'
-    });
-    assert.equal((await clients[1]('/api/insights')).data.publicPatterns[0].contributorsBand,'5–9');
+    const insights=await clients[0]('/api/insights');
+    assert.equal(insights.status,200);
+    assert.deepEqual(insights.data.publicPatterns,[],
+      'A dozen guest cookies must not become a public statistical cohort');
+    assert.equal(insights.data.minimumContributors,10);
+    assert.match(insights.data.contributorUnit,/authenticated Google-linked/i);
+    assert.match(insights.data.personalizationUsage,/do not automatically steer/i);
   }finally{
     await Promise.allSettled(clients.map(call=>call('/api/profile','DELETE')));
+    await env.close();
+  }
+});
+
+test('12: similar-project feedback is transparent, context-specific, and never shared across visitors',async()=>{
+  const env=await setup(),alice=env.client(),bob=env.client();
+  const portfolio='Create an illustrator portfolio with case studies and a project gallery';
+  const school='Build a school dashboard for teachers with grades and assignments';
+  try{
+    const other=await bob('/api/projects','POST',{brief:portfolio});
+    assert.equal(other.status,201);
+    const baseline=other.data.project.recommendations.designs.find(s=>s.id==='creative').match;
+    for(let i=0;i<2;i++){
+      const p=await alice('/api/projects','POST',{brief:portfolio});
+      assert.equal(p.status,201);
+      const voted=await alice('/api/feedback','POST',{
+        projectId:p.data.project.id,styles:['creative'],reaction:'like'
+      });
+      assert.equal(voted.status,200);
+    }
+    const evidence=await alice('/api/preferences');
+    assert.equal(evidence.status,200);
+    const portfolioLearning=evidence.data.learning.categories.find(x=>x.category==='Portfolio');
+    assert.ok(portfolioLearning);
+    assert.equal(portfolioLearning.styles.creative.support,2);
+    assert.equal(portfolioLearning.styles.creative.signal,2);
+    assert.equal(portfolioLearning.styles.creative.confidence,'low');
+    const improved=await alice('/api/projects','POST',{brief:portfolio});
+    const option=improved.data.project.recommendations.designs.find(s=>s.id==='creative');
+    assert.ok(option.match>=baseline);
+    assert.equal(option.personalization.categoryEvidence.adjustment,2,
+      'Only context-supported evidence affects similar portfolio projects');
+    const different=await alice('/api/projects','POST',{brief:school});
+    assert.equal(different.data.project.recommendations.designs.find(s=>s.id==='creative')
+      .personalization.categoryEvidence.adjustment,0);
+    const isolated=await bob('/api/preferences');
+    assert.deepEqual(isolated.data.learning.categories,[]);
+    const b=await bob('/api/projects','POST',{brief:portfolio});
+    assert.equal(b.data.project.recommendations.designs.find(s=>s.id==='creative')
+      .personalization.categoryEvidence.adjustment,0);
+    const paused=await alice('/api/preferences','PUT',{enabled:false});
+    assert.equal(paused.status,200);
+    const noLearning=await alice('/api/projects','POST',{brief:portfolio});
+    assert.equal(noLearning.data.project.recommendations.designs.find(s=>s.id==='creative')
+      .personalization.categoryEvidence?.adjustment||0,0);
+    const clear=await alice('/api/preferences','DELETE');
+    assert.equal(clear.status,200);
+    assert.deepEqual(clear.data.learning.categories,[]);
+    assert.equal((await alice('/api/projects/'+improved.data.project.id)).status,200,
+      'Removing learning must not remove saved projects');
+  }finally{
+    await Promise.allSettled([alice('/api/profile','DELETE'),bob('/api/profile','DELETE')]);
     await env.close();
   }
 });

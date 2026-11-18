@@ -178,12 +178,21 @@ export function compareDirections(analysis,styles,preferences={}){
   const key=a.category||'Digital product';
   const task=['Education','Finance','Healthcare','SaaS'].includes(key);
   const weights=preferences?.styleWeights||{};
+  // Direct instructions about visual style take precedence over historical
+  // feedback from unrelated projects. Disable learned score adjustments
+  // whenever the current brief explicitly selects one or more styles.
+  const explicitStyleChoice=Array.isArray(a.requestedStyles)&&a.requestedStyles.length>0;
   const performance=(a.constraints||[]).some(x=>x.includes('Performance')||x.includes('Reduced-motion'));
   const accessibility=(a.constraints||[]).some(x=>x.includes('Accessible'));
   const repeated=(a.features||[]).some(x=>['assignments','payments','progress'].includes(x.id));
   return (Array.isArray(styles)?styles:[]).map((s,i)=>{
     const t=tradeoffs[s.id]||tradeoffs.minimal;
-    const prior=Math.max(-5,Math.min(5,Number(weights[s.id])||0));
+    const prior=explicitStyleChoice?0:Math.max(-5,Math.min(5,Number(weights[s.id])||0));
+    // A small, independent category correction based only on this owner's
+    // latest project-specific reactions. No public cohort can affect scores.
+    const context=preferences?.contextLearning;
+    const contextDelta=!explicitStyleChoice&&context?.category===key&&preferences?.personalization?.enabled!==false
+      ?Math.max(-3,Math.min(3,Number(context.adjustments?.[s.id])||0)):0;
     const base=task?(s.id==='minimal'?17:7):(s.id==='creative'?17:s.id==='glass'?14:12);
     const requested=(a.requestedStyles||[]).includes(s.id);
     const factors=[
@@ -196,17 +205,23 @@ export function compareDirections(analysis,styles,preferences={}){
       {label:'Performance and reduced motion',points:performance&&s.id==='glass'?-12:0,
         source:'brief constraint'},
       {label:'Explicit style preference',points:requested?18:0,source:'brief style direction'},
-      {label:'Private learned preference',points:prior*2,source:'account-only feedback'}
+      {label:'Private learned preference',points:prior*2,source:'account-only feedback'},
+      {label:'Similar-project feedback',points:contextDelta,source:'private category evidence'}
     ].filter(f=>f.points!==0);
-    const baseScore=factors.reduce((total,f)=>total+f.points,0)-prior*2;
+    const baseScore=factors.reduce((total,f)=>total+f.points,0)-prior*2-contextDelta;
     const bound=n=>Math.max(48,Math.min(96,n));
-    const baseline=bound(baseScore),score=bound(baseScore+prior*2);
+    const baseline=bound(baseScore),score=bound(baseScore+prior*2+contextDelta);
     const appliedPoints=score-baseline;
     const personalization={
       styleSignal:prior,
       expectedPointAdjustment:prior*2,
       appliedPointAdjustment:appliedPoints,
-      scoreBounded:appliedPoints!==prior*2,
+      scoreBounded:appliedPoints!==prior*2+contextDelta,
+      categoryEvidence:{
+        adjustment:contextDelta,
+        support:context?.evidence?.[s.id]?.support||0,
+        confidence:context?.evidence?.[s.id]?.confidence||'insufficient'
+      },
     };
     const applicableFeatures=(a.features||[]).slice(0,2).map(f=>f.label);
     const mitigations=s.id==='glass'
@@ -220,8 +235,8 @@ export function compareDirections(analysis,styles,preferences={}){
     return {id:s.id,name:s.name,match:score,personalization,
       scoreFactors:[
         ...factors,
-        ...(score!==baseScore+prior*2?[{
-          label:'Bounded score adjustment',points:score-(baseScore+prior*2),
+        ...(score!==baseScore+prior*2+contextDelta?[{
+          label:'Bounded score adjustment',points:score-(baseScore+prior*2+contextDelta),
           source:'heuristic score limit'
         }]:[])
       ],
@@ -237,6 +252,10 @@ export function compareDirections(analysis,styles,preferences={}){
         ...(repeated?['Repeated tasks need stable navigation and clear feedback.']:[]),
         ...(accessibility?['Validate keyboard order, contrast and assistive-technology labels.']:[]),
         ...(performance&&s.id==='glass'?['Avoid heavy blurs on low-power devices.']:[]),
+        ...(explicitStyleChoice?['Explicit style instructions in this project take precedence over prior learned preferences.']:[]),
+        ...(contextDelta!==0?['From your similar '+key.toLowerCase()+' projects: a bounded '+(contextDelta>0?'+':'')+
+          contextDelta+'-point signal, based on '+(context?.evidence?.[s.id]?.support||0)+
+          ' latest project-specific reactions (not a measured quality result).']:[]),
         ...(prior!==0?['Your private feedback signal '+(prior>0?'+':'')+prior+
           '/5 changed this bounded heuristic indicator by '+(appliedPoints>0?'+':'')+
           appliedPoints+' points'+(personalization.scoreBounded?' (score limit reached).':'.')+

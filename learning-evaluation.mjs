@@ -10,6 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {recommend} from './design-engine.mjs';
 import {STYLES} from './design-engine.mjs';
 import {normalizeProfile,learnFeedbackTransition,effectivePreferences} from './learning-engine.mjs';
+import {derivePrivateLearning,contextForCategory,verifiedCohortBand} from './contextual-learning.mjs';
 
 export const LEARNING_CASES=Object.freeze([
   {id:'education',brief:'Create an accessible education dashboard for students with assignments and progress tracking on low-power mobile devices',expected:'minimal'},
@@ -51,9 +52,51 @@ export function evaluateLearningEngine(){
   const paused=effectivePreferences({...afterLike,personalization:{enabled:false}});
   checks.push({case:'privacy',metric:'paused-learning-ignored',passed:
     Object.keys(paused.styleWeights).length===0});
+  const mk=(id,category,reaction='like',style='creative')=>
+    ({projectId:id,category,reaction,style});
+  const sparse=derivePrivateLearning([mk('one','Portfolio')]);
+  const consistent=derivePrivateLearning([mk('one','Portfolio'),mk('two','Portfolio'),
+    mk('three','Portfolio'),mk('four','Portfolio')]);
+  const contradictory=derivePrivateLearning([mk('one','Portfolio'),
+    mk('two','Portfolio','dislike')]);
+  const revised=derivePrivateLearning([mk('one','Portfolio','like','creative'),
+    mk('one','Portfolio','dislike','creative'),mk('two','Portfolio')]);
+  const neutral=contextForCategory(sparse,'Portfolio');
+  const context=contextForCategory(consistent,'Portfolio');
+  const pausedContext=contextForCategory(consistent,'Portfolio',false);
+  const conflicting=contextForCategory(contradictory,'Portfolio');
+  const revisedContext=contextForCategory(revised,'Portfolio');
+  const cases=[
+    ['one-project-not-enough',neutral.adjustments.creative===0],
+    ['one-project-evidence-insufficient',neutral.evidence.creative?.confidence==='insufficient'],
+    ['multiple-distinct-projects-adjust',context.adjustments.creative>0],
+    ['support-count-is-projects',context.evidence.creative?.support===4],
+    ['conservative-weight-cap',context.adjustments.creative<=3],
+    ['no-portfolio-signal-on-healthcare',contextForCategory(consistent,'Healthcare').adjustments.creative===0],
+    ['pausing-learning-removes-adjustment',pausedContext.adjustments.creative===0],
+    ['contradictory-evidence-neutrals',conflicting.adjustments.creative===0],
+    ['last-vote-reverses-earlier-like',revisedContext.evidence.creative?.dislikes===1],
+    ['no-guest-public-trend',verifiedCohortBand(9)===null],
+    ['verified-ten-account-minimum',verifiedCohortBand(10)==='10–24'],
+    ['no-raw-identity-in-evidence',!JSON.stringify(context).includes('"projectId"')],
+  ];
+  for(const [metric,passed] of cases)checks.push({case:'context-v1',metric,passed});
+  const basePortfolio=recommend('Create a creative illustrator portfolio with editorial case studies',{});
+  const contextualPortfolio=recommend('Create a creative illustrator portfolio with editorial case studies',{
+    ...effectivePreferences(normalizeProfile({})),contextLearning:context});
+  const portfolioOld=basePortfolio.designs.find(x=>x.id==='creative').match;
+  const portfolioNew=contextualPortfolio.designs.find(x=>x.id==='creative').match;
+  checks.push({case:'context-v1',metric:'matching-context-does-not-demote-style',
+    passed:portfolioNew>=portfolioOld});
+  checks.push({case:'context-v1',metric:'scoring-remains-bounded',
+    passed:contextualPortfolio.designs.every(x=>x.match>=48&&x.match<=96)});
+  checks.push({case:'context-v1',metric:'score-factors-reconcile',passed:
+    contextualPortfolio.designs.every(x=>x.match===
+      Math.max(48,Math.min(96,x.scoreFactors.reduce((sum,f)=>sum+f.points,0))))});
   const passed=checks.filter(x=>x.passed).length;
   return {evaluation:'Synthetic deterministic contract tests; NOT real-world usability, statistical accuracy or trained-model evaluation',
-    fixtureCount:LEARNING_CASES.length,checkCount:checks.length,passed,failed:checks.length-passed,
+    fixtureCount:LEARNING_CASES.length,contextualCheckCount:15,
+    checkCount:checks.length,passed,failed:checks.length-passed,
     failures:checks.filter(x=>!x.passed)};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
