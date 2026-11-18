@@ -194,7 +194,7 @@ test('14C: full approved brief is not truncated and Figma importer rejects overs
      decisions:[],inspirations:[]}};
  await figma.ui.onmessage({type:'import',payload:data});
  assert.equal(figma.closed,true);
- assert.ok(nodes.some(n=>n.type==='TEXT'&&n.characters==='Brief: '+brief));
+ assert.ok(nodes.some(n=>n.type==='TEXT'&&n.characters==='Brief: '+brief.trim()));
  assert.ok(nodes.some(n=>n.type==='TEXT'&&n.characters.includes('Reduced motion')));
  assert.ok(nodes.some(n=>n.type==='TEXT'&&n.characters.includes('Less spectacle')));
  const unsafe=JSON.parse(JSON.stringify(data));unsafe.project.brief='X'.repeat(71000);
