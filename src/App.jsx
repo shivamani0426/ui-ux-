@@ -8,7 +8,7 @@ import FrontlineLogin from './components/FrontlineLogin.jsx';
 import FrontlineAccount from './components/FrontlineAccount.jsx';
 import FrontlineSecurity from './components/FrontlineSecurity.jsx';
 import FrontlineProjectLibrary from './components/FrontlineProjectLibrary.jsx';
-import FrontlineDomePortal from './components/FrontlineDomePortal.jsx';
+import FrontlineOrbIntro from './components/FrontlineOrbIntro.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
 import DesignPromptPanel from './components/DesignPromptPanel.jsx';
@@ -18,6 +18,7 @@ import LearningPreferencesPanel from './components/LearningPreferencesPanel.jsx'
 import './styles.css';
 import './frontline-studio.css';
 import './inspiration-explorer.css';
+import './frontline-friendly-theme.css';
 
 const api=async (path,options={})=>{
   const r=await fetch(path,{credentials:'same-origin',...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}});
@@ -35,7 +36,7 @@ const starterNotes=[
 const safeRead=(key,fallback)=>{try{return localStorage.getItem(key)||fallback}catch{return fallback}};
 
 function App(){
-  const [theme,setTheme]=useState(()=>safeRead('uic-theme','dark')==='dark'?'dark':'light');
+  const [theme,setTheme]=useState(()=>safeRead('uic-theme','light')==='dark'?'dark':'light');
   const [menuOpen,setMenuOpen]=useState(false);
   const [panel,setPanel]=useState('menu');
   const [mode,setMode]=useState(()=>location.pathname==='/login'?'login':location.pathname==='/studio'?'chat':'welcome');
@@ -73,7 +74,7 @@ function App(){
   const [rise,setRise]=useState(false);
   const [landingFrame,setLandingFrame]=useState(0);
   const [landingComposerReady,setLandingComposerReady]=useState(false);
-  const [portalState,setPortalState]=useState('idle');
+  const [portalState,setPortalState]=useState('opening');
   const [gatePhase,setGatePhase]=useState('');
   const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null),composerDockRef=useRef(null),gateTimer=useRef(null);
 
@@ -93,7 +94,7 @@ function App(){
   },[]);
   useEffect(()=>{
     document.documentElement.setAttribute('data-theme',theme);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#261e23':'#f7f0e4');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#151e32':'#f5f8ff');
     try{localStorage.setItem('uic-theme',theme)}catch{}
   },[theme]);
   useEffect(()=>{
@@ -140,36 +141,34 @@ function App(){
     const frame=requestAnimationFrame(measure);
     return ()=>{observer?.disconnect();window.removeEventListener('resize',measure);cancelAnimationFrame(frame)};
   },[mode]);
-  // The pre-landing portal locks scrolling only until the inside-out reveal ends.
-  // It doesn't change saved projects, user preferences, the studio or any APIs.
+  // One automatic centre-black-orb opening. No click, F-shaped sculpture,
+  // scroll tour or delayed manual gate. Deep links to login/studio skip it.
   useEffect(()=>{
-    if(mode!=='welcome'||portalState==='done')return;
-    const oldHTML=document.documentElement.style.overflow;
-    const oldBody=document.body.style.overflow;
+    if(mode!=='welcome'||portalState==='done')return undefined;
+    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    const beforeHTML=document.documentElement.style.overflow;
+    const beforeBody=document.body.style.overflow;
     document.documentElement.style.overflow='hidden';
     document.body.style.overflow='hidden';
+    const timer=setTimeout(()=>setPortalState('done'),reduced?300:1950);
     return ()=>{
-      document.documentElement.style.overflow=oldHTML;
-      document.body.style.overflow=oldBody;
+      clearTimeout(timer);
+      document.documentElement.style.overflow=beforeHTML;
+      document.body.style.overflow=beforeBody;
     };
   },[mode,portalState]);
-  const enterPortal=()=>{
-    if(portalState!=='idle')return;
-    // A deliberate click starts a real, separate white-light charge.
-    // Only after that hold does the existing landing expand from its centre.
-    setPortalState('charging');
-    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-    clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);
-    portalTimer.current=setTimeout(()=>{
-      setPortalState('opening');
-      portalFinishTimer.current=setTimeout(()=>setPortalState('done'),reduced?220:3000);
-    },reduced?220:2700);
-  };
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth',block:'end'});},[messages,working,viewPreview]);
   const active=mode==='chat';
   const isLanding=mode==='welcome';
   const routeTo=path=>{if(window.location.pathname!==path)window.history.pushState({},'',path);};
   const startGoogleLogin=()=>{if(authState.googleEnabled)window.location.assign('/auth/google/start');};
+  // Supabase Google OAuth signs in returning users and securely creates the
+  // account for first-time users; no separate password form or fake signup.
+  const startGoogleSignup=()=>{
+    if(authState.authenticated){enterGateway('studio');return;}
+    if(authState.googleEnabled)window.location.assign('/auth/google/start?intent=signup');
+    else enterGateway('login');
+  };
   const signOut=async()=>{
     try{
       await api('/api/auth/logout',{method:'POST',body:JSON.stringify({scope:'local'})});
@@ -293,8 +292,7 @@ function App(){
   };
   const backToStory=()=>{
     clearTimeout(gateTimer.current);setGatePhase('');setMode('welcome');setPortalState('done');
-    routeTo('/');
-    setTimeout(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight),behavior:'instant'}),70);
+    routeTo('/');window.scrollTo({top:0,behavior:'instant'});
   };
   const focusChat=()=>{
     if(!active){
@@ -438,9 +436,11 @@ function App(){
       </div>
     </header>}
 
-    {isLanding&&<FrontlineLanding locked={portalState!=='done'} effectsReady={portalState==='done'} onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady} onBegin={focusChat} onMode={enterLandingMode}/>}
-    {isLanding&&<div className="landing-scrollspace scroll-story-space" aria-hidden="true"/>}
-    {isLanding&&portalState!=='done'&&<FrontlineDomePortal phase={portalState} onEnter={enterPortal}/>}
+    {isLanding&&<FrontlineLanding locked={portalState!=='done'} effectsReady={portalState==='done'}
+      onSceneChange={setLandingFrame} onComposeReady={setLandingComposerReady}
+      onBegin={focusChat} onMode={enterLandingMode}
+      onLogin={()=>enterGateway('login')} onSignup={startGoogleSignup}/>}
+    {isLanding&&portalState!=='done'&&<FrontlineOrbIntro/>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
@@ -527,11 +527,11 @@ function App(){
       </section>}
       {active&&<div ref={composerDockRef} className="composer-position docked">
         <StarBorder as="div" theme={theme}
-          backgroundColor={active?(theme==='dark'?'#382a2b':'#fff8ec'):'#fff8eb'}
-          textColor={active?(theme==='dark'?'#f9e7ce':'#4b312b'):'#45302a'}
-          borderColor={active?'#d79e64':'#f3cf94'}
-          color={active?(theme==='dark'?'#ffe3aa':'#c77e3e'):'#ffe6b0'}
-          trailColor={active?(theme==='dark'?'#df935c':'#d6a263'):'#dc8f54'}
+          backgroundColor={theme==='dark'?'#263450':'#ffffff'}
+          textColor={theme==='dark'?'#eef3ff':'#243858'}
+          borderColor={theme==='dark'?'#8eabec':'#b6c9f6'}
+          color={theme==='dark'?'#bdd0ff':'#7e9cf2'}
+          trailColor={theme==='dark'?'#6e93de':'#9dc6ff'}
           radius={26} thickness={1.7} duration={4.8} stars={2} trailLength={0.34} glow={0.95}
           hover="lap" sparkle clickPulse className="chat-star">
           <form className="composer" onSubmit={e=>{e.preventDefault();send(e.currentTarget.querySelector('textarea')?.value??brief);}}>
@@ -548,21 +548,7 @@ function App(){
           </StarBorder>
         <p className="composer-disclaimer">Frontline UX/UI can make mistakes. Validate recommendations before building.</p>
       </div>}
-      {isLanding&&landingFrame===4&&<div inert={!landingComposerReady} className={'fl-landing-gateway'+(landingComposerReady?' is-ready':'')} aria-label="Frontline studio gateway">
-        <StarBorder as="div" theme="light" className="fl-gateway-star"
-          backgroundColor="#fff8ec" textColor="#493127" borderColor="#e1ae70"
-          color="#ffe1a2" trailColor="#c07d50" duration={4.8} thickness={1.7}
-          radius={26} stars={2} trailLength={0.34} glow={0.96} hover="lap" sparkle clickPulse>
-          <div className="fl-gateway-content">
-            <span className="fl-gateway-kicker"><FrontlineMark size={18}/> THE NEXT CHAPTER BEGINS HERE</span>
-            <div className="fl-gateway-actions">
-              <button type="button" className="fl-gateway-primary" onClick={()=>enterGateway('studio')}>Enter Studio <ArrowUp size={17} aria-hidden="true"/></button>
-              <button type="button" className="fl-gateway-secondary" onClick={()=>enterGateway('login')}>Login <ChevronRight size={17} aria-hidden="true"/></button>
-            </div>
-            <p>Explore as a guest or enter your account. Your vision leads the way.</p>
-          </div>
-        </StarBorder>
-      </div>}
+
     </main>
 
     {mode==='login'&&<FrontlineLogin onBack={backToStory} onGuest={()=>enterGateway('studio')}
