@@ -90,9 +90,11 @@ async function searchSource(provider,terms,{key,transport,signal}){
 const ttl=8*60*1000;
 const cache=new Map();
 const pending=new Map();
-export function clearDiscoveryCacheForTests(){cache.clear();pending.clear();}
+const discoveryRuns=[];
+const runsPerHour=24; // 24 source searches * 14 provider queries = max 336 paid queries/hr/instance.
+export function clearDiscoveryCacheForTests(){cache.clear();pending.clear();discoveryRuns.length=0;}
 export async function discoverLiveSources(brief,{apiKey=process.env.FRONTLINE_BRAVE_SEARCH_API_KEY||'',
-  transport=fetch,now=()=>Date.now(),providers=LIVE_SOURCES,timeoutMs=8500}={}){
+  transport=fetch,now=()=>Date.now(),providers=LIVE_SOURCES,timeoutMs=5000}={}){
   const terms=discoveryTerms(brief);
   const directories=providers.map(({id,name,host,kind})=>({
     id,name,website:'https://'+host+'/',kind
@@ -104,14 +106,20 @@ export async function discoverLiveSources(brief,{apiKey=process.env.FRONTLINE_BR
   const record=cache.get(key);
   if(record&&record.expires>now())return record.data;
   if(pending.has(key))return pending.get(key);
+  const current=now();
+  while(discoveryRuns.length&&discoveryRuns[0]<current-3600000)discoveryRuns.shift();
+  if(discoveryRuns.length>=runsPerHour)
+    return {status:'rate-limited',query:terms,matches:[],sources:directories,
+      note:'Hourly live-search budget reached; open the publisher links or retry later.'};
+  discoveryRuns.push(current);
   const run=(async()=>{
     const jobs=[];
-    const concurrency=3;
+    const concurrency=4;
     let next=0;
     async function worker(){
       while(next<providers.length){
         const index=next++,provider=providers[index];
-        const timeout=AbortSignal.timeout(clamp(timeoutMs,500,15000));
+        const timeout=AbortSignal.timeout(clamp(timeoutMs,500,8000));
         jobs[index]=await searchSource(provider,terms,{key:apiKey,transport,signal:timeout});
       }
     }
