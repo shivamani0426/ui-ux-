@@ -141,7 +141,10 @@ export function rankInspirations(brief,library,preferences={}){
 export function makeSelectionPrompt(project,sourceRows){
   const refs=(Array.isArray(sourceRows)?sourceRows:[]).slice(0,8);
   if(!refs.length)throw new Error('Select at least one inspiration before copying a prompt.');
-  const analysis=analyzeProject(project.brief);
+  const refinement=typeof project.recommendations?.refinement==='string'
+    ?project.recommendations.refinement.trim().slice(0,450):'';
+  const brief=String(project.brief||'').slice(0,2500);
+  const analysis=analyzeProject(brief+(refinement?'\nLatest refinement: '+refinement:''));
   const referenceLines=refs.map((r,i)=>{
     const tags=cleanArray(r.tags).slice(0,6).join(', ')||'thoughtful design';
     return `${i+1}. ${r.name} (${r.site}) — ${r.category}. Study these qualities: ${tags}.`;
@@ -149,7 +152,13 @@ export function makeSelectionPrompt(project,sourceRows){
   return `Create an ORIGINAL and accessible UI/UX design specification for the project below.
 
 PROJECT BRIEF
-${String(project.brief||'').slice(0,2500)}
+${brief}
+
+LATEST APPROVED REFINEMENT
+${refinement||'None.'}
+
+EXPLICITLY OUT OF SCOPE — DO NOT ADD
+${analysis.excludedFeatures?.map(feature=>feature.label).join('; ')||'No explicit exclusions given.'}
 
 PROJECT UNDERSTANDING (CONFIRMED AND PROPOSED)
 Audience: ${analysis.audience.join(', ')} (${analysis.audienceSource}).
