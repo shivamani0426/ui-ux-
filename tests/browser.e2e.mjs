@@ -363,6 +363,22 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-studio.png',fullPage:false});
     assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
       'Mobile studio must have no horizontal overflow');
+    if(!remote){
+      // M13 mobile regression: the real board must remain usable at 390px
+      // without clipping its columns or introducing horizontal scrolling.
+      await mobile.locator('.composer textarea').fill(
+        'Design a mobile-first creator portfolio with case studies, projects and accessible navigation.');
+      await mobile.locator('.composer textarea').press('Enter');
+      await mobile.locator('.pw-workbench').waitFor({timeout:15000});
+      await mobile.locator('.pw-workbench .pw-tabs button').first().waitFor();
+      await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-design-workbench.png',fullPage:false});
+      assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
+        'Mobile project workbench must not create horizontal overflow');
+      await mobile.locator('.pw-workbench').getByRole('button',{name:/Compare styles/}).click();
+      assert.equal(await mobile.locator('.pw-style-card').count(),3);
+      assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
+        'Side-by-side comparison must reflow into mobile-friendly cards');
+    }
     await mobile.close();
     // Reduced-motion users see the black orb briefly, then a STATIC landing.
     // They can still choose any feature or account route manually.
