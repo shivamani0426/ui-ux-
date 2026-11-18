@@ -124,3 +124,27 @@ body{background:var(--bg)}
 :root[data-theme='dark'] .menu-panel .nav-primary{
   color:#14213b
 }
+
+/* The former scroll tour used :has() to recolor the navigation per chapter.
+   The new landing stays light and static behind its timed features, so one
+   consistent accessible header must override all legacy chapter variants. */
+.app.in-welcome{background:#edf4ff!important;color:#263754}
+.app.in-welcome .topbar,
+.app.in-welcome:has(.fl-auto-landing) .topbar{
+  background:linear-gradient(180deg,rgba(248,251,255,.95),rgba(248,251,255,.5) 80%,transparent)!important;
+  color:#243858!important;
+  box-shadow:none;
+}
+.app.in-welcome .topbar .brand,
+.app.in-welcome:has(.fl-auto-landing) .topbar .brand,
+.app.in-welcome:has(.fl-auto-landing) .topbar .brand-word{
+  color:#243858!important;text-shadow:none!important;
+}
+.app.in-welcome .brand-mark{color:#5577d3!important}
+.app.in-welcome .topbar .menu-button,
+.app.in-welcome:has(.fl-auto-landing) .topbar .menu-button{
+  background:rgba(255,255,255,.94)!important;
+  color:#3153a0!important;border:1px solid #d3dff5!important;
+  box-shadow:0 4px 16px #3d65ba16;
+}
+.app.in-welcome .topbar .menu-button:hover{background:#e8f0ff!important}
