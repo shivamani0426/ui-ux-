@@ -10,7 +10,36 @@ const categories=[
 ['AI Product',/\b(ai|llm|chatbot|agent|machine learning|generative)\b/i],
 ['SaaS',/\b(saas|dashboard|analytics|crm|enterprise)\b/i]
 ];
-export const inferProjectCategory=brief=>categories.find(([,re])=>re.test(clean(brief)))?.[0]||'Digital product';
+// A phrase like "without chat" must never become a recommended chat module.
+// Interpret the last explicit mention, so a later refinement can deliberately
+// replace an earlier requirement. No model calls or third-party data involved.
+const NEGATION=/\b(?:no|without|exclude(?:d)?|omit|avoid|remove|never|do\s+not|does\s+not|must\s+not|should\s+not|don't|not\s+(?:include|use|need|require|allow))\b/gi;
+const PRESERVATION=/\b(?:do\s+not|must\s+not|should\s+not|don't|never)\s+(?:remove|exclude|omit|drop|delete)\b/i;
+const sentences=text=>String(text||'').split(/[.!?;\n]+|\b(?:but|however|instead)\b/gi).filter(Boolean);
+const ruleStatus=(text,re)=>{
+  let latest=null,position=0;
+  for(const clause of sentences(text)){
+    const matches=[...clause.matchAll(new RegExp(re.source,'gi'))];
+    for(const m of matches){
+      const before=clause.slice(Math.max(0,m.index-75),m.index);
+      const negative=[...before.matchAll(NEGATION)].some(hit=>before.length-(hit.index+hit[0].length)<=66)
+        &&!PRESERVATION.test(before);
+      latest={excluded:negative,position:position+m.index,
+        excerpt:clause.trim().replace(/\s+/g,' ').slice(0,145)};
+    }
+    position+=clause.length+1;
+  }
+  return latest;
+};
+export const inferProjectCategory=brief=>{
+  const text=clean(brief);
+  const choices=categories.map(([name,re],order)=>({
+    name,order,status:ruleStatus(text,re),
+    evidence:[...text.matchAll(new RegExp(re.source,'gi'))].length
+  })).filter(c=>c.status&&!c.status.excluded)
+    .sort((a,b)=>b.evidence-a.evidence||a.order-b.order);
+  return choices[0]?.name||'Digital product';
+};
 const roles=[
 ['Students / learners',/\b(students?|learners?)\b/i],
 ['Teachers / educators',/\b(teachers?|instructors?|professors?)\b/i],
@@ -67,15 +96,33 @@ SaaS:['Overview dashboard','Primary workflow','Reports and analytics','Team sett
 export function analyzeProject(brief,{category}={}){
   const text=clean(brief);
   const kind=pagesByCategory[category]?category:inferProjectCategory(text);
-  const audience=roles.filter(([,re])=>re.test(text)).map(([label])=>label);
-  const features=featureRules.filter(x=>x[4].test(text)).map(([id,label,page,action])=>({id,label,page,action,evidence:'Explicitly mentioned'}));
+  const audience=roles.filter(([,re])=>{
+    const status=ruleStatus(text,re);return status&&!status.excluded;
+  }).map(([label])=>label);
+  const interpreted=featureRules.map(([id,label,page,action,re])=>({
+    id,label,page,action,status:ruleStatus(text,re)
+  })).filter(x=>x.status);
+  const features=interpreted.filter(x=>!x.status.excluded)
+    .sort((a,b)=>a.status.position-b.status.position)
+    .map(({id,label,page,action})=>({id,label,page,action,evidence:'Explicitly mentioned'}));
+  const excludedFeatures=interpreted.filter(x=>x.status.excluded).map(x=>({
+    id:x.id,label:x.label,evidence:'Explicitly excluded',excerpt:x.status.excerpt
+  }));
   const limits=constraints.filter(([,re])=>re.test(text)).map(([label])=>label);
   const defaults=pagesByCategory[kind].filter(page=>
     page!=='Teacher workspace'||audience.includes('Teachers / educators'));
   const rolePages=audience.includes('Administrators')?['Administration']: [];
   // Explicit modules come before proposed defaults. Related course/assignment
   // pages collapse to a single destination, not two overlapping navigation items.
-  const pages=unique([defaults[0],...features.map(x=>x.page),...rolePages,...defaults.slice(1)]).slice(0,15);
+  // Excluded capabilities cannot quietly return through generic category pages.
+  const disallowed=excludedFeatures.flatMap(f=>({
+    payments:[/checkout/i,/transactions/i,/payments/i],
+    commerce:[/discover products/i,/product details/i,/checkout/i,/orders and account/i],
+    messages:[/conversations and results/i],
+    tutor:[/ai assistance/i]
+  }[f.id]||[]));
+  const pages=unique([defaults[0],...features.map(x=>x.page),...rolePages,...defaults.slice(1)])
+    .filter(page=>!disallowed.some(rule=>rule.test(page))).slice(0,15);
   const workflows=features.slice(0,9).map(f=>({name:f.label,steps:['Open '+f.page,'Find the relevant action','Use the interface to '+f.action,'Confirm success or recover from error']}));
   if(!workflows.length)workflows.push({name:'Primary task (suggested)',steps:['Open overview','Find primary action','Complete the action','Review confirmation']});
   const questions=[];
@@ -85,11 +132,16 @@ export function analyzeProject(brief,{category}={}){
   if(features.some(f=>f.id==='tutor'))questions.push('What sources, accuracy checks and escalation path should the AI tutor use when uncertain?');
   if(!limits.length)questions.push('Any device, accessibility, or performance constraints?');
   const decisions=unique((text.match(/(?:^|[.!?]\s+)([^.!?]{0,15}\b(?:must|keep|preserve|only|do not|without|should)\b[^.!?]{4,160})/gi)||[]).map(x=>clean(x,175))).slice(0,6);
-  const requestedStyles=unique([/\b(glassmorphism|glass ui|glass panels|neon|futuristic|immersive|3d)\b/i.test(text)?'glass':null,/\b(minimal|clean|simple|apple.style)\b/i.test(text)?'minimal':null,/\b(creative|playful|editorial|bold)\b/i.test(text)?'creative':null]);
+  const requestedStyles=unique([
+    ruleStatus(text,/\b(glassmorphism|glass ui|glass panels|neon|futuristic|immersive|3d)\b/i)?.excluded===false?'glass':null,
+    ruleStatus(text,/\b(minimal|clean|simple|apple.style)\b/i)?.excluded===false?'minimal':null,
+    ruleStatus(text,/\b(creative|playful|editorial|bold)\b/i)?.excluded===false?'creative':null
+  ]);
   return {category:kind,audience:audience.length?audience:['Primary audience not stated — confirm'],
-    audienceSource:audience.length?'explicit':'suggested',features,constraints:limits,pages,workflows,
+    audienceSource:audience.length?'explicit':'suggested',features,excludedFeatures,constraints:limits,pages,workflows,
     goals:features.length?features.slice(0,6).map(f=>'Help users '+f.action):['Make the primary task discoverable (to confirm)'],
     explicitDecisions:decisions,requestedStyles,openQuestions:questions,evidenceLevel:features.length&&audience.length?'brief-specific':'partly-inferred',
+    confidence:features.length>=2&&audience.length?'high':features.length||audience.length?'medium':'low',
     note:'Suggested pages and heuristic assessments are not findings from user testing or scanned websites.'};
 }
 const tradeoffs={
