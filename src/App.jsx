@@ -537,7 +537,7 @@ function App(){
             </div>
             <ProjectWorkbench key={project.id} project={project}
               selected={selected} onSelectedChange={setSelected} api={api}
-              notice={notice} onWorkspaceChange={saveWorkbenchState}
+              notice={notice} authenticated={authState.authenticated} onWorkspaceChange={saveWorkbenchState}
               onRestore={restoreWorkbench}/>
             <div className="result-footer">
               <button className="text-action" disabled={!selected.length} onClick={()=>{setViewPreview(v=>!v);setMobilePreview(false)}}><Layers3 size={15}/>{viewPreview?'Hide fusion preview':'Preview selected design'} <ChevronRight size={14}/></button>
