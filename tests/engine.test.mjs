@@ -7,7 +7,8 @@ test('all three directions are available for every valid brief',()=>{
   assert.equal(output.designs.length,3);
   assert.deepEqual(new Set(output.designs.map(x=>x.id)),new Set(['minimal','glass','creative']));
   assert.equal(output.designs[0].id,'glass');
-  assert.equal(output.designs[0].references.length,3);
+  assert.equal(output.designs[0].references.length,0,
+    'Generic design advice must not silently include archived website suggestions');
 });
 test('explicit feedback influences future recommendations',()=>{
   const base=recommend('Build a general digital product for teams',{});
