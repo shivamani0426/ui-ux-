@@ -439,7 +439,12 @@ function trustedMutationOrigin(req){
   if(!req.headers.origin)return true;
   try{
     const origin=new URL(req.headers.origin).origin;
-    const production=Boolean(process.env.RENDER_SERVICE_ID)||isProd;
+    // Render runs npm test during a production build, where the host flag
+    // exists but NODE_ENV=test and the isolated test server is localhost.
+    // Use the exact test Origin locally; LIVE requests still require HTTPS
+    // and the configured production FRONTLINE_SITE_URL.
+    const production=process.env.NODE_ENV==='test'?false:
+      Boolean(process.env.RENDER_SERVICE_ID)||isProd;
     const expected=production?
       new URL(process.env.FRONTLINE_SITE_URL||'https://ui-compass-studio.onrender.com').origin:
       'http://'+req.headers.host;
