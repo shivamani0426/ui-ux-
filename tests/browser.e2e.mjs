@@ -205,6 +205,24 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     }
     assert.equal(await page.locator('.pi-panel').count(),1,'Project Intelligence must render once, not repeat');
     assert.equal(await page.locator('.pi-comparisons').count(),1,'Comparison must render once');
+    assert.equal(await page.locator('.pi-confidence').count(),1,
+      'Brief-based evidence strength is visible, not presented as measured certainty');
+    if(!remote){
+      await page.locator('.pi-refine textarea').fill(
+        'Keep the student dashboard and AI tutor, but exclude chat messaging. Prioritize mobile accessibility.');
+      await page.getByRole('button',{name:'Update recommendations'}).click();
+      await page.locator('.pi-exclusions').waitFor({timeout:8000});
+      assert.match(await page.locator('.pi-exclusions').innerText(),/Messages and conversations/);
+      await page.locator('.pi-details').filter({hasText:'Compare the three directions'}).locator('summary').click();
+      await page.locator('.pi-factor-details').first().locator('summary').click();
+      assert.ok((await page.locator('.pi-factor-details').first().locator('li').count())>=2,
+        'Each recommendation must disclose an auditable numeric scoring ledger');
+      await page.screenshot({path:'browser-artifacts/'+name+'-design-intelligence-v2.png',fullPage:false});
+      await page.getByRole('button',{name:'Reset',exact:true}).click();
+      await page.locator('.pi-exclusions').waitFor({state:'detached',timeout:8000});
+      assert.equal(await page.locator('.pi-refine textarea').inputValue(),'',
+        'Reset returns to the original brief without deleting saved messages');
+    }
     assert.ok(await page.locator('.message-markdown').count()>=1,'Advisor messages should use safe Markdown renderer');
     if(!remote){
       await page.getByRole('button',{name:'Open navigation menu'}).click();
