@@ -16,7 +16,7 @@ test('Synthetic learning benchmark remains deterministic and all brief-first ran
   assert.match(first.evaluation,/NOT real-world usability/);
 });
 test('Feedback is an explainable bounded adjustment, never an empirical quality claim',()=>{
-  const analysis=analyzeProject('Create a clean, accessible student assignment dashboard for low-power devices');
+  const analysis=analyzeProject('Create an accessible student assignment dashboard for low-power devices');
   const preferences={styleWeights:{minimal:5,glass:-5,creative:2}};
   const scored=compareDirections(analysis,STYLES,preferences);
   const baseline=compareDirections(analysis,STYLES,{});
