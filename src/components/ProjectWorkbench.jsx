@@ -56,6 +56,18 @@ export default function ProjectWorkbench({
       .finally(()=>{if(!cancelled)setLoading(false);});
     return ()=>{cancelled=true};
   },[project.id]);
+  // Refresh just the curated reference choices; never reset unsaved board cards.
+  useEffect(()=>{
+    let active=true;
+    const refreshSources=event=>{
+      if(event?.detail?.projectId!==project.id)return;
+      api('/api/projects/'+encodeURIComponent(project.id)+'/workspace')
+        .then(data=>{if(active)setSavedSources(data.savedInspirations||[]);})
+        .catch(()=>{});
+    };
+    window.addEventListener('frontline:inspiration-change',refreshSources);
+    return ()=>{active=false;window.removeEventListener('frontline:inspiration-change',refreshSources)};
+  },[project.id,api]);
 
   const refresh=async()=>{
     if(busy)return;
