@@ -1,0 +1,43 @@
+/* FRONTLINE / minimal automatic centre-black-orb entrance.
+   Reuses the expansion language of the existing login black-hole transition.
+   The opening is decorative and never traps pointer or keyboard input. */
+.fl-orb-intro{
+  position:fixed;inset:0;z-index:1200;overflow:hidden;pointer-events:none;
+  background:#080d15;isolation:isolate;
+  animation:fl-intro-curtain 1950ms cubic-bezier(.22,.78,.2,1) both;
+}
+.fl-orb-intro-glow{
+  position:absolute;left:50%;top:50%;width:min(60vmin,510px);aspect-ratio:1;
+  border-radius:50%;transform:translate(-50%,-50%);
+  background:radial-gradient(circle,rgba(188,207,255,.16),rgba(130,163,226,.06) 48%,transparent 73%);
+  animation:fl-intro-glow 1800ms ease-in-out both;
+}
+.fl-orb-intro-disc{
+  position:absolute;left:50%;top:50%;width:min(34vmin,290px);aspect-ratio:1;
+  border-radius:50%;background:radial-gradient(circle at 35% 26%,#252b3a,#0a101b 51%,#020408 88%);
+  border:1px solid rgba(208,221,255,.21);
+  box-shadow:inset -15px -24px 35px #0009,0 0 0 1px #cddaff0b,0 0 64px #98b6ff22;
+  transform:translate(-50%,-50%) scale(.08);
+  animation:fl-intro-singularity 1950ms cubic-bezier(.2,.7,.17,1) both;
+  will-change:transform,opacity;
+}
+@keyframes fl-intro-singularity{
+  0%{transform:translate(-50%,-50%) scale(.08);opacity:0}
+  15%{transform:translate(-50%,-50%) scale(.38);opacity:1}
+  46%{transform:translate(-50%,-50%) scale(1);opacity:1}
+  81%{transform:translate(-50%,-50%) scale(13);opacity:1}
+  100%{transform:translate(-50%,-50%) scale(16);opacity:0}
+}
+@keyframes fl-intro-curtain{
+  0%,73%{opacity:1}
+  100%{opacity:0;visibility:hidden}
+}
+@keyframes fl-intro-glow{
+  0%{opacity:0;scale:.4}
+  50%{opacity:1;scale:1}
+  100%{opacity:0;scale:2}
+}
+@media(prefers-reduced-motion:reduce){
+  .fl-orb-intro{animation:fl-intro-curtain .28s ease-out both}
+  .fl-orb-intro-glow,.fl-orb-intro-disc{animation:none!important;opacity:0!important;will-change:auto}
+}

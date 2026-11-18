@@ -41,27 +41,26 @@ test('Tour easing is monotonic, exact at stops and steady during reading holds',
   }
   assert.equal(t,TOUR_DURATION_MS);
 });
-test('Portal opens before guided scrolling and existing manual story controls survive',()=>{
-  const app=read('src/App.jsx');
-  const landing=read('src/components/FrontlineLanding.jsx');
-  const hook=read('src/hooks/useCinematicTour.js');
-  const portalCss=read('src/components/FrontlineDomePortal.css');
-  for(const element of ["locked={portalState!=='done'}","effectsReady={portalState==='done'}",
-    "setPortalState('charging')","setPortalState('opening')","setPortalState('done')"]){
-    assert.ok(app.includes(element),'missing entrance gate '+element);
-  }
-  for(const term of ['useCinematicTour','fl-tour-ui','Pause cinematic tour','Replay cinematic tour',
-    'Skip cinematic journey','goToChapter','onComposeReady'])assert.ok(landing.includes(term));
-  for(const term of ['wheel','touchstart','pointerdown','keydown','visibilitychange',
-    'prefers','scrollTo','requestAnimationFrame']) {
-    if(term==='prefers')continue;
-    assert.ok(hook.includes(term),'User must remain in control: '+term);
-  }
-  assert.match(portalCss,/fl-dome-ring-light/);
-  assert.match(portalCss,/opacity:0;transform:scale/);
-  assert.match(portalCss,/2700ms/);
-  assert.match(portalCss,/3000ms/);
+test('New automatic feature sequence replaces scrolling while keeping user control',()=>{
+ const app=read('src/App.jsx');
+ const landing=read('src/components/FrontlineLanding.jsx');
+ const intro=read('src/components/FrontlineOrbIntro.jsx');
+ const introCss=read('src/components/FrontlineOrbIntro.css');
+ assert.ok(app.includes("setTimeout(()=>setPortalState('done')"));
+ assert.ok(app.includes('onSignup={startGoogleSignup}'));
+ for(const term of ['SCENE_TIME','setFrame','setPlaying','Pause feature showcase',
+  'Play feature showcase','Replay feature showcase','goToChapter','prefers-reduced-motion',
+  'document.hidden','onComposeReady?.(effectsReady&&!locked)']){
+  assert.ok(landing.includes(term),'Missing accessible timed feature sequencing: '+term);
+ }
+ assert.ok(!landing.includes('window.scrollTo('));
+ assert.ok(!landing.includes('window.scrollY'));
+ assert.ok(intro.includes('fl-orb-intro-disc'));
+ assert.ok(!intro.includes('fl-dome-f-sculpture'));
+ assert.match(introCss,/1950ms/);
+ assert.match(introCss,/prefers-reduced-motion:reduce/);
 });
+
 test('Solar animation is staged and sleeps when invisible without discarding its visual fallback',()=>{
   const scene=read('src/components/FrontlineLanding.jsx');
   const fluid=read('src/components/SolarFluidCanvas.jsx');

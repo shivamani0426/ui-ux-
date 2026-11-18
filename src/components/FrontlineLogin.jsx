@@ -17,12 +17,12 @@ export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=fals
     <header className="fl-login-header">
       <div className="fl-login-signature"><FrontlineMark size={30}/><span>FRONTLINE <small>UX / UI</small></span></div>
       <button type="button" className="fl-login-back" onClick={onBack}>
-        <ArrowLeft size={15} aria-hidden="true"/> Back to the story
+        <ArrowLeft size={15} aria-hidden="true"/> Back to home
       </button>
     </header>
     <main className="fl-login-layout">
       <div className="fl-login-editorial">
-        <span className="fl-login-overline"><span className="fl-login-overline-dot"/>THE NEXT CHAPTER / 2026</span>
+        <span className="fl-login-overline"><span className="fl-login-overline-dot"/>WELCOME TO FRONTLINE</span>
         <h1>Design starts <em>with you.</em></h1>
         <p>Step inside a space where inspiration becomes direction, ideas find form, and every detail has a reason to exist.</p>
         <div className="fl-login-editorial-footer" aria-label="Frontline design workflows">
@@ -33,10 +33,10 @@ export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=fals
         <div className="fl-login-card">
           <span className="fl-login-card-kicker"><Sparkles size={14} aria-hidden="true"/> YOUR CREATIVE SPACE</span>
           <h2>Welcome to <em>Frontline.</em></h2>
-          <p className="fl-login-card-copy">Your next great interface begins here. Enter as a guest, or sign in with Google to securely sync your design workspace.</p>
-          <StarBorder as="div" className="fl-login-google-star" theme="dark"
-            backgroundColor="#2b2325" textColor="#f7ead6" borderColor="#b98a61"
-            color="#ffdfaa" trailColor="#c58155" radius={19} thickness={1.5}
+          <p className="fl-login-card-copy">Continue with Google to log in or create your Frontline account. Or explore the studio as a guest.</p>
+          <StarBorder as="div" className="fl-login-google-star" theme="light"
+            backgroundColor="#ffffff" textColor="#223858" borderColor="#b5c9f3"
+            color="#a9c7ff" trailColor="#6e96e5" radius={19} thickness={1.5}
             duration={4.8} trailLength={0.35} glow={0.85} stars={2} hover="lap" sparkle>
             <button type="button" className="fl-login-google" disabled={!googleReady} onClick={onGoogle}>
               <span className="fl-google-letter" aria-hidden="true">G</span>
@@ -54,7 +54,7 @@ export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=fals
               'Google sign-in was cancelled or could not complete. Please try again.'}</span>
           </div>}
           {authError==='sync_failed'&&<button type="button" className="fl-login-guest" onClick={onRetrySync}>Retry private project sync <ArrowUpRight size={18} aria-hidden="true"/></button>}
-          <div className="fl-login-separator"><span/>OR STEP INTO THE STUDIO<span/></div>
+          <div className="fl-login-separator"><span/>OR TRY THE STUDIO FIRST<span/></div>
           <button type="button" className="fl-login-guest" onClick={onGuest}>
             <span>Enter Studio as Guest</span><ArrowUpRight size={18} aria-hidden="true"/>
           </button>
@@ -62,9 +62,9 @@ export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=fals
             <span>Guest work stays private to this browser. Google sign-in securely syncs your account projects across devices after connecting.</span>
           </div>
         </div>
-        <p className="fl-login-under-card">A LITTLE CURIOSITY. AN INFINITE CANVAS.</p>
+        <p className="fl-login-under-card">A BETTER WAY TO DESIGN, TOGETHER.</p>
       </div>
     </main>
-    <div className="fl-login-bottomline"><span>CRAFTED FOR THE CURIOUS</span><span>FRONTLINE / DESIGN INTELLIGENCE</span></div>
+    <div className="fl-login-bottomline"><span>DESIGN MADE SIMPLE</span><span>FRONTLINE / DESIGN INTELLIGENCE</span></div>
   </section>;
 }

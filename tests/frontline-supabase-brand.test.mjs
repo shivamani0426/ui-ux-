@@ -4,37 +4,38 @@ import {readFileSync} from 'node:fs';
 import {recommend} from '../design-engine.mjs';
 const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
-test('Frontline F is used across navigation, landing, messages, previews and favicon',()=>{
+test('Frontline branding stays in navigation, chat and favicon but leaves the opening F-free',()=>{
   const app=read('src/App.jsx');
-  const scene=read('src/components/FrontlineLanding.jsx');
   const mark=read('src/components/FrontlineMark.jsx');
+  const intro=read('src/components/FrontlineOrbIntro.jsx');
   const favicon=read('public/favicon.svg');
-  assert.ok(app.includes("import FrontlineMark"));
-  assert.ok(scene.includes("import FrontlineMark"));
+  assert.ok(app.includes('import FrontlineMark'));
   assert.ok(app.includes('<FrontlineMark size={29}/>'));
   assert.ok(app.includes('<FrontlineMark size={25}/>'));
   assert.ok(app.includes('<FrontlineMark size={53}/>'));
-  assert.ok(scene.includes('fl-corner-monogram'));
+  assert.ok(!intro.includes('FrontlineMark'),'Old F opening should be removed, not site branding');
+  assert.ok(!intro.includes('<svg'));
   assert.ok(mark.includes('linearGradient')&&mark.includes('Frontline F monogram'));
   assert.ok(favicon.includes('id="metal"'));
   assert.ok(!app.includes('✳'));
-  assert.ok(!scene.includes('✳'));
 });
 
-test('Original WebGL layer degrades gracefully on mobile and reduced motion',()=>{
+test('Original WebGL layer and pointer interactions degrade gracefully on mobile and reduced motion',()=>{
   const fluid=read('src/components/SolarFluidCanvas.jsx');
   const landing=read('src/components/FrontlineLanding.jsx');
   const css=read('src/components/FrontlineLanding.css');
+  const auto=read('src/components/FrontlineAutoLanding.css');
   assert.ok(fluid.includes('(max-width: 700px)'));
   assert.ok(fluid.includes('navigator.connection?.saveData'));
   assert.ok(fluid.includes('1.25'));
-  assert.ok(landing.includes('requestAnimationFrame(smoothPointer)'));
-  assert.ok(landing.includes('cancelAnimationFrame(pointerFrame)'));
+  assert.ok(landing.includes('requestAnimationFrame(smooth)'));
+  assert.ok(landing.includes('cancelAnimationFrame(raf)'));
+  assert.ok(landing.includes("event.pointerType==='touch'"));
+  assert.ok(landing.includes('prefers-reduced-motion'));
+  assert.ok(auto.includes('prefers-reduced-motion'));
   assert.ok(css.includes('fl-reflect-transform'));
   assert.ok(css.includes('fl-content-fast'));
   assert.ok(css.includes('fl-intro-fast'));
-  assert.ok(css.includes('transform:translate3d(-50%,0,0)'));
-  assert.ok(css.includes('prefers-reduced-motion'));
 });
 
 test('Select UI/UX recommendations support a persisted inspiration library',()=>{

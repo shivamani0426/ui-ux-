@@ -1,0 +1,150 @@
+/* FRONTLINE / approachable studio refresh.
+   Purely visual: all project APIs, Google OAuth, privacy settings, design
+   engines and existing motion effects remain the original components. */
+:root{
+  color-scheme:light;
+  --bg:#f5f8ff;--surface:#ffffff;--text:#223451;--muted:#627592;
+  --line:rgba(85,111,165,.17);--lav:#4868c6;--soft:#ecf2ff;
+  --hover:#e4ecff;--message:#e8f0ff;
+  --shadow:0 22px 70px rgba(48,76,135,.10);
+  --fl-ink:#223451;--fl-ember:#607bd3;--fl-brass:#6c8ce0;
+  --fl-cream:#f8fbff;--fl-gold:#99b8ef;--fl-ui-sun:#d4e5ff;
+  --fl-surface-glass:rgba(255,255,255,.91);
+  --fl-studio-glow:rgba(113,153,231,.16);
+  --fl-surface-edge:rgba(100,128,185,.19);
+  --fl-nav-surface:rgba(255,255,255,.86);--fl-chip:#ebf2ff;
+}
+:root[data-theme='dark']{
+  color-scheme:dark;
+  --bg:#151e32;--surface:#24324a;--text:#eef4ff;--muted:#bccce6;
+  --line:rgba(178,200,247,.18);--lav:#a5bcff;--soft:#304361;
+  --hover:#3a4b68;--message:#374c71;
+  --shadow:0 22px 70px rgba(5,13,32,.29);
+  --fl-ink:#eff4ff;--fl-ember:#a8bff9;--fl-brass:#9bb6f7;
+  --fl-cream:#25334d;--fl-gold:#a9c1ff;--fl-ui-sun:#cbdcff;
+  --fl-surface-glass:rgba(38,54,80,.92);
+  --fl-studio-glow:rgba(92,137,220,.17);
+  --fl-surface-edge:rgba(182,207,255,.2);
+  --fl-nav-surface:rgba(29,42,65,.89);--fl-chip:#334664;
+}
+body{background:var(--bg)}
+::selection{background:rgba(102,139,231,.28)}
+.app.in-chat{
+  background:
+    radial-gradient(ellipse 50% 43% at 50% -20%,rgba(145,179,247,.15),transparent 84%),
+    var(--bg);
+}
+.app.in-chat .studio-title,.app.in-chat .result-header strong,.menu-panel .panel-title{
+  font-family:Manrope,'DM Sans',sans-serif;letter-spacing:-.055em;
+}
+.app.in-chat .studio-title{font-size:clamp(37px,5vw,62px);line-height:1.11}
+.app.in-chat .studio-title em{font-style:normal;color:var(--lav)}
+.app.in-chat .submit-button,.menu-panel .nav-primary,
+.app.in-chat .save-feedback{background:var(--lav);color:var(--surface)}
+.app.in-chat .submit-button:not(:disabled):hover,
+.menu-panel .nav-primary:hover,.menu-panel .menu-group>button.nav-primary:hover{
+  background:var(--lav);color:var(--surface);filter:brightness(1.08);
+}
+.app.in-chat .picked .select-check{background:var(--lav);border-color:var(--lav);color:var(--bg)}
+.app.in-chat .live-dot{background:#69baaa;box-shadow:0 0 0 3px #69baaa24}
+.menu-panel .menu-group>button.nav-primary{background:var(--lav);color:var(--surface)}
+.app.in-chat .design-option.picked,.menu-panel .tool-mode.active{
+  background:var(--soft);border-color:var(--fl-brass)
+}
+.app.in-chat .brand-sub,.menu-panel .menu-eyebrow{letter-spacing:.12em}
+.menu-panel .menu-group>button,.menu-panel .menu-bottom>button,
+.app.in-chat .result-message{border-radius:16px}
+.app.in-chat .composer-position.docked{filter:none}
+/* Login route: keep its original orbit drift, breathing orb, rings, star
+   border and entry transitions. Replace copper-on-black with a welcoming
+   blue/white palette (night blue only where the atmosphere needs contrast). */
+.fl-login-page{color:#243858;background:#f5f8ff}
+.fl-login-atmosphere{
+  background:radial-gradient(ellipse 75% 75% at 28% 43%,#e0ecff 0%,#edf4ff 55%,#f7faff 100%);
+}
+.fl-login-horizon{
+  background:radial-gradient(ellipse 65% 38% at 32% 0%,rgba(106,151,231,.14),transparent 78%),
+    linear-gradient(180deg,transparent,rgba(161,194,238,.07))
+}
+.fl-login-orb{
+  background:radial-gradient(circle at 38% 30%,#fff 0%,#d9eaff 22%,#8cacf0 52%,#395c9e 80%,#243859 92%);
+  box-shadow:0 0 85px rgba(106,143,216,.2),0 0 150px rgba(135,180,235,.12);opacity:.72;
+}
+.fl-login-orb-inner{border-color:#f8fcff78;box-shadow:inset 20px 20px 45px #eef7ff2b,0 0 65px #b5d0ff38}
+.fl-login-ring{border-color:rgba(95,130,200,.25)}
+.fl-login-ring-two{border-color:rgba(95,130,200,.13)}
+.fl-login-starfield{background-image:radial-gradient(#8da5d9 .8px,transparent .8px);opacity:.16}
+.fl-login-signature{color:#4369bc}
+.fl-login-signature span{color:#243a62}
+.fl-login-signature small{color:#5f7daa}
+.fl-login-back{color:#36579f;border-color:#c6d7f4;background:#fffffff0}
+.fl-login-back:hover{background:#eaf2ff}
+.fl-login-overline{color:#5476b6;letter-spacing:.1em}
+.fl-login-overline-dot{background:#6a91df;box-shadow:0 0 16px #9bbcff}
+.fl-login-editorial h1{
+  font:800 clamp(50px,6.7vw,100px)/1.04 Manrope,'DM Sans',sans-serif;
+  letter-spacing:-.075em;color:#243858;
+}
+.fl-login-editorial h1 em{font-style:normal;color:#5574ce}
+.fl-login-editorial>p{color:#536a8c;line-height:1.75}
+.fl-login-editorial-footer{color:#5f79a8;letter-spacing:.08em}
+.fl-login-card{
+  background:rgba(255,255,255,.88);
+  border:1px solid #dbe6fa;
+  box-shadow:0 25px 65px rgba(56,83,141,.14);
+  backdrop-filter:blur(20px);
+}
+.fl-login-card-kicker{color:#5c77b2;letter-spacing:.12em}
+.fl-login-card h2{font:800 clamp(30px,3vw,44px)/1.13 Manrope,sans-serif;color:#233955;letter-spacing:-.05em}
+.fl-login-card h2 em{font-style:normal;color:#5274d3}
+.fl-login-card-copy{color:#607493;font-size:13px;line-height:1.7}
+.fl-login-google{background:#4269d6;color:#fff;border-radius:16px;font-size:13px}
+.fl-login-google:not(:disabled):hover{background:#3258bf}
+.fl-login-availability{color:#6d7f99}
+.fl-login-availability svg{color:#607fd0}
+.fl-login-separator{color:#7384a1;letter-spacing:.04em}
+.fl-login-separator span{background:#d7e2f6}
+.fl-login-guest{color:#3155a6;background:#eef4ff;border:1px solid #b6caf3;font-size:13px}
+.fl-login-guest:hover{box-shadow:0 12px 26px #5d80cd22;background:#dfebff}
+.fl-login-privacy{color:#6c7f9d}
+.fl-login-privacy svg{color:#6281cc}
+.fl-login-under-card,.fl-login-bottomline{color:#7689a7}
+.fl-blackhole-disc{box-shadow:0 0 90px #86a3e02e}
+@media(max-width:700px){
+  .fl-login-page{overflow-y:auto}
+  .fl-login-editorial h1{font-size:clamp(47px,10vw,76px)}
+  .fl-login-card{border-radius:22px}
+}
+@media(prefers-reduced-motion:reduce){
+  .fl-login-orb,.fl-login-ring,.fl-login-ring-two{animation:none!important}
+}
+/* Keep the native dark-mode choice, including readable AA-friendly text. */
+:root[data-theme='dark'] .app.in-chat .save-feedback,
+:root[data-theme='dark'] .app.in-chat .submit-button,
+:root[data-theme='dark'] .menu-panel .nav-primary{
+  color:#14213b
+}
+
+/* The former scroll tour used :has() to recolor the navigation per chapter.
+   The new landing stays light and static behind its timed features, so one
+   consistent accessible header must override all legacy chapter variants. */
+.app.in-welcome{background:#edf4ff!important;color:#263754}
+.app.in-welcome .topbar,
+.app.in-welcome:has(.fl-auto-landing) .topbar{
+  background:linear-gradient(180deg,rgba(248,251,255,.95),rgba(248,251,255,.5) 80%,transparent)!important;
+  color:#243858!important;
+  box-shadow:none;
+}
+.app.in-welcome .topbar .brand,
+.app.in-welcome:has(.fl-auto-landing) .topbar .brand,
+.app.in-welcome:has(.fl-auto-landing) .topbar .brand-word{
+  color:#243858!important;text-shadow:none!important;
+}
+.app.in-welcome .brand-mark{color:#5577d3!important}
+.app.in-welcome .topbar .menu-button,
+.app.in-welcome:has(.fl-auto-landing) .topbar .menu-button{
+  background:rgba(255,255,255,.94)!important;
+  color:#3153a0!important;border:1px solid #d3dff5!important;
+  box-shadow:0 4px 16px #3d65ba16;
+}
+.app.in-welcome .topbar .menu-button:hover{background:#e8f0ff!important}

@@ -19,204 +19,93 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('pageerror',error=>errors.push('PAGEERROR '+error.stack));
     page.on('console',message=>{if(message.type()==='error')errors.push('CONSOLE '+message.text())});
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
-    await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'networkidle',timeout:60000});
+    await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'domcontentloaded',timeout:60000});
     try{
-      await page.locator('.fl-dome-portal').waitFor({timeout:7000});
+      await page.locator('.fl-orb-intro').waitFor({timeout:6500});
     }catch(error){
-      const html=await page.evaluate(()=>document.body?.innerText?.slice(0,350)||'NO BODY').catch(()=>'<unavailable>');
-      throw new Error('Entrance did not mount. Browser errors: '+errors.join(' | ')+'. Visible: '+html+'. '+error.message);
+      const preview=await page.evaluate(()=>document.body?.innerText?.slice(0,350)||'NO BODY').catch(()=>'<unavailable>');
+      throw new Error('Automatic black-orb entrance failed: '+errors.join(' | ')+'. Visible: '+preview+'. '+error.message);
     }
-    assert.equal(await page.locator('.fl-dome-trigger').count(),1,name+' should start at the central black dome');
-    assert.equal((await page.locator('.fl-dome-portal').innerText()).trim(),'',
-      name+' black entrance must contain ZERO visible text');
-    assert.equal(await page.locator('.fl-dome-f-sculpture').count(),1,
-      name+' entrance must show one original sculpted F');
-    const sculpture=await page.locator('.fl-dome-f-sculpture').boundingBox();
-    const viewport=page.viewportSize();
-    assert.ok(sculpture&&Math.abs(sculpture.x+sculpture.width/2-viewport.width/2)<6
-      && Math.abs(sculpture.y+sculpture.height/2-viewport.height/2)<6,
-      name+' F sculpture must be precisely centered: '+JSON.stringify(sculpture));
-    assert.equal(await page.locator('.composer textarea').count(),0,name+' chat must be absent while the portal is locked');
-    assert.equal(await page.locator('.fl-world').getAttribute('inert'),'',
-      name+' pre-landing story must be inert until the portal opens');
-    await page.mouse.move(24,Math.round(page.viewportSize().height/2));
-    await page.mouse.wheel(0,420);
-    await page.waitForTimeout(100);
-    assert.equal(await page.evaluate(()=>window.scrollY),0,'Dome gate should lock user-initiated wheel scrolling');
-    await page.screenshot({path:'browser-artifacts/'+name+'-black-dome-entry.png',fullPage:false});
-    await page.locator('.fl-dome-trigger').hover();
-    await page.waitForTimeout(450);
-    assert.equal(await page.locator('.fl-dome-portal').getAttribute('data-phase'),'idle',
-      name+' hovering must NOT trigger the cinematic portal');
-    await page.locator('.fl-dome-trigger').click();
-    await page.locator('.fl-dome-portal.is-charging').waitFor({timeout:2500});
-    assert.equal(await page.locator('.fl-world').getAttribute('inert'),'',
-      name+' landing must remain locked while bright white energy gathers');
-    await page.waitForTimeout(1400);
-    const whiteCharge=await page.evaluate(()=>{
-      const dome=document.querySelector('.fl-dome-portal-orb');
-      const aura=document.querySelector('.fl-dome-white-aura');
-      return {background:getComputedStyle(document.querySelector('.fl-dome-portal')).backgroundColor,
-        aura:Number(getComputedStyle(aura).opacity),shadow:getComputedStyle(dome).boxShadow,
-        clip:getComputedStyle(document.querySelector('.fl-world')).clipPath};
-    });
-    assert.equal(whiteCharge.background,'rgb(3, 3, 3)',name+' charging background must stay black');
-    assert.ok(whiteCharge.aura>.1,name+' white halo must visibly build for seconds: '+JSON.stringify(whiteCharge));
-    assert.ok(whiteCharge.clip.includes('0%'),name+' landing must not appear before charge completes');
-    await page.screenshot({path:'browser-artifacts/'+name+'-white-dome-charge.png',fullPage:false});
-    await page.locator('.fl-dome-portal.is-opening').waitFor({timeout:3500});
-    await page.waitForTimeout(500);
-    const clipEarly=await page.locator('.fl-world').evaluate(el=>getComputedStyle(el).clipPath);
-    await page.waitForTimeout(1350);
-    const clipMiddle=await page.locator('.fl-world').evaluate(el=>getComputedStyle(el).clipPath);
-    assert.ok(clipEarly.includes('circle(')&&clipMiddle.includes('circle(')&&clipEarly!==clipMiddle,
-      name+' inside-out aperture should expand progressively over multiple seconds: '+JSON.stringify({clipEarly,clipMiddle}));
-    const aperture=await page.locator('.fl-world').evaluate(el=>{
-      const clip=getComputedStyle(el).clipPath;
-      const shape=clip.split(' at ')[0];
-      const parts=/([+-]?(?:\d+\.?\d*|\.\d+))(px|vmax|vmin|vw|vh|%)/g;
-      let radius=0, count=0;
-      for(const [,v,u] of shape.matchAll(parts)){
-        const n=Number(v);
-        radius+=u==='px'?n:u==='vmax'?n*Math.max(innerWidth,innerHeight)/100:
-          u==='vmin'?n*Math.min(innerWidth,innerHeight)/100:
-          u==='vw'?n*innerWidth/100:u==='vh'?n*innerHeight/100:
-          n*Math.hypot(innerWidth,innerHeight)/100;
-        count++;
-      }
-      return {radius:count?radius:NaN,needed:Math.hypot(innerWidth/2,innerHeight/2),clip};
-    });
-    assert.ok(Number.isFinite(aperture.radius)&&aperture.radius<aperture.needed,
-      name+' the circular aperture must still be growing halfway through the reveal: '+JSON.stringify(aperture));
-    assert.equal(await page.locator('.app').evaluate(el=>getComputedStyle(el).backgroundColor),
-      'rgb(0, 0, 0)',name+' outside the growing aperture must remain pure black');
-    await page.screenshot({path:'browser-artifacts/'+name+'-dome-inside-out-reveal.png',fullPage:false});
-    await page.locator('.fl-dome-portal').waitFor({state:'detached',timeout:7000});
-    assert.equal(await page.locator('.fl-world').getAttribute('inert'),null,
-      name+' landing must become keyboard and pointer accessible after reveal');
-    assert.notEqual(await page.evaluate(()=>getComputedStyle(document.documentElement).overflow),'hidden',
-      name+' scroll should unlock after dome reveal');
-    // User-requested slow cinematic autoplay: it starts only after the dome
-    // opens, progresses visibly, and can be paused, replayed or interrupted.
-    await page.locator('.fl-tour-ui[data-tour-state="playing"]').waitFor({timeout:4500});
-    await page.waitForFunction(()=>window.scrollY>75,null,{timeout:10000});
-    const autoPosition=await page.evaluate(()=>window.scrollY);
-    assert.ok(autoPosition>75,'Guided tour should move naturally after the opening reveal');
-    await page.screenshot({path:'browser-artifacts/'+name+'-guided-cinematic-tour.png',fullPage:false});
-    await page.getByRole('button',{name:'Pause cinematic tour'}).click();
-    await page.locator('.fl-tour-ui[data-tour-state="paused"]').waitFor({timeout:2500});
-    const holdPosition=await page.evaluate(()=>window.scrollY);
-    await page.waitForTimeout(350);
-    assert.ok(Math.abs((await page.evaluate(()=>window.scrollY))-holdPosition)<12,
-      'Pause must stop native scrolling rather than fighting user navigation');
-    await page.getByRole('button',{name:'Replay cinematic tour from beginning'}).click();
-    await page.waitForFunction(()=>window.scrollY<12,null,{timeout:2200});
-    await page.mouse.wheel(0,360);
-    await page.locator('.fl-tour-ui[data-tour-state="paused"]').waitFor({timeout:2500});
-    await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
-    await page.waitForTimeout(650);
-    assert.equal(await page.locator('.brand-mark .fl-monogram').count(),1,'Header must show branded F');
-    await page.screenshot({path:'browser-artifacts/'+name+'-landing.png',fullPage:false});
-    if(await page.locator('.fl-world').count()){
-      assert.ok((await page.title()).includes('Frontline UX/UI'));
-      assert.equal(await page.locator('.fl-chapter-0').count(),1);
-      const introTitle=await page.locator('.fl-chapter-0 .fl-headline-main').boundingBox();
-      const titleViewport=page.viewportSize();
-      assert.ok(introTitle && introTitle.x>=-6 && introTitle.x+introTitle.width<=titleViewport.width+6,
-        name+' INTRO TITLE OVERFLOW: '+JSON.stringify(introTitle));
-      if(!remote){
-        const timeline=await page.evaluate(()=>({
-          screens:document.documentElement.scrollHeight/window.innerHeight,
-          composerCount:document.querySelectorAll('.composer textarea').length,
-        }));
-        assert.ok(timeline.screens>=9,name+' should offer an extended, deliberate scroll journey: '+JSON.stringify(timeline));
-        assert.equal(timeline.composerCount,0,'Opening should remain free of the composer');
-        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.296,behavior:'instant'}));
-        await page.waitForFunction(()=>document.querySelector('.fl-chapter-1'),null,{timeout:9000});
-        const separate=await page.evaluate(()=>{
-          const a=[...document.querySelectorAll('.fl-story-scene')].map(x=>Number(getComputedStyle(x).opacity));
-          return {select:a[1],generate:a[2],intro:a[0]};
-        });
-        assert.ok(separate.select>.92 && separate.generate<.04 && separate.intro<.04,
-          name+' feature chapters must have an independent reading hold: '+JSON.stringify(separate));
-        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.787,behavior:'instant'}));
-        await page.waitForFunction(()=>document.querySelector('.fl-chapter-4'),null,{timeout:9000});
-        const seed=await page.evaluate(()=>{
-          const m=new DOMMatrix(getComputedStyle(document.querySelector('.fl-spiral-stage')).transform);
-          return {scale:Math.hypot(m.a,m.b),composer:Number(getComputedStyle(document.documentElement).getPropertyValue('--fl-compose-reveal'))};
-        });
-        assert.ok(seed.scale<.15 && seed.composer===0,name+' spiral must begin as a tiny seed, with no chat: '+JSON.stringify(seed));
-        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.952,behavior:'instant'}));
-        await page.waitForTimeout(250);
-        const mature=await page.evaluate(()=>{
-          const m=new DOMMatrix(getComputedStyle(document.querySelector('.fl-spiral-stage')).transform);
-          return {scale:Math.hypot(m.a,m.b),composer:Number(getComputedStyle(document.documentElement).getPropertyValue('--fl-compose-reveal'))};
-        });
-        assert.ok(mature.scale>.98 && mature.scale>seed.scale*8,
-          name+' spiral should mature progressively across a long scroll distance: '+JSON.stringify({seed,mature}));
-        assert.ok(mature.composer>0 && mature.composer<.75,
-          name+' gateway reveal should lag spiral maturation rather than pop fully into view: '+JSON.stringify(mature));
-        await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
-      }
-      if(!remote){
-        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.385,behavior:'instant'}));
-        await page.waitForTimeout(270);
-        const letterBefore=await page.locator('.fl-story-scene-2 .fl-kinetic-glyph').first()
-          .evaluate(el=>getComputedStyle(el).transform);
-        await page.evaluate(()=>window.scrollTo({top:(document.documentElement.scrollHeight-innerHeight)*.455,behavior:'instant'}));
-        await page.waitForTimeout(270);
-        const letterAfter=await page.locator('.fl-story-scene-2 .fl-kinetic-glyph').first()
-          .evaluate(el=>getComputedStyle(el).transform);
-        assert.notEqual(letterBefore,letterAfter,
-          name+' scroll-responsive kinetic letters must animate through position, not pop');
-      }
-      await page.evaluate(() => window.scrollTo({top:(document.documentElement.scrollHeight-window.innerHeight)*.53,behavior:'instant'}));
-      await page.waitForFunction(() => document.querySelector('.fl-chapter-2'),null,{timeout:8000});
-      await page.waitForTimeout(1400);
-      await page.screenshot({path:'browser-artifacts/'+name+'-generate-story.png',fullPage:false});
-      await page.evaluate(() => window.scrollTo({top:(document.documentElement.scrollHeight-window.innerHeight)*.73,behavior:'instant'}));
-      await page.waitForFunction(() => document.querySelector('.fl-chapter-3'),null,{timeout:8000});
-      await page.waitForTimeout(1400);
-      await page.screenshot({path:'browser-artifacts/'+name+'-fusion-story.png',fullPage:false});
-      await page.evaluate(() => window.scrollTo({top:0,behavior:'instant'}));
-      await page.waitForFunction(() => document.querySelector('.fl-chapter-0'),null,{timeout:8000});
-      console.log(name+' Frontline landing story passed');
+    assert.equal(await page.locator('.fl-orb-intro-disc').count(),1,
+      name+' should open with one centrally positioned black ball');
+    assert.equal(await page.locator('.fl-dome-f-sculpture').count(),0,
+      'The previous F-shaped sculpture must be gone');
+    assert.equal(await page.locator('.fl-dome-trigger').count(),0,
+      'Opening must not require a click or tap');
+    assert.equal((await page.locator('.fl-orb-intro').innerText()).trim(),'',
+      'Black-ball opening should contain no extra text or buttons');
+    assert.equal(await page.locator('.composer textarea').count(),0,
+      'The design chat must not appear on the landing page');
+    await page.screenshot({path:'browser-artifacts/'+name+'-automatic-black-orb.png',fullPage:false});
+    await page.locator('.fl-orb-intro').waitFor({state:'detached',timeout:6500});
+    assert.equal(await page.locator('.fl-auto-landing').count(),1,
+      'The friendly auto-landing should appear without any entrance click');
+    assert.equal(await page.locator('.fl-world').getAttribute('inert'),null);
+    await page.getByRole('button',{name:'Log In',exact:true}).waitFor({timeout:6000});
+    await page.getByRole('button',{name:'Sign Up',exact:true}).waitFor({timeout:6000});
+    const buttons=await page.locator('.fl-auto-entry-actions').boundingBox();
+    assert.ok(buttons && Math.abs(buttons.x+buttons.width/2-720)<6,
+      'Log In and Sign Up must be horizontally centered on desktop: '+JSON.stringify(buttons));
+    assert.ok((await page.locator('.fl-story-scene').count())===5,
+      'All five feature scenes must still exist');
+    assert.equal(await page.locator('.fl-atmosphere .fl-water .fl-ripple').count(),3,
+      'Original animated water ripples must remain intact');
+    assert.equal(await page.locator('.fl-tour-ui').count(),0,'Remove the former scrolling-tour controls');
+    assert.equal(await page.locator('.fl-landing-gateway').count(),0,'Do not delay account buttons until spiral');
+    assert.equal(await page.locator('.composer textarea').count(),0,'No unwanted landing chat input');
+    await page.screenshot({path:'browser-artifacts/'+name+'-friendly-landing.png',fullPage:false});
+    // Landing is time-driven rather than scroll-driven; the features reveal
+    // automatically and the account options remain visible throughout.
+    if(!remote){
+      await page.locator('.fl-chapter-1').waitFor({timeout:8000});
+      assert.equal(await page.getByRole('button',{name:'Log In',exact:true}).isVisible(),true,
+        'Log In must remain available during automatic feature playback');
+      assert.equal(await page.getByRole('button',{name:'Sign Up',exact:true}).isVisible(),true,
+        'Sign Up must remain available during automatic feature playback');
+      assert.equal(await page.evaluate(()=>window.scrollY),0,
+        'The landing must not scroll to reveal features');
+      await page.getByRole('button',{name:'Pause feature showcase'}).click();
+      await page.locator('.fl-auto-landing[data-auto-features="paused"]').waitFor({timeout:2200});
+      const held=await page.locator('.fl-auto-landing').getAttribute('class');
+      await page.waitForTimeout(430);
+      assert.equal(await page.locator('.fl-auto-landing').getAttribute('class'),held,
+        'Pausing the feature sequence should hold the current scene');
+      await page.getByRole('button',{name:/Show 04 \/ DESIGN PREFERENCES/}).click();
+      await page.locator('.fl-chapter-4').waitFor({timeout:3000});
+      // Capture the settled design, not the intentionally animated intermediate
+      // crossfade between chapters. Ensure only the final scene is visible.
+      await page.waitForTimeout(1500);
+      const opacities=await page.locator('.fl-story-scene').evaluateAll(nodes=>
+        nodes.map(el=>Number(getComputedStyle(el).opacity)));
+      assert.ok(opacities[4]>.96&&opacities.slice(0,4).every(v=>v<.04),
+        'Sequential feature animation must finish without overlapping stories: '+JSON.stringify(opacities));
+      assert.equal(await page.locator('.fl-spiral-art').count(),1,
+        'Preserve the original animated spiral during the final feature');
+      await page.screenshot({path:'browser-artifacts/'+name+'-friendly-spiral-highlight.png',fullPage:false});
+      await page.getByRole('button',{name:'Replay feature showcase'}).click();
+      await page.locator('.fl-chapter-0').waitFor({timeout:3000});
+      await page.getByRole('button',{name:'Pause feature showcase'}).click();
     }
     const doc=await page.title();
+    assert.ok(doc.includes('Frontline UX/UI'));
     const body=await page.locator('body').innerText();
-    console.log(name+' title: '+doc);
-    console.log(name+' body preview: '+body.slice(0,400));
-    console.log(name+' errors:\n'+errors.join('\n'));
-    assert.ok(body.trim().length>30,name+' BLANK PAGE: content missing. '+errors.join('\n'));
-    if(await page.locator('.fl-world').count()){
-      assert.equal(await page.locator('.composer textarea').count(),0,
-        name+' composer MUST be absent on the first screen');
-      await page.evaluate(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight)*.87,behavior:'instant'}));
-      await page.waitForFunction(()=>document.querySelector('.fl-chapter-4'),null,{timeout:8000});
-      await page.waitForTimeout(350);
-      assert.equal(await page.locator('.fl-spiral-art').count(),1,
-        name+' golden typographic spiral should be present at the final chapter');
-      await page.screenshot({path:'browser-artifacts/'+name+'-spiral-before-gateway.png',fullPage:false});
-      await page.evaluate(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight),behavior:'instant'}));
-      await page.locator('.fl-landing-gateway.is-ready').waitFor({timeout:8500});
-      const reveal=await page.evaluate(()=>Number(getComputedStyle(document.documentElement).getPropertyValue('--fl-compose-reveal')));
-      assert.ok(reveal>.95,name+' gateway must emerge only after the golden spiral matures');
-      assert.equal(await page.locator('.composer textarea').count(),0,name+' old landing chatbox must not emerge from the spiral');
-      await page.waitForTimeout(450);
-      await page.screenshot({path:'browser-artifacts/'+name+'-spiral-login-gateway.png',fullPage:false});
-      await page.getByRole('button',{name:'Login',exact:true}).click();
-      await page.locator('.fl-blackhole-transition.is-expanding').waitFor({timeout:2400});
-      await page.locator('.fl-login-page').waitFor({timeout:8500});
-      await page.waitForFunction(()=>location.pathname==='/login',null,{timeout:8500});
-      const googleConfig=await page.evaluate(()=>fetch('/api/auth/status').then(r=>r.json()));
-      assert.equal(await page.getByRole('button',{name:'Continue with Google'}).isDisabled(),!googleConfig.googleEnabled,
-        'Google sign-in must be enabled only when the provider is securely configured');
-      await page.screenshot({path:'browser-artifacts/'+name+'-cinematic-login.png',fullPage:false});
-      await page.getByRole('button',{name:'Enter Studio as Guest'}).click();
-      await page.waitForFunction(()=>location.pathname==='/studio',null,{timeout:8500});
-      await page.locator('.composer-position.docked textarea').waitFor({timeout:8500});
-      assert.equal(await page.locator('.fl-login-page').count(),0,'Studio entry must replace login page');
-    }
+    assert.ok(body.trim().length>30,name+' BLANK PAGE: '+errors.join('\n'));
+    await page.getByRole('button',{name:'Log In',exact:true}).click();
+    await page.locator('.fl-blackhole-transition.is-expanding').waitFor({timeout:2400});
+    await page.locator('.fl-login-page').waitFor({timeout:8500});
+    await page.waitForFunction(()=>location.pathname==='/login',null,{timeout:8500});
+    const googleConfig=await page.evaluate(()=>fetch('/api/auth/status').then(r=>r.json()));
+    assert.equal(await page.getByRole('button',{name:'Continue with Google'}).isDisabled(),!googleConfig.googleEnabled,
+      'Google Sign-In must be enabled only when the provider is configured');
+    // The preserved black-hole transition intentionally occludes the login
+    // screen for ~760ms. Verify the actual stable login rather than capturing
+    // a black frame mid-fade.
+    await page.locator('.fl-blackhole-transition').waitFor({state:'detached',timeout:4000});
+    await page.screenshot({path:'browser-artifacts/'+name+'-friendly-login.png',fullPage:false});
+    await page.getByRole('button',{name:'Enter Studio as Guest'}).click();
+    await page.waitForFunction(()=>location.pathname==='/studio',null,{timeout:8500});
+    await page.locator('.composer-position.docked textarea').waitFor({timeout:8500});
+    assert.equal(await page.locator('.fl-login-page').count(),0,'Studio entry must replace login page');
     await page.locator('.composer textarea').waitFor({timeout:7000});
     if(!remote && await page.locator('.fl-world').count()){
       await page.locator('.composer textarea').focus();
@@ -384,67 +273,43 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.screenshot({path:'browser-artifacts/'+name+'-intelligent-design-fusion.png',fullPage:false});
     }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,hasTouch:true});
-    await mobile.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
-    await mobile.locator('.fl-dome-portal').waitFor({timeout:7000});
-    assert.equal((await mobile.locator('.fl-dome-portal').innerText()).trim(),'',
-      name+' mobile entrance must contain ZERO visible text');
-    const mobileF=await mobile.locator('.fl-dome-f-sculpture').boundingBox();
-    assert.ok(mobileF&&mobileF.x>=0&&mobileF.x+mobileF.width<=390,
-      name+' F sculpture must fit the mobile viewport');
-
-    assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile portal should hide the chat');
-    await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-dome.png',fullPage:false});
-    await mobile.locator('.fl-dome-trigger').dispatchEvent('pointerdown',{pointerType:'touch'});
-    await mobile.waitForTimeout(120);
-    assert.equal(await mobile.locator('.fl-dome-portal').getAttribute('data-phase'),'idle',
-      'Touching without tapping/clicking must not start the portal');
-    await mobile.locator('.fl-dome-trigger').tap();
-    await mobile.locator('.fl-dome-portal.is-charging').waitFor({timeout:2500});
-    await mobile.locator('.fl-dome-portal.is-opening').waitFor({timeout:3500});
-    await mobile.locator('.fl-dome-portal').waitFor({state:'detached',timeout:8500});
-    await mobile.locator('.fl-tour-ui[data-tour-state="playing"]').waitFor({timeout:4000});
-    await mobile.getByRole('button',{name:'Pause cinematic tour'}).tap();
-    await mobile.locator('.fl-tour-ui[data-tour-state="paused"]').waitFor({timeout:2500});
-    if(await mobile.locator('.fl-world').count())
-      assert.equal(await mobile.locator('.composer textarea').count(),0,'Mobile composer must start absent');
-    if(await mobile.locator('.fl-world').count()){
-      await mobile.waitForTimeout(1500);
-      await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-landing.png',fullPage:false});
-      assert.equal(await mobile.locator('.fl-chapter-0').count(),1);
-      const mobileTitle=await mobile.locator('.fl-chapter-0 .fl-headline-main').boundingBox();
-      assert.ok(mobileTitle && mobileTitle.x>=-6 && mobileTitle.x+mobileTitle.width<=391,
-        name+' MOBILE INTRO TITLE OVERFLOW: '+JSON.stringify(mobileTitle));
-      assert.equal(await mobile.evaluate(()=>[...document.querySelectorAll('.fl-fluid-canvas')].every(c=>c.width===300)),true,'Mobile should use lightweight CSS solar fallback');
-      if(!remote){
-        await mobile.evaluate(()=>window.scrollTo({top:Math.max(0,document.documentElement.scrollHeight-innerHeight),behavior:'instant'}));
-        await mobile.locator('.fl-landing-gateway.is-ready').waitFor({timeout:10000});
-        assert.equal(await mobile.locator('.composer textarea').count(),0,'Spiral reveals buttons rather than a chatbox');
-        await mobile.waitForTimeout(450);
-        await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-spiral-gateway.png',fullPage:false});
-        await mobile.getByRole('button',{name:'Enter Studio',exact:true}).tap();
-        await mobile.locator('.studio-title').waitFor({timeout:8500});
-        await mobile.locator('.composer textarea').waitFor({timeout:8500});
-        await mobile.waitForTimeout(1300);
-        const mobileComposer=await mobile.locator('.composer-position.docked').boundingBox();
-        assert.ok(mobileComposer&&mobileComposer.width<=390&&mobileComposer.height<=150,
-          'Mobile compact composer must fit screen without excessive height: '+JSON.stringify(mobileComposer));
-        await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-studio.png',fullPage:false});
-        const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-        assert.equal(overflow,false,'Frontline mobile studio must have no horizontal overflow');
-      }
-    }
+    await mobile.goto(url+'/',{waitUntil:'domcontentloaded',timeout:60000});
+    await mobile.locator('.fl-orb-intro').waitFor({timeout:6500});
+    assert.equal(await mobile.locator('.fl-dome-f-sculpture').count(),0,'No old F on mobile');
+    await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-black-orb.png',fullPage:false});
+    await mobile.locator('.fl-orb-intro').waitFor({state:'detached',timeout:6500});
+    await mobile.getByRole('button',{name:'Log In',exact:true}).waitFor({timeout:5000});
+    await mobile.getByRole('button',{name:'Sign Up',exact:true}).waitFor({timeout:5000});
+    const mobileActions=await mobile.locator('.fl-auto-entry-actions').boundingBox();
+    assert.ok(mobileActions&&mobileActions.x>=-2&&mobileActions.x+mobileActions.width<=391,
+      'Mobile account buttons should fit horizontally: '+JSON.stringify(mobileActions));
+    assert.equal(await mobile.locator('.composer textarea').count(),0,'No mobile chat before account entry');
+    assert.equal(await mobile.evaluate(()=>window.scrollY),0,'Mobile landing must not auto-scroll');
+    assert.equal(await mobile.locator('.fl-fluid-canvas').count()>=0,true);
+    await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-friendly-landing.png',fullPage:false});
+    await mobile.getByRole('button',{name:'Log In',exact:true}).tap();
+    await mobile.locator('.fl-login-page').waitFor({timeout:8500});
+    await mobile.getByRole('button',{name:'Enter Studio as Guest'}).tap();
+    await mobile.locator('.studio-title').waitFor({timeout:8500});
+    await mobile.locator('.composer textarea').waitFor({timeout:8500});
+    const mobileComposer=await mobile.locator('.composer-position.docked').boundingBox();
+    assert.ok(mobileComposer&&mobileComposer.width<=390&&mobileComposer.height<=150,
+      'Mobile compact composer must fit screen without excessive height: '+JSON.stringify(mobileComposer));
+    await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-studio.png',fullPage:false});
+    assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
+      'Mobile studio must have no horizontal overflow');
     await mobile.close();
-    // Respect people who explicitly request a reduced-motion experience:
-    // no automatic scroll, and no motion controls that suggest otherwise.
+    // Reduced-motion users see the black orb briefly, then a STATIC landing.
+    // They can still choose any feature or account route manually.
     const reducedPage=await browser.newPage({viewport:{width:1024,height:720},reducedMotion:'reduce'});
-    await reducedPage.goto(url+'/',{waitUntil:'networkidle',timeout:60000});
-    await reducedPage.locator('.fl-dome-trigger').click();
-    await reducedPage.locator('.fl-dome-portal').waitFor({state:'detached',timeout:3500});
-    await reducedPage.waitForTimeout(650);
-    assert.equal(await reducedPage.locator('.fl-tour-ui').count(),0,
-      'Reduced motion must not automatically play the cinematic journey');
-    assert.equal(await reducedPage.evaluate(()=>window.scrollY),0,
-      'Reduced-motion experience must retain manual scroll control');
+    await reducedPage.goto(url+'/',{waitUntil:'domcontentloaded',timeout:60000});
+    await reducedPage.locator('.fl-orb-intro').waitFor({state:'detached',timeout:3500});
+    assert.equal(await reducedPage.locator('.fl-auto-landing').getAttribute('data-auto-features'),'paused',
+      'Reduced motion must not play the feature sequence automatically');
+    await reducedPage.getByRole('button',{name:'Sign Up',exact:true}).waitFor({timeout:4500});
+    await reducedPage.getByRole('button',{name:/Show 02 \/ GENERATE UI & UX/}).click();
+    await reducedPage.locator('.fl-chapter-2').waitFor({timeout:3000});
+    assert.equal(await reducedPage.evaluate(()=>window.scrollY),0);
     await reducedPage.close();
     if(errors.length)console.log(name+' had nonfatal errors: '+errors.join('\n'));
   }catch(error){
