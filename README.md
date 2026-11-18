@@ -290,3 +290,79 @@ CSRF protection on state-changing APIs, PKCE S256, verified account identity,
 private owner-scoped queries, and atomic guest migration. Keep this feature
 unexposed until live real-account testing completes.
 
+
+
+## Milestone 10D — Account security, session scopes and recovery
+
+This release does not modify the cinematic landing, Google/login visuals, any
+AI design mode, private project history, or saved design memory.
+
+### Session management
+- **Sign out of this device** calls Supabase Auth logout with
+  `?scope=local`. It preserves sessions on other phones/laptops.
+- **Sign out other devices** uses `?scope=others`, preserving this session.
+- **Sign out everywhere** requires a separate confirmation and uses
+  `?scope=global`. If the provider fails, the app reports an error rather
+  than claiming it revoked all sessions.
+- Supabase warns that already-issued JWT access tokens remain valid until
+  expiry, even after refresh-session revocation. Set
+  `FRONTLINE_STRICT_SESSION_CHECK=true` **only after verifying** that the
+  runtime PostgreSQL connection can select `auth.sessions`, and verify the
+  OAuth JWT includes `session_id`. When enabled, the backend checks that
+  the live Supabase `auth.sessions` row is present on every request. It
+  fails closed for missing/invalid sessions. Default is disabled until this
+  production account-flow acceptance test is completed.
+- Every authenticated request is rate-limited by the verified **Google
+  account identity**, not a guest cookie that could be changed to evade
+  request limits.
+
+### Protected permanent account deletion
+
+Deleting a workspace and permanently deleting an **Auth identity** are
+different actions. The existing **Learning & privacy → Delete workspace**
+deletes Frontline projects/feedback/preferences but retains Google sign-in.
+
+Permanent account deletion is guarded by a separate **Account security**
+panel and an API endpoint `DELETE /api/auth/account`. It requires:
+1. Supabase Auth verifying the logged-in user on the server for the request;
+2. a successful Google OAuth verification in the past **10 minutes**;
+3. a correctly HMAC-signed HttpOnly SameSite=Strict recent-verification
+   cookie containing the **same account ID**;
+4. the exact signed-in email address and phrase
+   `DELETE FRONTLINE ACCOUNT` typed into the confirmation form;
+5. a successful read-only server-side Supabase Admin API preflight proving
+   that the administrator can access the **same verified user ID**;
+6. private workspace deletion in one PostgreSQL transaction, followed by
+   Supabase Auth user deletion using the **server-only** administrator
+   credential. After success, all local Auth cookies are cleared.
+
+Deletion is intentionally **unavailable** until secure administrator setup.
+No destructive action occurs if that credential is missing or invalid. A
+partial failure after workspace deletion returns a clear warning and permits
+safe retry of Auth deletion after re-verification. This is a two-service
+operation; PostgreSQL deletion and an external Supabase Auth API call
+cannot be made fully atomic. Never promise irreversible cleanup of global
+backups beyond provider retention policies.
+
+**Required Render environment secrets:**
+- `FRONTLINE_ACTION_SIGNING_SECRET`: a cryptographically random secret,
+  at least 48 characters, stable across server restarts; required for
+  recently verified Google account markers.
+- `FRONTLINE_SUPABASE_ADMIN_KEY`: a Supabase Auth administrator-capable
+  secret/service-role credential, **server only**. Never put this in GitHub,
+  frontend JavaScript, a public env variable, or a user-facing support
+  message. Only configure this after verifying its exact intended scope
+  and rotation policy.
+- `FRONTLINE_STRICT_SESSION_CHECK`: optional, defaults to `false`.
+
+Never run actual account deletion automatically in tests, or with any real
+user's account without that user's deliberate confirmation in the app.
+Account access/recovery is through the same Google account. Frontline never
+stores or resets Google passwords.
+
+### Verification
+`npm test` now tests session scoping, invalid or revoked sessions,
+HMAC-bound fresh verification, admin fail-closed behavior, guest/CSRF
+denial, and existing user/guest isolation. Browser tests exercise the
+guest security panel alongside the complete cinematic UI and design modes.
+

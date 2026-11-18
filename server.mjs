@@ -27,6 +27,23 @@ const authGateway=createAuthGateway({
   key:process.env.FRONTLINE_SUPABASE_PUBLISHABLE_KEY||'',
   siteUrl:process.env.FRONTLINE_SITE_URL||'https://ui-compass-studio.onrender.com',
   googleEnabled:process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED==='true',
+  adminKey:process.env.FRONTLINE_SUPABASE_ADMIN_KEY||'',
+  signingSecret:process.env.FRONTLINE_ACTION_SIGNING_SECRET||'',
+  // Strict server session checks can be enabled after verifying the DB role.
+  sessionVerifier:process.env.FRONTLINE_STRICT_SESSION_CHECK==='true'?async(user,accessToken)=>{
+    if(!pg)return false;
+    let payload;
+    try{
+      const parts=accessToken.split('.');
+      if(parts.length!==3)return false;
+      payload=JSON.parse(Buffer.from(parts[1],'base64url').toString());
+    }catch{return false;}
+    if(payload.sub!==user.id||typeof payload.session_id!=='string'||
+      !/^[a-f0-9-]{36}$/i.test(payload.session_id))return false;
+    const match=await pg.query('SELECT 1 FROM auth.sessions WHERE id=$1 AND user_id=$2 LIMIT 1',
+      [payload.session_id,user.id]);
+    return match.rowCount===1;
+  }:null,
   prod:isProd||Boolean(process.env.RENDER_SERVICE_ID)
 });
 let pg=null;
@@ -414,10 +431,19 @@ async function readBody(req){
   try{return JSON.parse(buff||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
 }
 function trustedMutationOrigin(req){
-  if(!['POST','PUT','PATCH','DELETE'].includes(req.method)||!req.headers.origin)return true;
+  if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;
+  const fetchSite=req.headers['sec-fetch-site'];
+  // Browsers mark requests from another origin even if their Origin header
+  // is omitted; reject those cookie-authenticated state changes.
+  if(fetchSite&&fetchSite!=='same-origin'&&fetchSite!=='none')return false;
+  if(!req.headers.origin)return true;
   try{
-    const origin=new URL(req.headers.origin);
-    return ['https:','http:'].includes(origin.protocol)&&origin.host===req.headers.host;
+    const origin=new URL(req.headers.origin).origin;
+    const production=Boolean(process.env.RENDER_SERVICE_ID)||isProd;
+    const expected=production?
+      new URL(process.env.FRONTLINE_SITE_URL||'https://ui-compass-studio.onrender.com').origin:
+      'http://'+req.headers.host;
+    return origin===expected;
   }catch{return false}
 }
 function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(obj));}
@@ -525,26 +551,69 @@ const server=http.createServer(async(req,res)=>{
   const guestOwner=owner;
   try{
     const pathname=new URL(req.url,'http://localhost').pathname;
-    if(req.method==='GET'&&pathname==='/auth/google/start')return await authGateway.start(req,res);
-    if(req.method==='GET'&&pathname==='/auth/callback')return await authGateway.callback(req,res,
-      user=>claimGuestData(guestOwner,authGateway.accountOwner(user)));
+    if(req.method==='GET'&&pathname==='/auth/google/start'){
+      res.setHeader('Referrer-Policy','no-referrer');
+      return await authGateway.start(req,res);
+    }
+    if(req.method==='GET'&&pathname==='/auth/callback'){
+      // OAuth codes are one-time secrets. Prevent the callback URL from
+      // appearing as the Referer on the final same-origin studio navigation.
+      res.setHeader('Referrer-Policy','no-referrer');
+      return await authGateway.callback(req,res,
+        user=>claimGuestData(guestOwner,authGateway.accountOwner(user)));
+    }
     if(req.url?.startsWith('/api/')){
       if(!trustedMutationOrigin(req))return json(res,403,{error:'Cross-origin changes are not permitted.'});
-      if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
       if(req.method==='GET'&&pathname==='/api/auth/status')
         return json(res,200,{googleEnabled:authGateway.ready});
       const signedIn=await authGateway.getUser(req,res);
       if(signedIn)owner=authGateway.accountOwner(signedIn);
+      // Rate-limit by VERIFIED account identity, not an untrusted guest cookie
+      // that an authenticated user can rotate to evade an account limit.
+      if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
       if(req.method==='GET'&&pathname==='/api/auth/me')return json(res,200,{
         authenticated:!!signedIn,googleEnabled:authGateway.ready,
         user:signedIn?{id:signedIn.id,email:signedIn.email||null,
           name:String(signedIn.user_metadata?.full_name||'').slice(0,120),
           picture:googleProfileImage(signedIn.user_metadata?.avatar_url||signedIn.user_metadata?.picture)}:null
       });
+      if(req.method==='GET'&&pathname==='/api/auth/security'){
+        return json(res,200,{authenticated:!!signedIn,
+          accountDeletionAvailable:!!signedIn&&authGateway.deletionAvailable,
+          recentGoogleVerification:!!signedIn&&authGateway.recentlyVerified(req,signedIn),
+          strictSessionValidation:process.env.FRONTLINE_STRICT_SESSION_CHECK==='true'});
+      }
       if(req.method==='POST'&&pathname==='/api/auth/logout'){
-        await readBody(req);
-        await authGateway.logout(req,res);
-        return json(res,200,{signedOut:true});
+        const body=await readBody(req);
+        const scope=body.scope===undefined?'local':body.scope;
+        if(!['local','global','others'].includes(scope))
+          return json(res,400,{error:'Invalid sign-out scope.'});
+        if(scope!=='local'&&!signedIn)
+          return json(res,401,{error:'Sign in before managing other devices.'});
+        if(scope==='global'&&body.confirmation!=='SIGN OUT EVERYWHERE')
+          return json(res,400,{error:'Confirm signing out of all devices.'});
+        const result=await authGateway.logout(req,res,{scope});
+        return json(res,200,{signedOut:scope!=='others',scope:result.scope});
+      }
+      if(req.method==='DELETE'&&pathname==='/api/auth/account'){
+        const body=await readBody(req);
+        if(!signedIn)return json(res,401,{error:'Sign in to delete your account.'});
+        if(!authGateway.deletionAvailable)
+          return json(res,503,{error:'Permanent account deletion requires secure administrator setup. No data was changed.'});
+        if(!authGateway.recentlyVerified(req,signedIn))
+          return json(res,403,{error:'Verify your identity with Google again before deleting your account.'});
+        if(body.confirmation!=='DELETE FRONTLINE ACCOUNT'||body.email!==signedIn.email)
+          return json(res,400,{error:'Type the exact confirmation phrase and account email.'});
+        // Preflight the server-only Admin API before any destructive operation.
+        await authGateway.verifyDeleteAbility(signedIn);
+        // Delete every owner-scoped table transactionally. This cannot be
+        // atomic with the external Supabase Auth API, so failed auth cleanup
+        // returns a retryable, truthful partial failure.
+        await eraseProfile(owner);
+        try{await authGateway.deleteAuthUser(signedIn);}
+        catch{return json(res,503,{error:'Your Frontline workspace was erased, but account sign-in removal could not finish. Please retry account deletion after re-verifying with Google.'});}
+        authGateway.clearLocalSession(res);
+        return json(res,200,{accountDeleted:true,workspaceDeleted:true});
       }
       if(req.method==='POST'&&pathname==='/api/auth/claim'){
         await readBody(req);

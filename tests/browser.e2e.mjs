@@ -305,6 +305,13 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       const archive=await downloadPromise;
       assert.match(archive.suggestedFilename(),/frontline-private-data-\d{4}-\d{2}-\d{2}\.json/);
       await page.screenshot({path:'browser-artifacts/'+name+'-personal-account-dashboard.png',fullPage:false});
+      await page.getByRole('button',{name:/Account security & recovery/i}).click();
+      await page.locator('.fl-security-root').waitFor({timeout:7000});
+      assert.equal(await page.locator('.fl-security-status').count(),1,
+        'Guest security panel must explain browser session protection');
+      assert.equal(await page.locator('.fl-security-delete').count(),0,
+        'Guest visitors must never see an active Google account-deletion action');
+      await page.screenshot({path:'browser-artifacts/'+name+'-account-security-guest.png',fullPage:false});
       await page.locator('.menu-panel .close-menu').click();
     }
     assert.equal(await page.locator('.pi-panel').count(),1,'Project Intelligence must render once, not repeat');

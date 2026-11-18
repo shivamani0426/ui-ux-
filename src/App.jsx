@@ -6,6 +6,7 @@ import StarBorder from './components/StarBorder.jsx';
 import FrontlineLanding from './components/FrontlineLanding.jsx';
 import FrontlineLogin from './components/FrontlineLogin.jsx';
 import FrontlineAccount from './components/FrontlineAccount.jsx';
+import FrontlineSecurity from './components/FrontlineSecurity.jsx';
 import FrontlineProjectLibrary from './components/FrontlineProjectLibrary.jsx';
 import FrontlineDomePortal from './components/FrontlineDomePortal.jsx';
 import FrontlineMark from './components/FrontlineMark.jsx';
@@ -50,6 +51,9 @@ function App(){
   const [composerClearance,setComposerClearance]=useState(138);
   const [config,setConfig]=useState({aiEnabled:false,persistent:false});
   const [authState,setAuthState]=useState({googleEnabled:false,authenticated:false,user:null});
+  const [authSecurity,setAuthSecurity]=useState(null);
+  const [securityBusy,setSecurityBusy]=useState(false);
+  const [securityLoading,setSecurityLoading]=useState(false);
   const [workspaceOverview,setWorkspaceOverview]=useState(null);
   const [nextProjectOffset,setNextProjectOffset]=useState(null);
   const [workspaceSyncing,setWorkspaceSyncing]=useState(false);
@@ -99,6 +103,7 @@ function App(){
       api('/api/profile').then(setProfile),
       api('/api/config').then(setConfig),
       api('/api/auth/me').then(setAuthState),
+      api('/api/auth/security').then(setAuthSecurity),
       api('/api/workspace/overview').then(setWorkspaceOverview)
     ]).then(results=>{
       if(results.some(x=>x.status==='rejected'))notice('Some workspace data could not be loaded. Open Account to refresh.');
@@ -167,9 +172,55 @@ function App(){
   const startGoogleLogin=()=>{if(authState.googleEnabled)window.location.assign('/auth/google/start');};
   const signOut=async()=>{
     try{
-      await api('/api/auth/logout',{method:'POST',body:'{}'});
-      window.location.assign('/login');
+      await api('/api/auth/logout',{method:'POST',body:JSON.stringify({scope:'local'})});
+      window.location.assign('/login?auth=signed_out');
     }catch(error){notice(error.message);}
+  };
+  const refreshAuthSecurity=async()=>{
+    setSecurityLoading(true);
+    try{setAuthSecurity(await api('/api/auth/security'));}
+    catch(error){notice('Unable to check your account security: '+error.message);}
+    finally{setSecurityLoading(false);}
+  };
+  const openAccountSecurity=()=>{setPanel('security');refreshAuthSecurity();};
+  const reverifyGoogle=()=>{
+    if(authState.googleEnabled)window.location.assign('/auth/google/start?reauth=1');
+    else notice('Google sign-in is currently unavailable. Retry from the login page.');
+  };
+  const signOutOtherDevices=async()=>{
+    if(securityBusy)return;
+    if(!window.confirm('Sign out of Frontline on your OTHER devices? You will remain signed in here.'))return;
+    setSecurityBusy(true);
+    try{
+      await api('/api/auth/logout',{method:'POST',body:JSON.stringify({scope:'others'})});
+      notice('Other sessions have been revoked. Their existing access tokens may remain valid until expiry.');
+    }catch(error){notice('Could not revoke other sessions: '+error.message);}
+    finally{setSecurityBusy(false);}
+  };
+  const signOutEveryDevice=async()=>{
+    if(securityBusy)return;
+    if(!window.confirm('Sign out of Frontline on EVERY device? Saved designs will be kept.'))return;
+    setSecurityBusy(true);
+    try{
+      await api('/api/auth/logout',{method:'POST',body:JSON.stringify({
+        scope:'global',confirmation:'SIGN OUT EVERYWHERE'
+      })});
+      window.location.assign('/login?auth=signed_out');
+    }catch(error){notice('Could not sign out other devices: '+error.message);}
+    finally{setSecurityBusy(false);}
+  };
+  const permanentlyDeleteAccount=async({email,confirmation})=>{
+    if(securityBusy)return;
+    setSecurityBusy(true);
+    try{
+      const result=await api('/api/auth/account',{method:'DELETE',body:JSON.stringify({email,confirmation})});
+      if(result.accountDeleted)window.location.assign('/login?auth=account_deleted');
+    }catch(error){
+      // Do not hide the potential partial-deletion recovery instructions in
+      // a short toast. Keep the modal and let the user retry safely.
+      window.alert(error.message);
+      refreshAuthSecurity();
+    }finally{setSecurityBusy(false);}
   };
   const refreshWorkspace=async()=>{
     if(workspaceSyncing)return;
@@ -370,7 +421,7 @@ function App(){
   const references=(catalog.references||[]).filter(x=>(x.name+' '+x.category+' '+x.tags.join(' ')).toLowerCase().includes(search.toLowerCase()));
   const showMenu=next=>{setPanel(next);setMenuOpen(true);};
   const sendPreset=text=>{setBrief(text);focusChat();setTimeout(()=>textareaRef.current?.focus(),100);};
-  const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='account'?'Your account':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
+  const topTitle=panel==='menu'?'Workspace':panel==='projects'?'Your projects':panel==='account'?'Your account':panel==='security'?'Account & security':panel==='references'?'Design library':panel==='learning'?'Learning & privacy':'Design tools';
   const enterLandingMode=key=>{setDesignMode(key);if(key==='fusion')setSelected(styleKeys);focusChat();};
 
   return <div style={{'--chat-clearance':composerClearance+'px'}} className={'app '+(active?'in-chat':mode==='login'?'in-login':'in-welcome')+(isLanding&&landingFrame>0?' exploring':'')+(isLanding&&landingFrame===4?' story-end':'')+(isLanding?' portal-'+portalState:'')+(gatePhase==='reveal-studio'?' studio-arriving':'')}>
@@ -573,7 +624,14 @@ function App(){
             loading={workspaceSyncing} lastSynced={lastSynced} onRefresh={refreshWorkspace}
             onExport={exportWorkspace} exportBusy={workspaceExporting}
             onSignOut={signOut} onSignIn={()=>{setMenuOpen(false);enterGateway('login')}}
-            onLearn={openLearning} onClaim={retryGuestSync}/>
+            onLearn={openLearning} onClaim={retryGuestSync} onSecurity={openAccountSecurity}/>
+        </div>}
+        {panel==='security'&&<div className="menu-subcontent">
+          <FrontlineSecurity auth={authState} security={authSecurity}
+            onRefresh={refreshAuthSecurity} onReverify={reverifyGoogle}
+            onOtherDevices={signOutOtherDevices} onEveryDevice={signOutEveryDevice}
+            onDeleteAccount={permanentlyDeleteAccount} onLearning={openLearning}
+            loading={securityLoading} busy={securityBusy}/>
         </div>}
         {panel==='references'&&<div className="menu-subcontent">
           <p className="menu-intro">Explore credited reference sites. Patterns inspire original results, not exact reproductions.</p>

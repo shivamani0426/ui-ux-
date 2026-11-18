@@ -4,11 +4,7 @@ import StarBorder from './StarBorder.jsx';
 import FrontlineMark from './FrontlineMark.jsx';
 import './FrontlineLogin.css';
 
-/**
- * Cinematic account entry. Until the verified account identity / guest migration
- * backend is connected, Google sign-in is deliberately disabled rather than
- * treating a browser-local guest identity as a real account.
- */
+/** Branded account entry; the server verifies Google identity and private data ownership. */
 export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=false,authError='',onRetrySync}){
   return <section className="fl-login-page" aria-label="Frontline login and guest entry">
     <div className="fl-login-atmosphere" aria-hidden="true">
@@ -49,9 +45,13 @@ export default function FrontlineLogin({onBack,onGuest,onGoogle,googleReady=fals
             </button>
           </StarBorder>
           {!googleReady&&<p className="fl-login-availability" role="status"><LockKeyhole size={14} aria-hidden="true"/> Google sign-in is awaiting secure provider configuration. Guest access remains available.</p>}
-          {authError&&<div className="fl-login-availability" role="alert">
+          {authError&&<div className="fl-login-availability" role={['signed_out','account_deleted'].includes(authError)?'status':'alert'}>
             <LockKeyhole size={14} aria-hidden="true"/>
-            <span>{authError==='sync_failed'?'Your Google sign-in succeeded, but guest projects could not be transferred. Your guest data is still safe.':authError==='not_configured'?'Google sign-in is not configured yet.':'Google sign-in was cancelled or could not complete. Please try again.'}</span>
+            <span>{authError==='signed_out'?'You have signed out of Frontline. Your private projects remain saved.':
+              authError==='account_deleted'?'Your Frontline account and workspace have been deleted. Your Google account remains untouched.':
+              authError==='sync_failed'?'Your Google sign-in succeeded, but guest projects could not be transferred. Your guest data is still safe.':
+              authError==='not_configured'?'Google sign-in is not configured yet.':
+              'Google sign-in was cancelled or could not complete. Please try again.'}</span>
           </div>}
           {authError==='sync_failed'&&<button type="button" className="fl-login-guest" onClick={onRetrySync}>Retry private project sync <ArrowUpRight size={18} aria-hidden="true"/></button>}
           <div className="fl-login-separator"><span/>OR STEP INTO THE STUDIO<span/></div>

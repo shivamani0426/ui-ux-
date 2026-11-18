@@ -1,5 +1,5 @@
 import React from 'react';
-import {CheckCircle2,Cloud,CloudOff,Download,FolderKanban,Heart,Images,KeyRound,LogOut,RefreshCw,ShieldCheck,Sparkles,UserRound} from 'lucide-react';
+import {CheckCircle2,Cloud,CloudOff,Download,FolderKanban,Heart,Images,KeyRound,LockKeyhole,LogOut,RefreshCw,ShieldCheck,Sparkles,UserRound} from 'lucide-react';
 import './FrontlineAccount.css';
 
 const initials=(name)=>{
@@ -14,7 +14,7 @@ const syncLabel=(lastSynced)=>{
 };
 
 export default function FrontlineAccount({auth,overview,loading=false,lastSynced=null,
-  onRefresh,onExport,onSignOut,onSignIn,onLearn,onClaim,exportBusy=false}){
+  onRefresh,onExport,onSignOut,onSignIn,onLearn,onClaim,onSecurity,exportBusy=false}){
   const account=auth?.authenticated===true;
   const user=auth?.user||{};
   const name=user.name?.trim()||user.email?.split('@')[0]||'Guest designer';
@@ -62,6 +62,10 @@ export default function FrontlineAccount({auth,overview,loading=false,lastSynced
         <Download size={18}/><span><strong>{exportBusy?'Preparing your archive':'Download my private data'}</strong>
           <small>Projects, chats, prompts, feedback and preferences · JSON</small></span>
       </button>
+      <button type="button" onClick={onSecurity}>
+        <LockKeyhole size={18}/><span><strong>Account security & recovery</strong>
+          <small>Connected devices, sign-out and protected account deletion</small></span>
+      </button>
       <button type="button" onClick={onLearn}>
         <ShieldCheck size={18}/><span><strong>Learning & privacy</strong>
           <small>Personalization, aggregate consent and data deletion</small></span>
@@ -74,7 +78,7 @@ export default function FrontlineAccount({auth,overview,loading=false,lastSynced
           <small>Access saved projects from your other devices</small></span>
       </button>}
       {account&&<button className="fl-account-logout" type="button" onClick={onSignOut}>
-        <LogOut size={18}/><span><strong>Sign out</strong><small>End this device’s Google session</small></span>
+        <LogOut size={18}/><span><strong>Sign out of this device</strong><small>Keep sessions on other devices active</small></span>
       </button>}
     </div>
     <p className="fl-account-privacy-note">Your private conversations are never shared between accounts. Google authentication confirms your identity; deleting Frontline workspace data does not delete your Google account.</p>
