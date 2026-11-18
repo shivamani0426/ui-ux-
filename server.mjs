@@ -113,11 +113,14 @@ async function makeInspirationResponse(owner,project){
   const prefs=effectivePreferences(raw);
   return {
     projectId:project.id,
-    matches:rankInspirations(project.brief,refs,{styleWeights:prefs.styleWeights||{},
-      favoriteTags:prefs.personalization.enabled?personalTags:[]}),
+    matches:rankInspirations(project.brief,refs,{
+      styleWeights:prefs.personalization.enabled?prefs.styleWeights||{}:{},
+      favoriteTags:prefs.personalization.enabled?personalTags:[]
+    }),
     selected:picks,
     librarySize:refs.length,
-    ranking:'Metadata signals + your private selection history; not live website scraping',
+    rankingVersion:2,
+    ranking:'Auditable brief-first metadata, explicit exclusions and bounded private taste; no live visual scanning',
   };
 }
 async function profile(owner){
