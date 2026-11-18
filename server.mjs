@@ -112,10 +112,10 @@ async function storeDiscoveredReferences(rows){
 }
 async function selectionIds(owner,projectId){
   if(!pg)return [...(memorySelections.get(owner+':'+projectId)||new Set())];
-  const r=await pg.query('SELECT r.source_id FROM frontline.reference_selections r
+  const r=await pg.query(`SELECT r.source_id FROM frontline.reference_selections r
     JOIN frontline.design_sources s ON s.id=r.source_id
     WHERE r.visitor_id=$1 AND r.project_id=$2 AND r.selected=true AND s.is_live_discovered=true
-    ORDER BY r.created_at ASC',[owner,projectId]);
+    ORDER BY r.created_at ASC`,[owner,projectId]);
   return r.rows.map(x=>x.source_id);
 }
 async function personalInspirationTags(owner){
