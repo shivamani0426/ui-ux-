@@ -228,6 +228,12 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/Learning & privacy/i}).click();
       await page.locator('.learning-preferences').waitFor({timeout:7000});
+      await page.locator('.learning-context-box').waitFor({timeout:7000});
+      assert.match(await page.locator('.learning-context-box').innerText(),
+        /latest explicit reaction|No confirmed category-level preference/i);
+      assert.ok(await page.locator('.opt-in input[type="checkbox"]').isDisabled(),
+        'Guest cookies must never be treated as verified contributors');
+      await page.screenshot({path:'browser-artifacts/'+name+'-contextual-learning-privacy.png',fullPage:false});
       assert.ok(await page.locator('.learning-settings select').count()===4,
         'Private memory controls must offer motion, density, contrast and color atmosphere');
       const toggle=page.locator('.learning-switch input');
