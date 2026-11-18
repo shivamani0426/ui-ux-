@@ -602,12 +602,16 @@ function cookie(req,res){
   }
   return id;
 }
-async function readBody(req){
+async function readBody(req,limit=MAX_BODY){
   // Cookie-authenticated writes must be JSON. Browsers cannot silently submit
   // this content type from a cross-site HTML form.
   if(String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase()!=='application/json')
     throw Object.assign(new Error('Use application/json for API writes.'),{status:415});
-  let buff='';for await(const part of req){buff+=part;if(buff.length>MAX_BODY)throw Object.assign(new Error('Request too large'),{status:413});}
+  let buff='';for await(const part of req){
+    buff+=part;
+    if(Buffer.byteLength(buff,'utf8')>limit)
+      throw Object.assign(new Error('Request too large'),{status:413});
+  }
   try{return JSON.parse(buff||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
 }
 function trustedMutationOrigin(req){
@@ -910,7 +914,9 @@ const server=http.createServer(async(req,res)=>{
               .map(ref=>({id:ref.id,name:ref.name,site:ref.site,styles:ref.styles}))});
         }
         if(req.method!=='PUT')return json(res,405,{error:'Method not allowed'});
-        const body=await readBody(req);
+        // Only the bounded board route needs more room for 24 cards with
+        // short notes. Every other write retains the original 12 KB limit.
+        const body=await readBody(req,24_000);
         const catalogue=new Set((await listReferences()).map(ref=>ref.id));
         const update=validateBoardUpdate(body,{referenceIds:catalogue});
         const next=await modifyProjectWorkspace(owner,id,update.revision,
