@@ -172,6 +172,18 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await workbench.getByRole('button',{name:'Save design board'}).click();
       await page.waitForFunction(()=>document.querySelector('.pw-save-row small')
         ?.textContent?.includes('Saved board'));
+      // M14A: a saved, approved card is required for a local-only export.
+      await workbench.getByRole('button',{name:/Design handoff/}).click();
+      await workbench.getByRole('list',{name:'Cards included in handoff'}).waitFor();
+      assert.match(await workbench.locator('.pw-handoff-summary').innerText(),/Approved cards/);
+      const markdownDownload=page.waitForEvent('download');
+      await workbench.getByRole('button',{name:'Download Markdown'}).click();
+      const handoffMarkdown=await markdownDownload;
+      assert.match(handoffMarkdown.suggestedFilename(),/-design-handoff\.md$/);
+      const jsonDownload=page.waitForEvent('download');
+      await workbench.getByRole('button',{name:'Download JSON'}).click();
+      const handoffJson=await jsonDownload;
+      assert.match(handoffJson.suggestedFilename(),/-design-handoff\.json$/);
       await workbench.getByRole('button',{name:/Compare styles/}).click();
       assert.equal(await workbench.locator('.pw-style-card').count(),3,
         'Show all three original design directions side by side');
