@@ -11,6 +11,8 @@ import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {derivePrivateLearning,contextForCategory,publicLearningSummary,
   verifiedCohortBand,VERIFIED_COHORT_MIN,summarizeVerifiedPatterns} from './contextual-learning.mjs';
+import {normalizeWorkspace,validateBoardUpdate,requireRevision,withUpdatedBoard,
+  addCheckpoint,restoreCheckpoint,compareCheckpoint} from './project-workspace.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
   resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
@@ -209,19 +211,71 @@ async function getProject(owner,id){
   return r.rows[0]||null;
 }
 async function updateRecommendations(owner,id,recommendations){
+  // Intelligence refresh must preserve the independent user's design board.
+  // This is done atomically even when two devices save at the same time.
   if(!pg){
     const entry=live.get(id);
-    if(!entry||entry.owner!==owner)return false;
-    entry.recommendations=recommendations;
+    if(!entry||entry.owner!==owner)return null;
+    entry.recommendations={...recommendations,
+      _workspace:entry.recommendations?._workspace||{}};
     entry.updatedAt=new Date().toISOString();
     live.set(id,entry);
-    return true;
+    return entry.recommendations;
   }
-  const result=await pg.query(
-    'UPDATE frontline.uic_projects SET recommendation=$1,updated_at=NOW() WHERE id=$2 AND visitor_id=$3',
-    [JSON.stringify(recommendations),id,owner]
-  );
-  return result.rowCount===1;
+  const result=await pg.query(`UPDATE frontline.uic_projects SET
+    recommendation=jsonb_set($1::jsonb,'{_workspace}',
+      COALESCE(recommendation->'_workspace','{}'::jsonb),true),
+    updated_at=NOW()
+    WHERE id=$2 AND visitor_id=$3 RETURNING recommendation AS recommendations`,
+    [JSON.stringify(recommendations),id,owner]);
+  return result.rows[0]?.recommendations||null;
+}
+// One owner-scoped row-lock/revision gate for every board and checkpoint
+// mutation. No extra public tables, privileged database keys or chat rewrites.
+const inMemoryWorkspaceLocks=new Map();
+async function modifyProjectWorkspace(owner,id,revision,build){
+  const readAndBuild=async project=>{
+    if(!project)return null;
+    const old=normalizeWorkspace(project.recommendations?._workspace);
+    requireRevision(old,revision);
+    const proposal=await build(project,old);
+    if(!proposal?.workspace)throw Object.assign(new Error('Invalid workspace edit.'),{status:400});
+    const updated=proposal.recommendation||project.recommendations||{};
+    return {...project,recommendations:{...updated,_workspace:proposal.workspace},
+      workspace:proposal.workspace};
+  };
+  if(!pg){
+    const key=owner+':'+id;
+    const previous=inMemoryWorkspaceLocks.get(key)||Promise.resolve();
+    let release;
+    const pending=new Promise(resolve=>{release=resolve});
+    inMemoryWorkspaceLocks.set(key,pending);
+    await previous;
+    try{
+      const project=live.get(id);
+      const next=await readAndBuild(project?.owner===owner?project:null);
+      if(!next)return null;
+      next.updatedAt=new Date().toISOString();
+      live.set(id,next);
+      return next;
+    }finally{
+      release();
+      if(inMemoryWorkspaceLocks.get(key)===pending)inMemoryWorkspaceLocks.delete(key);
+    }
+  }
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN');
+    const row=await client.query(`SELECT id,title,brief,recommendation AS recommendations
+      FROM frontline.uic_projects WHERE id=$1 AND visitor_id=$2 FOR UPDATE`,[id,owner]);
+    const next=await readAndBuild(row.rows[0]);
+    if(!next){await client.query('ROLLBACK');return null;}
+    await client.query(`UPDATE frontline.uic_projects SET recommendation=$1,updated_at=NOW()
+      WHERE id=$2 AND visitor_id=$3`,[JSON.stringify(next.recommendations),id,owner]);
+    await client.query('COMMIT');
+    return next;
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}
+  finally{client.release();}
 }
 async function updateMessages(owner,id,messages){
   if(!pg){const p=live.get(id);if(p?.owner===owner){p.messages=messages;p.updatedAt=new Date().toISOString();live.set(id,p);}return;}
@@ -855,7 +909,7 @@ const server=http.createServer(async(req,res)=>{
         const next=recommend(project.brief,prefs,await listReferences(),{refinement});
         const stored=await updateRecommendations(owner,id,next);
         if(!stored)return json(res,404,{error:'Project not found'});
-        return json(res,200,{project:{...project,recommendations:next},decision:next.decision});
+        return json(res,200,{project:{...project,recommendations:stored},decision:next.decision});
       }
       const designMatch=new URL(req.url,'http://localhost').pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/design-prompt$/);
       if(designMatch){
@@ -911,7 +965,9 @@ const server=http.createServer(async(req,res)=>{
           // private history and approved selections are never overwritten.
           const recommendations=recommend(p.brief,prefs,await listReferences(),
             {refinement:p.recommendations?.refinement||''});
-          return json(res,200,{project:{...p,recommendations}});
+          return json(res,200,{project:{...p,recommendations:{
+            ...recommendations,_workspace:p.recommendations?._workspace||{}
+          }}});
         }
         if(req.method==='POST'&&action==='/messages'){
           const b=await readBody(req);if(!validateText(b.message,2,1200))return json(res,400,{error:'Message must be 2–1,200 characters.'});
