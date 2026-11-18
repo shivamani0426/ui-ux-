@@ -9,6 +9,8 @@ import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
+import {derivePrivateLearning,contextForCategory,publicLearningSummary,
+  verifiedCohortBand,VERIFIED_COHORT_MIN} from './contextual-learning.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
   resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
@@ -158,6 +160,44 @@ async function feedbackEvidence(owner){
     dislikes:rows.filter(x=>x.style===style&&x.reaction==='dislike').reduce((sum,x)=>sum+x.total,0),
     refinements:rows.filter(x=>x.style===style&&x.reaction==='edit').reduce((sum,x)=>sum+x.total,0),
   }));
+}
+// Read only final feedback per owned project+style. This is NOT a transcript
+// mining job and never accepts an account/visitor ID from the browser.
+async function privateLearning(owner,excludedProjectId=null){
+  if(!pg){
+    const rows=latestFeedbackChoices(votes.filter(v=>v.owner===owner))
+      .filter(v=>v.id!==excludedProjectId)
+      .map(v=>({projectId:v.id,style:v.style,reaction:v.reaction,
+        category:live.get(v.id)?.recommendations?.category||'Digital product'}));
+    return derivePrivateLearning(rows);
+  }
+  const result=await pg.query(`WITH latest AS (
+    SELECT DISTINCT ON (f.project_id,f.style_id)
+      f.project_id::text AS "projectId",f.style_id AS style,f.reaction,
+      COALESCE(p.recommendation->>'category','Digital product') AS category,
+      f.created_at AS "createdAt"
+    FROM frontline.uic_feedback f
+    JOIN frontline.uic_projects p ON p.id=f.project_id AND p.visitor_id=$1
+    WHERE f.visitor_id=$1 AND ($2::uuid IS NULL OR f.project_id<>$2::uuid)
+    ORDER BY f.project_id,f.style_id,f.created_at DESC,f.id DESC
+  ) SELECT * FROM latest ORDER BY "createdAt" DESC LIMIT 600`,
+    [owner,excludedProjectId]);
+  return derivePrivateLearning(result.rows);
+}
+async function recommendationPreferences(owner,brief,excludedProjectId=null,raw=null){
+  const current=effectivePreferences(raw||await profile(owner));
+  if(!current.personalization.enabled)return current;
+  const category=analyzeProject(brief).category;
+  const learning=await privateLearning(owner,excludedProjectId);
+  return {...current,contextLearning:contextForCategory(learning,category,true)};
+}
+async function learningOverview(owner){
+  const raw=await profile(owner);
+  const model=await privateLearning(owner);
+  return {version:model.version,enabled:raw.personalization.enabled,
+    categories:publicLearningSummary(model),
+    projectChoices:model.projectChoices,
+    note:'Only your last explicit reaction per project/style. Signals require multiple projects and are not trained AI or measured usability.'};
 }
 async function saveProject(owner,p){
   if(!pg){live.set(p.id,{...p,owner});return;}
@@ -660,8 +700,10 @@ const server=http.createServer(async(req,res)=>{
         await saveProfile(owner,p);return json(res,200,p);
       }
       if(req.method==='GET'&&req.url==='/api/preferences'){
-        return json(res,200,{profile:await profile(owner),evidence:await feedbackEvidence(owner),
-          note:'Only feedback and design choices from this visitor; no private conversations shared.'});
+        const [current,evidence,learning]=await Promise.all([
+          profile(owner),feedbackEvidence(owner),learningOverview(owner)]);
+        return json(res,200,{profile:current,evidence,learning,
+          note:'Contextual learning is private to this visitor. Explicit project requirements override learned style preferences.'});
       }
       if(req.method==='PUT'&&req.url==='/api/preferences'){
         const input=await readBody(req);
@@ -670,13 +712,15 @@ const server=http.createServer(async(req,res)=>{
         catch(error){return json(res,400,{error:error.message});}
         if(!next.personalization.enabled)await revokeSharedFeedback(owner);
         await saveProfile(owner,next);
-        return json(res,200,{profile:next,evidence:await feedbackEvidence(owner)});
+        return json(res,200,{profile:next,evidence:await feedbackEvidence(owner),
+          learning:await learningOverview(owner)});
       }
       if(req.method==='DELETE'&&req.url==='/api/preferences'){
         const next=resetPreferenceLearning(await profile(owner));
         await clearPreferenceFeedback(owner);
         await saveProfile(owner,next);
         return json(res,200,{profile:next,evidence:await feedbackEvidence(owner),
+          learning:await learningOverview(owner),
           note:'Preferences and private feedback cleared. Projects and chats were preserved.'});
       }
       if(req.method==='DELETE'&&req.url==='/api/profile'){
@@ -699,7 +743,8 @@ const server=http.createServer(async(req,res)=>{
       }
       if(req.method==='POST'&&pathname==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
-        const prefs=effectivePreferences(await profile(owner));const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
+        const prefs=await recommendationPreferences(owner,b.brief);
+        const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
         await saveProject(owner,p);return json(res,201,{project:p});
       }
@@ -738,7 +783,7 @@ const server=http.createServer(async(req,res)=>{
         const refinement=body.refinement.trim();
         if(refinement.length>0&&refinement.length<5)
           return json(res,400,{error:'Describe your change in at least five characters, or leave it empty to reset.'});
-        const prefs=effectivePreferences(await profile(owner));
+        const prefs=await recommendationPreferences(owner,project.brief,id);
         const next=recommend(project.brief,prefs,await listReferences(),{refinement});
         const stored=await updateRecommendations(owner,id,next);
         if(!stored)return json(res,404,{error:'Project not found'});
@@ -792,7 +837,7 @@ const server=http.createServer(async(req,res)=>{
         if(req.method==='GET'&&!action){
           // Older saved projects did not have an intelligence snapshot. Enrich the
           // response without writing to the user's PostgreSQL project history.
-          const prefs=effectivePreferences(await profile(owner));
+          const prefs=await recommendationPreferences(owner,p.brief,id);
           // Recompute only derived heuristic/evidence fields using the
           // original brief plus the saved explicit refinement. Project text,
           // private history and approved selections are never overwritten.
