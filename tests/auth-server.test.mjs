@@ -28,7 +28,7 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
         assert.equal(options.headers.Authorization,'Bearer valid-account-access');
         return new Response(JSON.stringify({id:account,email:'designer@example.test',user_metadata:{full_name:'Test designer'}}),{status:200});
       }
-      if(String(url).endsWith('/logout'))return new Response('',{status:200});
+      if(String(url).includes('/logout?scope=local'))return new Response('',{status:200});
       throw Error('Unexpected token request');
     }
     return originalFetch(url,options);
