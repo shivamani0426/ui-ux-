@@ -256,7 +256,8 @@ async function modifyProjectWorkspace(owner,id,revision,build){
       const next=await readAndBuild(project?.owner===owner?project:null);
       if(!next)return null;
       next.updatedAt=new Date().toISOString();
-      live.set(id,next);
+      const {workspace:responseOnly,...stored}=next;
+      live.set(id,stored);
       return next;
     }finally{
       release();
