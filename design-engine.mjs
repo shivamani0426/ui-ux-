@@ -42,7 +42,9 @@ export function recommend(brief,preferences={},library=REFERENCES,options={}){
       .sort((a,b)=>b.tags.filter(tag=>words.has(tag)).length-a.tags.filter(tag=>words.has(tag)).length || (b.score||0)-(a.score||0))
       .slice(0,3).map(ref=>({id:ref.id,name:ref.name,award:ref.award,site:ref.site,rank:ref.rank}));
     return {...style,match:c.match,reasons:c.reasons,tradeoff:c.tradeoff,
-      strengths:c.strengths,criteria:c.criteria,scoring:c.scoring,personalization:c.personalization,references:refs};
+      strengths:c.strengths,criteria:c.criteria,scoring:c.scoring,
+      scoreFactors:c.scoreFactors,evidence:c.evidence,mitigations:c.mitigations,
+      comparisonSummary:c.comparisonSummary,personalization:c.personalization,references:refs};
   });
   return {category,brief:prompt,refinement,designs,analysis,comparison,
     decision:buildDecisionReport(analysis,comparison),
