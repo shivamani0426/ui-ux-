@@ -8,7 +8,10 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
     FRONTLINE_SUPABASE_PUBLISHABLE_KEY:process.env.FRONTLINE_SUPABASE_PUBLISHABLE_KEY,
     FRONTLINE_SITE_URL:process.env.FRONTLINE_SITE_URL,
     FRONTLINE_GOOGLE_LOGIN_ENABLED:process.env.FRONTLINE_GOOGLE_LOGIN_ENABLED,
-    RENDER_SERVICE_ID:process.env.RENDER_SERVICE_ID
+    RENDER_SERVICE_ID:process.env.RENDER_SERVICE_ID,
+    FRONTLINE_SUPABASE_ADMIN_KEY:process.env.FRONTLINE_SUPABASE_ADMIN_KEY,
+    FRONTLINE_ACTION_SIGNING_SECRET:process.env.FRONTLINE_ACTION_SIGNING_SECRET,
+    FRONTLINE_STRICT_SESSION_CHECK:process.env.FRONTLINE_STRICT_SESSION_CHECK
   };
   process.env.FRONTLINE_SUPABASE_URL='https://example.supabase.co';
   process.env.FRONTLINE_SUPABASE_PUBLISHABLE_KEY='sb_publishable_test_frontline_signin_123456';
@@ -17,6 +20,9 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
   // This mock server uses local HTTP; do not let Render's production-host flag
   // activate Secure-only cookies inside an isolated Node integration test.
   process.env.RENDER_SERVICE_ID='';
+  process.env.FRONTLINE_SUPABASE_ADMIN_KEY='';
+  process.env.FRONTLINE_ACTION_SIGNING_SECRET='frontline-test-auth-mac-value-of-at-least-sixty-four-characters-abcdefghijklmnop';
+  process.env.FRONTLINE_STRICT_SESSION_CHECK='false';
   const account='11111111-1111-4111-8111-111111111111';
   const calls=[];
   globalThis.fetch=async(url,options={})=>{
@@ -28,7 +34,7 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
         assert.equal(options.headers.Authorization,'Bearer valid-account-access');
         return new Response(JSON.stringify({id:account,email:'designer@example.test',user_metadata:{full_name:'Test designer'}}),{status:200});
       }
-      if(String(url).includes('/logout?scope=local'))return new Response('',{status:200});
+      if(String(url).includes('/logout?scope='))return new Response('',{status:200});
       throw Error('Unexpected token request');
     }
     return originalFetch(url,options);
@@ -65,6 +71,27 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
     const signed=await me.json();
     assert.equal(signed.authenticated,true);
     assert.equal(signed.user.id,account);
+    const security=await call('/api/auth/security',{headers:{Cookie:allCookies}});
+    const securityData=await security.json();
+    assert.equal(securityData.authenticated,true);
+    assert.equal(securityData.recentGoogleVerification,true,
+      'Only the recently completed real OAuth callback may enable sensitive operations');
+    assert.equal(securityData.accountDeletionAvailable,false,
+      'Mock server has no administrator credentials: deletion must fail closed');
+    const protectedDelete=await call('/api/auth/account',{method:'DELETE',headers:{
+      Cookie:allCookies,'Content-Type':'application/json'
+    },body:JSON.stringify({email:'designer@example.test',confirmation:'DELETE FRONTLINE ACCOUNT'})});
+    assert.equal(protectedDelete.status,503,
+      'Unavailable Admin credentials must not delete real account data');
+    const noConfirmation=await call('/api/auth/logout',{method:'POST',headers:{
+      Cookie:allCookies,'Content-Type':'application/json'
+    },body:JSON.stringify({scope:'global'})});
+    assert.equal(noConfirmation.status,400,'All-device logout requires a deliberate confirmation phrase');
+    const others=await call('/api/auth/logout',{method:'POST',headers:{
+      Cookie:allCookies,'Content-Type':'application/json'
+    },body:JSON.stringify({scope:'others'})});
+    assert.equal(others.status,200);
+    assert.equal((await others.json()).scope,'others');
     const listed=await call('/api/projects',{headers:{Cookie:allCookies}});
     assert.ok((await listed.json()).projects.some(p=>p.id===project.id));
     // A second device has a different guest cookie but the same verified
@@ -81,6 +108,10 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
     const guestAfter=await call('/api/projects',{headers:{Cookie:guestCookie}});
     assert.equal((await guestAfter.json()).projects.length,0,'Migrated project no longer belongs to the old guest');
     assert.ok(calls.some(c=>c.url.endsWith('/user')),'The server must validate the actual account with Supabase');
+    assert.ok(calls.some(c=>c.url.includes('/logout?scope=others')),
+      'Other-device revocation must explicitly use the others scope');
+    assert.ok(calls.some(c=>c.url.includes('/logout?scope=local')),
+      'Normal signout must use local scope and spare the other devices');
   }finally{
     await new Promise(resolve=>server.close(resolve));
     globalThis.fetch=originalFetch;
