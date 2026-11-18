@@ -11,7 +11,10 @@
   contain:layout style;
   overflow:hidden;
 }
-.fl-auto-landing .fl-atmosphere{opacity:.48;filter:hue-rotate(174deg) saturate(.68) brightness(1.22);transition:none}
+.fl-auto-landing .fl-atmosphere{
+  visibility:visible!important;opacity:.48;
+  filter:hue-rotate(174deg) saturate(.68) brightness(1.22);transition:none
+}
 .fl-auto-landing .fl-sky{filter:hue-rotate(125deg) saturate(.58) brightness(1.25)}
 .fl-auto-landing .fl-grain{opacity:.055}
 .fl-auto-landing .fl-story-paper,.fl-auto-landing .fl-story-scroll-guide{display:none!important}
