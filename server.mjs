@@ -11,6 +11,8 @@ import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {derivePrivateLearning,contextForCategory,publicLearningSummary,
   verifiedCohortBand,VERIFIED_COHORT_MIN,summarizeVerifiedPatterns} from './contextual-learning.mjs';
+import {buildDesignHandoff,designHandoffMarkdown} from './design-handoff.mjs';
+import {validateGitHubPublishInput,publishApprovedHandoff} from './github-handoff.mjs';
 import {normalizeWorkspace,validateBoardUpdate,requireRevision,withUpdatedBoard,
   addCheckpoint,restoreCheckpoint,compareCheckpoint} from './project-workspace.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
@@ -917,6 +919,25 @@ const server=http.createServer(async(req,res)=>{
           return json(res,200,{prompt,references:chosen.map(x=>x.id)});
         }
         return json(res,405,{error:'Method not allowed'});
+      }
+      // M14B: explicit one-time GitHub authorization, account-scoped, approved-only.
+      const githubHandoffRoute=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/github-handoff$/);
+      if(githubHandoffRoute){
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        if(!signedIn)return json(res,401,{error:'Sign in with Google before publishing to GitHub.'});
+        const body=validateGitHubPublishInput(await readBody(req,1600));
+        const project=await getProject(owner,githubHandoffRoute[1]);
+        if(!project)return json(res,404,{error:'Project not found'});
+        const workspace=normalizeWorkspace(project.recommendations?._workspace);
+        requireRevision(workspace,body.revision);
+        const handoff=buildDesignHandoff({
+          project,workspace,references:await savedSourceRows(owner,project.id)
+        });
+        const result=await publishApprovedHandoff({
+          repository:body.repository,token:body.token,projectId:project.id,
+          title:project.title,markdown:designHandoffMarkdown(handoff)
+        });
+        return json(res,201,{...result,content:'Approved design handoff only; no chat, private feedback or tokens were stored.'});
       }
       // M13: private visual board and bounded, manually named checkpoints.
       const boardRoute=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/workspace$/);
