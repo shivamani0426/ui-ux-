@@ -1,7 +1,8 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {ArrowLeftRight,BookOpen,Check,CheckCircle2,FolderKanban,
   GitCompareArrows,History,Layers3,Plus,RefreshCw,RotateCcw,Save,
-  ShieldCheck,Trash2} from 'lucide-react';
+  ShieldCheck,Trash2,Download,FileJson,FileText,Copy} from 'lucide-react';
+import {buildDesignHandoff,designHandoffMarkdown,designHandoffFilename} from '../../design-handoff.mjs';
 import './ProjectWorkbench.css';
 
 const STAGES=[
@@ -39,6 +40,8 @@ export default function ProjectWorkbench({
   const dirty=!!workspace&&(JSON.stringify(items)!==JSON.stringify(workspace.items)||
     JSON.stringify(selected)!==JSON.stringify(workspace.selectedStyles));
   const versions=workspace?.versions||[];
+  const approvedItems=items.filter(item=>item.stage==='approved');
+  const handoffReady=!!workspace&&!dirty&&!loading&&!busy&&approvedItems.length>0;
 
   useEffect(()=>{
     let cancelled=false;
@@ -146,6 +149,39 @@ export default function ProjectWorkbench({
     finally{setBusy(false)}
   };
 
+
+  const prepareHandoff=()=>{
+    if(!handoffReady){
+      notice(dirty?'Save your changes before exporting the approved design.':
+        'Move at least one board card to Approved and save the board first.');
+      return null;
+    }
+    try{
+      return buildDesignHandoff({project,workspace,references:savedSources});
+    }catch(e){setError(e.message);notice(e.message);return null;}
+  };
+  const downloadHandoff=extension=>{
+    const handoff=prepareHandoff();
+    if(!handoff)return;
+    const payload=extension==='json'?JSON.stringify(handoff,null,2)+'\n':
+      designHandoffMarkdown(handoff);
+    const blob=new Blob([payload],{type:extension==='json'?'application/json':'text/markdown'});
+    const url=URL.createObjectURL(blob);
+    const anchor=document.createElement('a');
+    anchor.href=url;anchor.download=designHandoffFilename(project.title,extension);
+    document.body.appendChild(anchor);anchor.click();anchor.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    notice('Approved design handoff downloaded locally. Review it before sharing.');
+  };
+  const copyHandoff=async()=>{
+    const handoff=prepareHandoff();
+    if(!handoff)return;
+    try{
+      await navigator.clipboard.writeText(designHandoffMarkdown(handoff));
+      notice('Approved design handoff copied. Share only with people you trust.');
+    }catch{notice('Clipboard unavailable. Use Download Markdown instead.');}
+  };
+
   const pages=(project.recommendations?.analysis?.pages||[]).filter(
     page=>!items.some(item=>item.type==='page'&&item.title===page)).slice(0,24);
   const sources=savedSources.filter(source=>!items.some(item=>item.sourceId===source.id));
@@ -173,6 +209,10 @@ export default function ProjectWorkbench({
       <button type="button" className={tab==='compare'?'is-active':''}
         aria-pressed={tab==='compare'} onClick={()=>setTab('compare')}>
         <GitCompareArrows size={15}/> Compare styles
+      </button>
+      <button type="button" className={tab==='handoff'?'is-active':''}
+        aria-pressed={tab==='handoff'} onClick={()=>setTab('handoff')}>
+        <Download size={15}/> Design handoff
       </button>
       <button type="button" className={tab==='versions'?'is-active':''}
         aria-pressed={tab==='versions'} onClick={()=>setTab('versions')}>
@@ -293,6 +333,40 @@ export default function ProjectWorkbench({
           <button className="pw-primary" onClick={save} disabled={!dirty||busy}>
             <Save size={15}/> {busy?'Saving…':'Save selected directions'}
           </button>
+        </div>}
+        {tab==='handoff'&&<div className="pw-handoff">
+          <span className="pw-eyebrow">MILESTONE 14 / LOCAL EXPORT</span>
+          <h4>Hand off only what you approved.</h4>
+          <p>Prepare a lightweight developer brief from your saved project, selected design
+            directions and cards explicitly moved to Approved. Ideas, Explore cards,
+            chat messages, private feedback and checkpoint history stay out of the export.</p>
+          <div className="pw-handoff-summary">
+            <div><strong>{approvedItems.length}</strong><span>Approved cards</span></div>
+            <div><strong>{workspace.selectedStyles.length}</strong><span>Saved directions</span></div>
+            <div><strong>#{workspace.revision}</strong><span>Board revision</span></div>
+          </div>
+          {approvedItems.length>0&&<ul className="pw-handoff-list" aria-label="Cards included in handoff">
+            {approvedItems.map(item=><li key={item.id}>
+              <span>{item.type}</span><strong>{item.title}</strong>
+            </li>)}
+          </ul>}
+          {!handoffReady&&<p className="pw-unsaved" role="status">
+            {dirty?'Save the board before exporting; unsaved decisions cannot be handed off.':
+              'Move at least one card to Approved and save the board to unlock exports.'}
+          </p>}
+          <div className="pw-handoff-actions">
+            <button type="button" className="pw-primary" disabled={!handoffReady}
+              onClick={()=>downloadHandoff('md')}><FileText size={15}/> Download Markdown</button>
+            <button type="button" disabled={!handoffReady}
+              onClick={()=>downloadHandoff('json')}><FileJson size={15}/> Download JSON</button>
+            <button type="button" disabled={!handoffReady}
+              onClick={copyHandoff}><Copy size={15}/> Copy Markdown</button>
+          </div>
+          <p className="pw-handoff-privacy"><ShieldCheck size={15}/>
+            Nothing is uploaded to GitHub, Figma or any new provider. These exports contain
+            project briefs and approved decisions, so inspect them before sharing.
+            They are specifications, not tested layouts, executable code or Figma files.
+          </p>
         </div>}
         {tab==='versions'&&<div className="pw-versions">
           <form className="pw-checkpoint-form" onSubmit={e=>{e.preventDefault();checkpoint();}}>
