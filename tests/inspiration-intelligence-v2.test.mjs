@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {inspirationBriefSignals,rankInspirations} from '../inspiration-engine.mjs';
+import {inspirationBriefSignals,rankInspirations,makeSelectionPrompt} from '../inspiration-engine.mjs';
 
 const refs=[
   {id:'student',name:'Student study hub',site:'https://example.org/learning',
@@ -53,4 +53,18 @@ test('08C: negative preferences do not create false confidence',()=>{
     styleWeights:{creative:-999},favoriteTags:[]});
   assert.ok(r.every(x=>x.matchScore===0));
   assert.ok(r.every(x=>x.matchLabel==='Explore alternative'));
+});
+
+test('08D: selected inspirations honor latest approved refinement and exclude forbidden modules',()=>{
+  const project={
+    brief:'Create a student study dashboard with attendance and calendar, without checkout.',
+    recommendations:{refinement:'Prioritize mobile accessibility and do not add messaging.'}
+  };
+  const prompt=makeSelectionPrompt(project,refs.slice(0,1));
+  assert.match(prompt,/LATEST APPROVED REFINEMENT/);
+  assert.match(prompt,/Prioritize mobile accessibility/);
+  assert.match(prompt,/EXPLICITLY OUT OF SCOPE/);
+  assert.match(prompt,/checkout/i);
+  assert.match(prompt,/messaging/i);
+  assert.match(prompt,/Do not copy layouts/);
 });
