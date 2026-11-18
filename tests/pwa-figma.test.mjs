@@ -99,3 +99,67 @@ test('14C: plugin creates editable layers only from approved handoff',async()=>{
  assert.match(mock.ui.lastMessage.message,/Invalid pages/);
  assert.equal(mock.closed,false);
 });
+
+
+test('15B: first PWA installation precaches public JS/CSS before any controlled reload',async()=>{
+  const code=await fs.readFile(new URL('../public/service-worker.js',import.meta.url),'utf8');
+  const handlers={};
+  const stored=new Map();
+  const requests=[];
+  const html='<!doctype html><link rel="stylesheet" crossorigin href="/assets/index-abc123.css"/>'+
+    '<script type="module" crossorigin src="/assets/index-def456.js"></script>';
+  const network=async path=>{
+    requests.push(path);
+    if(path==='/')return new Response(html,{status:200});
+    if(['/favicon.svg','/pwa-icon.svg','/manifest.webmanifest',
+      '/assets/index-abc123.css','/assets/index-def456.js'].includes(path))
+      return new Response('public-asset',{status:200});
+    throw Error('Unapproved cache request: '+path);
+  };
+  const cachesMock={
+    async open(name){
+      if(!stored.has(name))stored.set(name,new Map());
+      const entries=stored.get(name);
+      return {
+        async addAll(paths){
+          for(const path of paths)entries.set(path,await network(path));
+        },
+        async match(path){return entries.get(path)?.clone()||undefined;}
+      };
+    }
+  };
+  const fakeSelf={
+    location:{origin:'https://frontline.example'},
+    addEventListener(name,callback){handlers[name]=callback;},
+    clients:{claim:async()=>{}}
+  };
+  vm.runInNewContext(code,{self:fakeSelf,caches:cachesMock,fetch:network,
+    URL,Response,Promise,console});
+  let pending=null;
+  handlers.install({waitUntil(p){pending=p;}});
+  await pending;
+  assert.ok(requests.includes('/assets/index-def456.js'));
+  assert.ok(requests.includes('/assets/index-abc123.css'));
+  assert.ok(!requests.some(path=>path.startsWith('/api/')||path.startsWith('/auth/')));
+  const shell=[...stored.values()].find(cache=>cache.has('/'));
+  const assets=[...stored.values()].find(cache=>cache.has('/assets/index-def456.js'));
+  assert.ok(shell&&assets);
+  assert.ok(assets.has('/assets/index-abc123.css'));
+});
+test('15B: installation refuses a misleading incomplete shell without JavaScript',async()=>{
+  const code=await fs.readFile(new URL('../public/service-worker.js',import.meta.url),'utf8');
+  const handlers={};
+  const cachesMock={
+    async open(){return {
+      async addAll(){},
+      async match(){return new Response('<html>Incomplete deployment</html>');}
+    }}
+  };
+  vm.runInNewContext(code,{self:{
+    location:{origin:'https://frontline.example'},
+    addEventListener(name,fn){handlers[name]=fn;},
+    clients:{claim:async()=>{}}
+  },caches:cachesMock,fetch:async()=>new Response(''),URL,Response,Promise});
+  let pending=null;handlers.install({waitUntil(p){pending=p;}});
+  await assert.rejects(pending,/bundle was not found/);
+});

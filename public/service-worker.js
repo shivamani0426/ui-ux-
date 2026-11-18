@@ -1,13 +1,34 @@
 /* Frontline PWA: caches PUBLIC app shell and immutable assets only.
  * Never caches or replays account, API, OAuth or project responses.
  */
-const VERSION='frontline-public-v1';
+const VERSION='frontline-public-v2';
 const STATIC_CACHE=VERSION+'-static';
 const SHELL_CACHE=VERSION+'-shell';
 const SHELL=['/','/favicon.svg','/pwa-icon.svg','/manifest.webmanifest'];
 const isPrivate=path=>path.startsWith('/api/')||path.startsWith('/auth/');
+// Vite's script and stylesheet are loaded before the newly registered worker
+// controls the first tab. Precaching the exact hashed paths referenced by the
+// public HTML makes a FIRST-install offline reopen possible.
+const immutableFromIndex=html=>{
+  const paths=new Set();
+  for(const match of String(html||'').matchAll(/(?:src|href)=["'](\/assets\/[a-zA-Z0-9_.-]+\.(?:js|css|png|svg|woff2?))["']/g))
+    paths.add(match[1]);
+  return [...paths].slice(0,25);
+};
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(SHELL_CACHE).then(cache=>cache.addAll(SHELL)));
+  event.waitUntil((async()=>{
+    const shell=await caches.open(SHELL_CACHE);
+    await shell.addAll(SHELL);
+    const document=await shell.match('/');
+    if(!document)throw new Error('Public app shell unavailable during PWA installation.');
+    const assets=immutableFromIndex(await document.text());
+    // A Vite-built production shell must include at least one JS bundle.
+    // Do not install a misleading partial offline shell.
+    if(!assets.some(p=>p.endsWith('.js')))
+      throw new Error('Production JavaScript bundle was not found in the app shell.');
+    const staticCache=await caches.open(STATIC_CACHE);
+    await staticCache.addAll(assets);
+  })());
 });
 self.addEventListener('activate',event=>{
   event.waitUntil((async()=>{
