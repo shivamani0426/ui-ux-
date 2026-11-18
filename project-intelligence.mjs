@@ -277,6 +277,23 @@ export function buildDecisionReport(analysis={},comparisons=[]){
     }))
   };
 }
+/** Guard against a provider enthusiastically re-adding explicitly forbidden
+ * functionality. This is a conservative lexical safety net, not a proof
+ * of semantic correctness. When uncertain, prefer complete guided output. */
+export function inspectAdvisorScope(text,analysis={}){
+  const reply=String(text||'').slice(0,5000);
+  const excluded=(Array.isArray(analysis.excludedFeatures)?analysis.excludedFeatures:[]);
+  const patterns={
+    messages:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:chats?|messages?|messaging|inbox)\b/i,
+    checkout:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:checkout|cart|buy\s+now|order\s+placement)\b/i,
+    payments:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:payments?|billing|transactions?)\b/i,
+    tutor:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:ai\s+tutor|chatbot|study\s+assistant)\b/i,
+    commerce:/\b(?:add|create|build|offer|include|enable|integrate|implement|provide)\b[^.!?\n]{0,70}\b(?:shopping|product\s+catalog|storefront)\b/i
+  };
+  const conflicting=excluded.filter(item=>patterns[item.id]?.test(reply)).map(item=>item.id);
+  return {passed:conflicting.length===0,conflicting,
+    warning:'Lexical scope check only; does not certify output correctness or security.'};
+}
 export function planFusion(analysis,styles,preferences={}){
  const ranked=compareDirections(analysis,styles,preferences);
  const lead=ranked[0];
