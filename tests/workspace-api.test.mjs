@@ -134,7 +134,7 @@ test('13: design board checkpoints are private, durable and non-destructive acro
     assert.equal(listing.status,200);
     assert.equal(listing.body.projects.find(p=>p.id===id).recommendations._workspace.revision,4);
     assert.equal((await bob(root)).status,404);
-    assert.equal((await alice(other.body.project.id+'/workspace')).status,404);
+    assert.equal((await alice('/api/projects/'+other.body.project.id+'/workspace')).status,404);
 
     // Two concurrent saves using the same revision must produce one winner,
     // not silent last-write-wins data loss (in-memory and PostgreSQL row locks).
