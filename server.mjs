@@ -10,7 +10,7 @@ import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {derivePrivateLearning,contextForCategory,publicLearningSummary,
-  verifiedCohortBand,VERIFIED_COHORT_MIN} from './contextual-learning.mjs';
+  verifiedCohortBand,VERIFIED_COHORT_MIN,summarizeVerifiedPatterns} from './contextual-learning.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
   resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
@@ -467,21 +467,11 @@ async function insights(){
     FROM eligible WHERE net>0 GROUP BY style_id`);
     counts=result.rows;
   }else{
-    const grouped=new Map();
-    for(const vote of latestFeedbackChoices(votes)){
-      if(!vote.owner.startsWith('acct:')||!vote.optIn)continue;
-      const ownerProfile=await profile(vote.owner);
-      if(!ownerProfile.globalOptIn||!ownerProfile.personalization.enabled)continue;
-      const key=vote.owner+':'+vote.style;
-      grouped.set(key,(grouped.get(key)||0)+(vote.reaction==='like'?1:vote.reaction==='dislike'?-1:0));
-    }
-    const byStyle=new Map();
-    for(const [key,net] of grouped){
-      if(net<=0)continue;
-      const style=key.slice(key.lastIndexOf(':')+1);
-      byStyle.set(style,(byStyle.get(style)||0)+1);
-    }
-    counts=[...byStyle].map(([style_id,contributors])=>({style_id,contributors}));
+    const acceptedOwners=[...new Set(votes.map(v=>v.owner))]
+      .filter(owner=>owner.startsWith('acct:'));
+    const eligibleProfiles=new Map();
+    for(const owner of acceptedOwners)eligibleProfiles.set(owner,await profile(owner));
+    return summarizeVerifiedPatterns(latestFeedbackChoices(votes),eligibleProfiles);
   }
   return counts.filter(x=>x.contributors>=VERIFIED_COHORT_MIN).map(x=>({
     style:x.style_id,contributorsBand:verifiedCohortBand(x.contributors),
