@@ -27,7 +27,15 @@ const ruleStatus=(text,re)=>{
         // A "don't remove assignments" clause doesn't cancel a later,
         // independent "avoid glass" or "exclude messages" instruction.
         const immediate=before.slice(hit.index);
-        return !/^\s*(?:do\s+not|must\s+not|should\s+not|don't|never)\s+(?:remove|exclude|omit|drop|delete)\b/i.test(immediate);
+        if(/^\s*(?:do\s+not|must\s+not|should\s+not|don't|never)\s+(?:remove|exclude|omit|drop|delete)\b/i.test(immediate))
+          return false;
+        // "remove" is also a standalone negation keyword: do not count it
+        // again when it is protected by a preceding "don't".
+        const beforeHit=before.slice(Math.max(0,hit.index-22),hit.index);
+        if(/^(?:remove|exclude|omit|drop|delete)$/i.test(hit[0])&&
+          /(?:do\s+not|must\s+not|should\s+not|don't|never)\s+$/i.test(beforeHit))
+          return false;
+        return true;
       });
       latest={excluded:negative,position:position+m.index,
         excerpt:clause.trim().replace(/\s+/g,' ').slice(0,145)};
