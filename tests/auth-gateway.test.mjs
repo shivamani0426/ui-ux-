@@ -28,7 +28,7 @@ test('Google flow is PKCE S256, HttpOnly, secure, callback-bound and private',as
     }
     if(url.endsWith('/user'))return response(200,{id:UID,email:'user@example.test',
       user_metadata:{full_name:'Designer',role:'admin'}});
-    if(url.endsWith('/logout'))return response(204,{});
+    if(url.includes('/logout?scope=local'))return response(204,{});
     throw Error('Unexpected auth request '+url);
   });
   const first=res();
