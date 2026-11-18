@@ -136,6 +136,26 @@ test('13: design board checkpoints are private, durable and non-destructive acro
     assert.equal((await bob(root)).status,404);
     assert.equal((await alice('/api/projects/'+other.body.project.id+'/workspace')).status,404);
 
+    // A complete 24-card board with maximum notes must remain saveable even
+    // when its JSON exceeds the old 12 KB general API body limit.
+    const maxProject=await alice('/api/projects','POST',{brief:baseBrief});
+    assert.equal(maxProject.status,201);
+    const fullBoard={revision:0,
+      items:Array.from({length:24},(_,i)=>({
+        id:'full_card_'+i,type:'decision',stage:i%2?'explore':'ideas',
+        title:'Accessibility decision '+i+' '+('W'.repeat(65)),
+        notes:'Review responsive keyboard focus and error states. '+('N'.repeat(300))
+      })),
+      selectedStyles:['minimal','creative']
+    };
+    assert.ok(Buffer.byteLength(JSON.stringify(fullBoard),'utf8')>12_000,
+      'Full-capacity regression requires a payload larger than the former limit');
+    assert.ok(Buffer.byteLength(JSON.stringify(fullBoard),'utf8')<24_000);
+    const maxSaved=await alice('/api/projects/'+maxProject.body.project.id+
+      '/workspace','PUT',fullBoard);
+    assert.equal(maxSaved.status,200,
+      '24 valid cards and 360-character notes must fit the scoped board request limit');
+    assert.equal(maxSaved.body.workspace.items.length,24);
     // Two concurrent saves using the same revision must produce one winner,
     // not silent last-write-wins data loss (in-memory and PostgreSQL row locks).
     const competing=await Promise.all([
