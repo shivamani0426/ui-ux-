@@ -36,7 +36,7 @@ test('Bottom-centre black-hole motion leads to branded login and guest studio',(
     assert.ok(css.includes(part),'Missing entrance motion: '+part);
   }
   assert.match(login,/Enter Studio as Guest/);
-  assert.match(login,/Back to the story/);
+  assert.match(login,/Back to home/);
   assert.match(login,/Continue with Google/);
   assert.match(login,/disabled=\{!googleReady\}/,'Google must not pretend to log in until configured');
   assert.ok(!login.includes('type="password"'),'No insecure placeholder credential collection');
