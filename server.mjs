@@ -916,7 +916,7 @@ const server=http.createServer(async(req,res)=>{
          return json(res,405,{error:'Method not allowed'});
        }
        if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.4.0'});
-      if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
+      if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:[],source:'live-original-source-discovery'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
         const data=await readBody(req);
@@ -968,7 +968,7 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='POST'&&pathname==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
         const prefs=await recommendationPreferences(owner,b.brief);
-        const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
+        const recommendations=recommend(b.brief,prefs,[]);const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
         await saveProject(owner,p);return json(res,201,{project:p});
       }
@@ -981,18 +981,20 @@ const server=http.createServer(async(req,res)=>{
           const b=await readBody(req);
           if(typeof b.sourceId!=='string'||!/^[-a-zA-Z0-9_]{1,80}$/.test(b.sourceId)||typeof b.selected!=='boolean')
             return json(res,400,{error:'Choose a valid reference and selection state'});
-          const found=(await listReferences()).find(x=>x.id===b.sourceId);
-          if(!found)return json(res,404,{error:'Inspiration not found'});
+          const alreadySaved=(await selectionIds(owner,id)).includes(b.sourceId);
+          const searched=b.selected?await makeInspirationResponse(owner,p):null;
+          const found=b.selected?searched.matches.find(x=>x.id===b.sourceId):
+            (await listReferences()).find(x=>x.id===b.sourceId&&alreadySaved);
+          if(!found)return json(res,404,{error:'Source not found in this project live search.'});
           await updateInspirationSelection(owner,id,found.id,b.selected);
           return json(res,200,await makeInspirationResponse(owner,p));
         }
         if(req.method==='POST'&&action==='/prompt'){
+          await readBody(req);
+          // Never return a Frontline-created prompt under a publisher's name.
           const chosen=await savedSourceRows(owner,id);
-          if(!chosen.length)return json(res,400,{error:'Save at least one inspiration first'});
-          const prompt=makeSelectionPrompt(p,chosen);
-          if(pg)await pg.query(`INSERT INTO frontline.generated_prompts(project_id,visitor_id,prompt_type,prompt_text,styles)
-            VALUES($1,$2,'select',$3,$4)`,[id,owner,prompt,chosen.flatMap(x=>x.styles).filter((x,i,a)=>a.indexOf(x)===i)]);
-          return json(res,200,{prompt,references:chosen.map(x=>x.id)});
+          return json(res,409,{error:'Original prompts cannot be reproduced without authorized publisher access. Open original source pages instead.',
+            sources:chosen.map(x=>({name:x.name,url:x.site,originalPromptStatus:'not-verified'}))});
         }
         return json(res,405,{error:'Method not allowed'});
       }
@@ -1073,14 +1075,13 @@ const server=http.createServer(async(req,res)=>{
         if(!project)return json(res,404,{error:'Project not found'});
         // Prefetch static catalogue and current private preferences outside the
         // row lock. A revision conflict still rejects a stale restoration.
-        const [prefs,library]=await Promise.all([
-          recommendationPreferences(owner,project.brief,id),listReferences()]);
+        const prefs=await recommendationPreferences(owner,project.brief,id);
         const next=await modifyProjectWorkspace(owner,id,body.revision,
           async(current,workspace)=>{
             const restored=restoreCheckpoint(workspace,{
               revision:body.revision,versionId,now:new Date().toISOString()});
             return {workspace:restored.workspace,
-              recommendation:recommend(current.brief,prefs,library,
+              recommendation:recommend(current.brief,prefs,[],
                 {refinement:restored.refinement})};
           });
         if(!next)return json(res,404,{error:'Project not found'});
@@ -1100,7 +1101,7 @@ const server=http.createServer(async(req,res)=>{
         if(refinement.length>0&&refinement.length<5)
           return json(res,400,{error:'Describe your change in at least five characters, or leave it empty to reset.'});
         const prefs=await recommendationPreferences(owner,project.brief,id);
-        const next=recommend(project.brief,prefs,await listReferences(),{refinement});
+        const next=recommend(project.brief,prefs,[],{refinement});
         const stored=await updateRecommendations(owner,id,next);
         if(!stored)return json(res,404,{error:'Project not found'});
         return json(res,200,{project:{...project,recommendations:stored},decision:next.decision});
@@ -1157,7 +1158,7 @@ const server=http.createServer(async(req,res)=>{
           // Recompute only derived heuristic/evidence fields using the
           // original brief plus the saved explicit refinement. Project text,
           // private history and approved selections are never overwritten.
-          const recommendations=recommend(p.brief,prefs,await listReferences(),
+          const recommendations=recommend(p.brief,prefs,[],
             {refinement:p.recommendations?.refinement||''});
           return json(res,200,{project:{...p,recommendations:{
             ...recommendations,_workspace:p.recommendations?._workspace||{}
