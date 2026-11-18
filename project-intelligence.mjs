@@ -22,8 +22,13 @@ const ruleStatus=(text,re)=>{
     const matches=[...clause.matchAll(new RegExp(re.source,'gi'))];
     for(const m of matches){
       const before=clause.slice(Math.max(0,m.index-75),m.index);
-      const negative=[...before.matchAll(NEGATION)].some(hit=>before.length-(hit.index+hit[0].length)<=66)
-        &&!PRESERVATION.test(before);
+      const negative=[...before.matchAll(NEGATION)].some(hit=>{
+        if(before.length-(hit.index+hit[0].length)>66)return false;
+        // A "don't remove assignments" clause doesn't cancel a later,
+        // independent "avoid glass" or "exclude messages" instruction.
+        const immediate=before.slice(hit.index);
+        return !/^\s*(?:do\s+not|must\s+not|should\s+not|don't|never)\s+(?:remove|exclude|omit|drop|delete)\b/i.test(immediate);
+      });
       latest={excluded:negative,position:position+m.index,
         excerpt:clause.trim().replace(/\s+/g,' ').slice(0,145)};
     }
@@ -35,15 +40,17 @@ export const inferProjectCategory=brief=>{
   const text=clean(brief);
   const choices=categories.map(([name,re],order)=>{
     const matches=[...text.matchAll(new RegExp(re.source,'gi'))];
+    // "Ecommerce catalog without checkout" is still Commerce. Score
+    // positive category clues individually, not just the last category word.
+    const positive=matches.filter(m=>ruleStatus(text,
+      new RegExp('\\b'+m[0]+'\\b','i'))?.excluded===false);
     return {
-      name,order,status:ruleStatus(text,re),
-      // Generic words like "dashboard" and "analytics" are weak SaaS clues;
-      // they must not overpower an explicit AI, healthcare or school domain.
-      evidence:matches.reduce((score,m)=>score+
+      name,order,
+      evidence:positive.reduce((score,m)=>score+
         (name==='SaaS'&&/^(dashboard|analytics)$/i.test(m[0])?.35:
           name==='SaaS'?2.5:2.2),0)
     };
-  }).filter(c=>c.status&&!c.status.excluded)
+  }).filter(c=>c.evidence>0)
     .sort((a,b)=>b.evidence-a.evidence||a.order-b.order);
   return choices[0]?.name||'Digital product';
 };
@@ -64,7 +71,7 @@ const featureRules=[
 ['calendar','Calendar and scheduling','Calendar and schedule','schedule and review an event',/\b(calendars?|schedules?|appointments?|bookings?)\b/i],
 ['progress','Progress and insights','Progress and insights','review progress and identify next actions',/\b(progress|analytics|reports?|insights?|grades?|metrics?)\b/i],
 ['courses','Courses and content','Courses and content','find and resume learning material',/\b(courses?|lessons?|curriculum|modules?)\b/i],
-['messages','Messages and conversations','Messages','send and return to a conversation',/\b(messages?|chats?|conversations?|inbox)\b/i],
+['messages','Messages and conversations','Messages','send and return to a conversation',/\b(messag(?:es?|ing)|chats?|conversations?|inbox)\b/i],
 ['commerce','Product discovery and catalog','Product catalog','browse and compare products',/\b(products?|catalog|shopping|storefront|marketplace)\b/i],
 ['checkout','Cart and checkout','Checkout','review cart and complete checkout',/\b(cart|checkout|place (?:an )?order|purchase flow)\b/i],
 ['payments','Payments and transactions','Payments','review and complete a transaction',/\b(payments?|transactions?|invoices?|billing)\b/i],
