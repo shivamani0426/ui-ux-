@@ -14,6 +14,8 @@ test('15A: installable manifest, scalable and maskable app icons',async()=>{
  assert.ok(m.icons.some(i=>i.purpose==='maskable'));
  assert.ok(m.icons.some(i=>i.type==='image/png'&&i.purpose==='any'&&i.sizes==='192x192'));
  assert.ok(m.icons.some(i=>i.type==='image/png'&&i.purpose==='maskable'&&i.sizes==='512x512'));
+ assert.ok(m.icons.some(i=>i.type==='image/png'&&i.purpose==='any'&&i.sizes==='512x512'));
+
  for(const i of m.icons){
    const bytes=await fs.readFile(new URL('../public'+i.src,import.meta.url));
    if(i.type==='image/svg+xml')assert.match(bytes.toString('utf8'),/<svg/);
