@@ -14,11 +14,13 @@ const FIELDS=[
   {key:'colorMood',label:'Color atmosphere',values:[['neutral','Neutral'],['warm','Warm'],['cool','Cool']]},
 ];
 const DEFAULT={enabled:true,motion:'balanced',density:'comfortable',contrast:'standard',colorMood:'neutral'};
-export default function LearningPreferencesPanel({profile={},evidence=[],busy=false,onChange,onClear}){
+export default function LearningPreferencesPanel({profile={},evidence=[],learning=null,busy=false,onChange,onClear}){
   const prefs={...DEFAULT,...(profile.personalization||{})};
   const enabled=prefs.enabled!==false;
   const weights=profile.styleWeights||{};
   const counter=style=>evidence.find(row=>row.style===style)||{};
+  const contexts=Array.isArray(learning?.categories)?learning.categories:[];
+  const styleLabel=key=>KEYS.find(([id])=>id===key)?.[1]||key;
   return <section className="learning-preferences" aria-label="Your private design learning preferences">
     <div className="learning-intro">
       <BrainCircuit size={18} aria-hidden="true"/>
@@ -56,8 +58,30 @@ export default function LearningPreferencesPanel({profile={},evidence=[],busy=fa
         </div>
       </div>)}
     </div>
+    <div className="learning-context-box" aria-label="Context-specific learning evidence">
+      <div className="learning-context-heading">
+        <BrainCircuit size={16} aria-hidden="true"/>
+        <div><strong>What Frontline learned from different projects</strong>
+          <p>Specific evidence matters more than repeating Like. Only your latest explicit reaction per project counts.</p></div>
+      </div>
+      {!enabled?<p className="learning-context-empty">Learning is paused. Existing evidence is visible but never used for recommendations.</p>:
+       contexts.length===0?<p className="learning-context-empty">No confirmed category-level preference yet. Give feedback on two or more distinct projects of the same type to build a cautious signal.</p>:
+       <div className="learning-context-list">
+         {contexts.map(item=><div className="learning-context-card" key={item.category}>
+           <strong>{item.category}</strong>
+           {Object.entries(item.styles).map(([style,signal])=><div key={style} className="learning-context-signal">
+             <span>{styleLabel(style)}</span>
+             <span aria-label={styleLabel(style)+' evidence adjustment'}>
+               {signal.signal>0?'+':''}{signal.signal} pts
+             </span>
+             <small>{signal.support} project reactions · {signal.confidence} evidence</small>
+           </div>)}
+         </div>)}
+       </div>}
+      <p className="learning-context-note">These are capped preference hints, not AI model training or measured UX quality. Explicit requirements and accessibility always take priority.</p>
+    </div>
     <div className="learning-privacy-note"><ShieldCheck size={15} aria-hidden="true"/>
-      Your feedback remains private unless you separately opt into aggregate learning. Shared results use coarse size bands and require at least five distinct guest browser IDs per style; these are not verified people.
+      Private learning stays in your account or guest session. Shared trends are separate, optional and display-only; they require at least ten distinct authenticated accounts per style, not ten browser cookies. Counts are grouped into broad ranges. Google accounts are not proof of unique people.
     </div>
     <button type="button" className="learning-clear" disabled={busy} onClick={onClear}>
       <Trash2 size={15}/> Clear only design preferences & feedback
