@@ -27,7 +27,7 @@ test('15A: public static PWA files served with correct cache policy',async()=>{
    ]){
      const response=await fetch(base+url);
      assert.equal(response.status,200,url);
-     assert.match(response.headers.get('content-type')||'',new RegExp(type));
+     assert.ok((response.headers.get('content-type')||'').includes(type),url+' must return '+type);
      assert.ok((await response.text()).length>100);
      if(url.includes('worker')||url.includes('manifest'))
        assert.match(response.headers.get('cache-control')||'',/no-cache/);
