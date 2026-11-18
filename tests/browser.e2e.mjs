@@ -213,7 +213,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.getByRole('button',{name:'Update recommendations'}).click();
       await page.locator('.pi-exclusions').waitFor({timeout:8000});
       assert.match(await page.locator('.pi-exclusions').innerText(),/Messages and conversations/);
-      await page.locator('.pi-details').filter({hasText:'Compare the three directions'}).locator('summary').click();
+      await page.locator('.pi-details > summary').filter({hasText:'Compare the three directions'}).click();
       await page.locator('.pi-factor-details').first().locator('summary').click();
       assert.ok((await page.locator('.pi-factor-details').first().locator('li').count())>=2,
         'Each recommendation must disclose an auditable numeric scoring ledger');
