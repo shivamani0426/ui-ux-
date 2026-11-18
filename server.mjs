@@ -754,7 +754,7 @@ async function serveFile(req,res){
   let name;
   try{name=decodeURIComponent(pathname);}catch{return json(res,400,{error:'Invalid path'});}
   if(name==='/'||(!path.posix.extname(name)&&!name.startsWith('/assets/')))name='/index.html';
-  const allowed=/^\/(?:index\.html|favicon\.svg|robots\.txt|manifest\.webmanifest|service-worker\.js|pwa-icon(?:-maskable)?\.svg|assets\/[a-zA-Z0-9_.-]+\.(?:js|css|png|svg|woff|woff2))$/;
+  const allowed=/^\/(?:index\.html|favicon\.svg|robots\.txt|manifest\.webmanifest|service-worker\.js|pwa-icon(?:-maskable)?\.svg|pwa-icon-192\.png|pwa-icon-maskable-512\.png|apple-touch-icon\.png|assets\/[a-zA-Z0-9_.-]+\.(?:js|css|png|svg|woff|woff2))$/;
   if(!allowed.test(name))return json(res,404,{error:'Not found'});
   const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.txt':'text/plain; charset=utf-8','.png':'image/png','.webmanifest':'application/manifest+json','.woff':'font/woff','.woff2':'font/woff2'};
   try{
