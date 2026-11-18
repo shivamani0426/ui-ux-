@@ -131,6 +131,7 @@ test('15B: first PWA installation precaches public JS/CSS before any controlled 
     requests.push(path);
     if(path==='/')return new Response(html,{status:200});
     if(['/favicon.svg','/pwa-icon.svg','/manifest.webmanifest',
+      '/pwa-icon-192.png','/pwa-icon-maskable-512.png','/apple-touch-icon.png',
       '/assets/index-abc123.css','/assets/index-def456.js'].includes(path))
       return new Response('public-asset',{status:200});
     throw Error('Unapproved cache request: '+path);
@@ -159,6 +160,8 @@ test('15B: first PWA installation precaches public JS/CSS before any controlled 
   await pending;
   assert.ok(requests.includes('/assets/index-def456.js'));
   assert.ok(requests.includes('/assets/index-abc123.css'));
+  assert.ok(requests.includes('/apple-touch-icon.png'));
+  assert.ok(requests.includes('/pwa-icon-maskable-512.png'));
   assert.ok(!requests.some(path=>path.startsWith('/api/')||path.startsWith('/auth/')));
   const shell=[...stored.values()].find(cache=>cache.has('/'));
   const assets=[...stored.values()].find(cache=>cache.has('/assets/index-def456.js'));
