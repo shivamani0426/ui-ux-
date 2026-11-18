@@ -162,9 +162,19 @@ export function compareDirections(analysis,styles,preferences={}){
     const prior=Math.max(-5,Math.min(5,Number(weights[s.id])||0));
     const base=task?(s.id==='minimal'?17:7):(s.id==='creative'?17:s.id==='glass'?14:12);
     const requested=(a.requestedStyles||[]).includes(s.id);
-    const baseScore=65+base+(repeated&&s.id==='minimal'?5:0)
-      +(accessibility&&s.id==='minimal'?4:0)-(performance&&s.id==='glass'?12:0)
-      -(repeated&&s.id==='creative'?4:0)+(requested?18:0);
+    const factors=[
+      {label:'Neutral starting point',points:65,source:'heuristic'},
+      {label:'Product type '+key,points:base,source:'inferred category'},
+      {label:'Repeatable workflows',points:repeated?(s.id==='minimal'?5:s.id==='creative'?-4:0):0,
+        source:'explicit modules'},
+      {label:'Accessibility requirement',points:accessibility&&s.id==='minimal'?4:0,
+        source:'brief constraint'},
+      {label:'Performance and reduced motion',points:performance&&s.id==='glass'?-12:0,
+        source:'brief constraint'},
+      {label:'Explicit style preference',points:requested?18:0,source:'brief style direction'},
+      {label:'Private learned preference',points:prior*2,source:'account-only feedback'}
+    ].filter(f=>f.points!==0);
+    const baseScore=factors.reduce((total,f)=>total+f.points,0)-prior*2;
     const bound=n=>Math.max(48,Math.min(96,n));
     const baseline=bound(baseScore),score=bound(baseScore+prior*2);
     const appliedPoints=score-baseline;
@@ -174,10 +184,26 @@ export function compareDirections(analysis,styles,preferences={}){
       appliedPointAdjustment:appliedPoints,
       scoreBounded:appliedPoints!==prior*2,
     };
+    const applicableFeatures=(a.features||[]).slice(0,2).map(f=>f.label);
+    const mitigations=s.id==='glass'
+      ?['Use opaque controls and text layers; limit backdrop blur, especially on mobile.',
+        'Provide a low-motion, low-power path without sacrificing the primary task.']
+      :s.id==='creative'
+        ?['Keep primary navigation and form actions predictable despite expressive visuals.',
+          'Offer a restrained mode for frequent or accessibility-critical workflows.']
+        :['Avoid making information dense by default; validate task hierarchy with actual users.',
+          'Use distinctive but accessible brand accents without hiding important actions.'];
     return {id:s.id,name:s.name,match:score,personalization,
+      scoreFactors:factors.map(f=>({...f,points:f.label==='Private learned preference'?appliedPoints:f.points})),
+      evidence:{category:key,requestedModules:applicableFeatures,
+        constraints:(a.constraints||[]).slice(0,4),confidence:a.confidence||'low'},
+      mitigations,comparisonSummary:applicableFeatures.length
+        ?s.name+' is assessed for '+applicableFeatures.join(' and ')+'; its score is a bounded heuristic, not a tested result.'
+        :s.name+' is provisional until the primary workflow is confirmed.',
       criteria:{...t.criteria,projectFit:Math.max(2,Math.min(5,Math.round(score/20)))},
       strengths:t.strength,tradeoff:t.risk,reasons:[
         'For '+key.toLowerCase()+' requirements: '+t.strength+'.',
+        ...(applicableFeatures.length?['Explicit work to support: '+applicableFeatures.join('; ')+'.']:[]),
         ...(repeated?['Repeated tasks need stable navigation and clear feedback.']:[]),
         ...(accessibility?['Validate keyboard order, contrast and assistive-technology labels.']:[]),
         ...(performance&&s.id==='glass'?['Avoid heavy blurs on low-power devices.']:[]),
@@ -187,6 +213,39 @@ export function compareDirections(analysis,styles,preferences={}){
           ' New project requirements remain primary.']:[])
       ],scoring:'Heuristic fit indicator, not a measured usability score',order:i};
   }).sort((x,y)=>y.match-x.match||x.order-y.order).map(({order,...x})=>x);
+}
+/** Transparent, brief-grounded decision support (not a model's hidden thoughts).
+ * No private data is shared with other users or external AI providers. */
+export function buildDecisionReport(analysis={},comparisons=[]){
+  const ranked=Array.isArray(comparisons)?comparisons:[];
+  const primary=ranked[0]||null;
+  const features=Array.isArray(analysis.features)?analysis.features:[];
+  const excluded=Array.isArray(analysis.excludedFeatures)?analysis.excludedFeatures:[];
+  const constraints=Array.isArray(analysis.constraints)?analysis.constraints:[];
+  return {
+    version:2,
+    status:analysis.confidence||'low',
+    primaryStyle:primary?{id:primary.id,name:primary.name,heuristicFit:primary.match,
+      tradeoff:primary.tradeoff,mitigations:primary.mitigations||[]}:null,
+    evidence:{
+      category:analysis.category||'Digital product',
+      audience:analysis.audienceSource==='explicit'?(analysis.audience||[]):[],
+      requestedFeatures:features.map(f=>f.label),
+      excludedCapabilities:excluded.map(f=>f.label),
+      constraints:constraints.slice(0,12),
+      unconfirmed:(analysis.openQuestions||[]).slice(0,6)
+    },
+    decisionRules:[
+      'Explicit requirements and exclusions take precedence over saved preferences.',
+      'Style fit uses disclosed heuristic factors, not live usability or accessibility measurements.',
+      'Keep the strongest task structure; borrow visual details from secondary directions only when they do not conflict.',
+      'Validate open questions and visual contrast with actual users before implementation.'
+    ],
+    alternatives:ranked.slice(1).map(item=>({
+      id:item.id,name:item.name,heuristicFit:item.match,tradeoff:item.tradeoff,
+      mitigations:item.mitigations||[]
+    }))
+  };
 }
 export function planFusion(analysis,styles,preferences={}){
  const ranked=compareDirections(analysis,styles,preferences);
