@@ -142,6 +142,10 @@ export function createAuthGateway({url='',key='',siteUrl='',googleEnabled=false,
     dest.searchParams.set('redirect_to',site+'/auth/callback');
     dest.searchParams.set('code_challenge',challenge);
     dest.searchParams.set('code_challenge_method','s256');
+    // The sensitive-actions recovery path asks Google to show account
+    // selection again instead of silently reusing the previous choice.
+    if(new URL(req.url,site).searchParams.get('reauth')==='1')
+      dest.searchParams.set('prompt','select_account');
     return redirect(res,dest.toString());
   }
   async function callback(req,res,onSuccess){
