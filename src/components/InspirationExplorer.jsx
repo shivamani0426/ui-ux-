@@ -67,6 +67,7 @@ export default function InspirationExplorer({project,api,notice}){
       <div><Globe2 size={16}/><strong>{status==='ready'?'Live source index searched':
         status==='partial'?'Partial live search':status==='no-matches'?'No matching source pages':
         status==='not-configured'?'Search integration not configured':
+        status==='rate-limited'?'Hourly search limit reached':
         status==='unavailable'?'Live source search unavailable':'Searching source websites'}</strong></div>
       {data.discovery?.note&&<p>{data.discovery.note}</p>}
       {error&&<p>{error}</p>}
