@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import {inflateSync} from 'node:zlib';
 import {server} from '../server.mjs';
 
 test('15A: installable manifest, scalable and maskable app icons',async()=>{
@@ -218,4 +219,45 @@ test('14C: full approved brief is not truncated and Figma importer rejects overs
  await figma.ui.onmessage({type:'import',payload:unsafe});
  assert.equal(figma.closed,false);
  assert.match(figma.ui.error,/Select a Frontline approved-design JSON file/);
+});
+
+
+test('15C: install PNG chunks pass CRC and decompress to complete indexed-pixel rows',async()=>{
+  const paths=['pwa-icon-192.png','pwa-icon-maskable-512.png','apple-touch-icon.png'];
+  const crc32=data=>{
+    let c=0xffffffff;
+    for(const value of data){
+      c^=value;
+      for(let i=0;i<8;i++)c=(c>>>1)^((c&1)?0xedb88320:0);
+    }
+    return (c^0xffffffff)>>>0;
+  };
+  for(const name of paths){
+    const bytes=await fs.readFile(new URL('../public/'+name,import.meta.url));
+    let pos=8,foundIHDR=false,foundIDAT=false,foundEnd=false,width=0,height=0;
+    const data=[];
+    while(pos<bytes.length){
+      assert.ok(pos+12<=bytes.length,name+' truncated PNG chunk');
+      const length=bytes.readUInt32BE(pos);
+      const end=pos+12+length;
+      assert.ok(end<=bytes.length,name+' invalid PNG chunk length');
+      const type=bytes.subarray(pos+4,pos+8).toString('ascii');
+      const payload=bytes.subarray(pos+8,pos+8+length);
+      assert.equal(bytes.readUInt32BE(pos+8+length),
+        crc32(bytes.subarray(pos+4,pos+8+length)),
+        name+' invalid '+type+' checksum');
+      if(type==='IHDR'){foundIHDR=true;width=payload.readUInt32BE(0);height=payload.readUInt32BE(4);
+        assert.equal(payload[8],2,'2-bit indexed color required');
+        assert.equal(payload[9],3,'indexed palette PNG required');}
+      if(type==='IDAT'){foundIDAT=true;data.push(payload);}
+      if(type==='IEND'){foundEnd=true;break;}
+      pos=end;
+    }
+    assert.ok(foundIHDR&&foundIDAT&&foundEnd,name+' missing essential PNG chunks');
+    const decoded=inflateSync(Buffer.concat(data));
+    assert.equal(decoded.length,(1+Math.ceil(width/4))*height,
+      name+' decompressed pixel data must have all scanlines');
+    for(let y=0;y<height;y++)assert.equal(decoded[y*(1+Math.ceil(width/4))],0,
+      name+' each row uses standard PNG filter zero');
+  }
 });
