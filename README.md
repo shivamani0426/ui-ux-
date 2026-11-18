@@ -366,3 +366,48 @@ HMAC-bound fresh verification, admin fail-closed behavior, guest/CSRF
 denial, and existing user/guest isolation. Browser tests exercise the
 guest security panel alongside the complete cinematic UI and design modes.
 
+
+## Milestone 11 — AI Design Intelligence 2.0
+
+The original Frontline landing, Google login and Select / Generate / Fusion modes
+remain unchanged. Intelligence 2.0 improves project-specific decisions, not
+claims of real-world UX testing or live reference-site scanning.
+
+**Project understanding and exclusions.** The rules now distinguish an
+explicitly requested module from a forbidden module (e.g. *build a product
+catalog but no checkout or messaging*), preserve more recent brief refinements,
+avoid interpreting generic "dashboard" as proof of a SaaS product, and label
+low-evidence assumptions as provisional. Browsing a product catalog is not
+the same requirement as completing checkout.
+
+**Transparent rankings.** Every design direction retains its bounded
+heuristic fit indicator, plus an itemized set of point factors, explicit
+requirements, tradeoffs and mitigation suggestions. The ledger adds up to the
+displayed number after clipping. These are judgment rules, **not** measured
+accessibility scores, tested conversions or a private model's reasoning.
+
+**Saved project refinement.** In an existing design conversation, expand
+**Project Intelligence → Make recommendations more accurate**, enter up to 450
+characters, and select **Update recommendations**. The account-scoped
+`POST /api/projects/:id/intelligence` stores the new recommendation snapshot
+without overwriting the original brief, chat, references or feedback.
+You can reset the saved refinement and restore the original scope.
+User ownership is checked before reading/writing every project; unrelated
+visitors receive 404. Old projects are reanalyzed read-only when opened.
+
+**Output fidelity.** Select UI/UX, Generate UI/UX and Design Fusion now carry
+explicitly excluded modules as `[X-...]` trace entries with proposed acceptance
+criteria. AI creative additions are rejected if a conservative scope check
+detects a proposed prohibited feature. If the provider times out, returns an
+unsafe answer, or is rate-limited, the complete deterministic specification
+remains available, clearly labeled as guide output. This lexical guard is
+not a substitute for human review; review the generated handoff before
+implementing or sharing it.
+
+**Verification.** `npm test` includes adversarial feature exclusion,
+double-negation, topic classification, score-ledger reconciliation,
+refinement persistence and owner isolation, prompt traceability, and
+model-output scope tests. Chromium and Firefox E2E tests cover the
+refinement form, comparison expansion, reset and existing studio flows.
+No database schema migration or additional paid AI provider was required.
+
