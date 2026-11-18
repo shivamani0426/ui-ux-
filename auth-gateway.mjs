@@ -180,6 +180,29 @@ export function createAuthGateway({url='',key='',siteUrl='',googleEnabled=false,
     if(scope!=='others')clearSession(res);
     return {scope,success:true};
   }
+  // Read-only Admin preflight prevents deleting workspace data due to an
+  // incorrect or missing server-side administrator credential.
+  async function verifyDeleteAbility(user){
+    if(!deletionAvailable)
+      throw Object.assign(new Error('Permanent account deletion is not configured.'),{status:503});
+    if(!user||!uuid.test(user.id))
+      throw Object.assign(new Error('A verified Google account is required.'),{status:401});
+    let response;
+    try{
+      response=await request(endpoint+'/auth/v1/admin/users/'+user.id,{
+        method:'GET',
+        headers:{apikey:adminKey,Authorization:'Bearer '+adminKey},
+        signal:AbortSignal.timeout(10000)
+      });
+    }catch{throw failure('temporarily unavailable');}
+    if(!response.ok)
+      throw Object.assign(new Error('Unable to verify deletion permissions. No data was changed.'),{status:503});
+    let resolved;
+    try{resolved=await response.json();}catch{throw failure('temporarily unavailable');}
+    if(resolved.id!==user.id&&resolved.user?.id!==user.id)
+      throw Object.assign(new Error('The verified Google account did not match the deletion target.'),{status:403});
+    return true;
+  }
   async function deleteAuthUser(user){
     if(!deletionAvailable)throw Object.assign(new Error('Permanent account deletion is not configured.'),{status:503});
     if(!user||!uuid.test(user.id))throw Object.assign(new Error('A verified Google account is required.'),{status:401});
@@ -196,5 +219,6 @@ export function createAuthGateway({url='',key='',siteUrl='',googleEnabled=false,
     return {deleted:true};
   }
   return {ready,configured,deletionAvailable,start,callback,getUser,logout,
-    recentlyVerified,deleteAuthUser,accountOwner:user=>'acct:'+user.id};
+    recentlyVerified,verifyDeleteAbility,deleteAuthUser,clearLocalSession:clearSession,
+    accountOwner:user=>'acct:'+user.id};
 }
