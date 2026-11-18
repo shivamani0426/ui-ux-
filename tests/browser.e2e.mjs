@@ -435,6 +435,23 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await reducedPage.locator('.fl-chapter-2').waitFor({timeout:3000});
     assert.equal(await reducedPage.evaluate(()=>window.scrollY),0);
     await reducedPage.close();
+    if(!remote){
+      // OAuth return parameters are untrusted. A forged ?github=connected
+      // must never cause a false successful connection notification.
+      const callbackPage=await browser.newPage();
+      try{
+        await callbackPage.goto(url+'/studio?github=connected',{waitUntil:'domcontentloaded'});
+        const forged=callbackPage.getByRole('status').filter({hasText:'GitHub connection'});
+        await forged.waitFor({timeout:7500});
+        assert.match(await forged.innerText(),/not verified|could not be verified/);
+        assert.equal(new URL(callbackPage.url()).searchParams.has('github'),false,
+          'OAuth callback status must be removed from browser navigation history');
+        await callbackPage.goto(url+'/studio?github=connect_failed',{waitUntil:'domcontentloaded'});
+        await callbackPage.getByRole('status').filter({hasText:'GitHub could not be connected.'})
+          .waitFor({timeout:7500});
+        assert.equal(new URL(callbackPage.url()).searchParams.has('github'),false);
+      }finally{await callbackPage.close();}
+    }
     if(errors.length)console.log(name+' had nonfatal errors: '+errors.join('\n'));
   }catch(error){
     failed=true;
