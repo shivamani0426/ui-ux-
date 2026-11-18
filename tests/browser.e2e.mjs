@@ -153,27 +153,22 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     // loading animation or incorrectly claim Markdown was not rendered.
     await page.locator('.message-markdown').first().waitFor({timeout:remote?100000:12000});
     if(!remote){
-      await page.locator('.inspiration-card').first().waitFor({timeout:8000});
-      const firstCard=page.locator('.inspiration-card').first();
-      assert.ok((await page.locator('.inspiration-card').count())>=10,'Should render references from curated library');
-      await firstCard.getByRole('button',{name:'Save inspiration'}).click();
-      await page.waitForFunction(()=>document.querySelector('.inspiration-saved-counter strong')?.textContent?.includes('1 saved'));
-      assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Chosen inspiration should be saved');
-      // M08: evidence is visible, and filtering cannot expose unsaved references.
-      await page.locator('.inspiration-evidence summary').first().click();
-      assert.match(await page.locator('.inspiration-evidence').first().innerText(),/metadata/i);
-      await page.getByRole('checkbox',{name:'Saved only'}).check();
-      assert.equal(await page.locator('.inspiration-card').count(),1);
-      await page.getByRole('checkbox',{name:'Saved only'}).uncheck();
-      await page.getByRole('combobox',{name:'Sort design inspirations'}).selectOption('name');
-      assert.ok(await page.locator('.inspiration-card').count()>=10);
-      await page.getByRole('combobox',{name:'Sort design inspirations'}).selectOption('relevance');
+      await page.locator('.inspiration-source-links a').first().waitFor({timeout:9000});
+      assert.equal(await page.locator('.inspiration-source-links a').count(),14,
+        'All fourteen original source directories must remain reachable');
+      assert.equal(await page.locator('.inspiration-card').count(),0,
+        'Never show invented matching cards without an authorized live search API');
+      assert.match(await page.locator('.inspiration-discovery-state').innerText(),
+        /not configured|provider/i);
+      assert.equal(await page.getByRole('button',{name:'Copy design prompt'}).count(),0,
+        'Select must never fabricate an original publisher prompt');
       // M13: board, style comparison, checkpoint and nondestructive restore.
       const workbench=page.locator('.pw-workbench');
       await workbench.waitFor({timeout:10000});
       await workbench.getByRole('button',{name:'Refresh design workbench'}).click();
-      await workbench.getByRole('combobox',{name:'Choose saved inspiration'}).selectOption({index:1});
-      await workbench.getByRole('button',{name:'Pin reference'}).click();
+      await workbench.getByRole('textbox',{name:'Design decision or task'})
+        .fill('Make the dashboard keyboard navigable');
+      await workbench.getByRole('button',{name:'Add decision'}).click();
       await workbench.getByRole('combobox',{name:'Choose suggested page'}).selectOption({index:1});
       await workbench.getByRole('button',{name:'Add page'}).click();
       assert.equal(await workbench.locator('.pw-card').count(),2);
@@ -219,11 +214,12 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.equal(await workbench.locator('.pw-card textarea').first().inputValue(),'',
         'Checkpoint restore must recover saved notes without deleting the chat');
       await page.screenshot({path:'browser-artifacts/'+name+'-advanced-design-board.png',fullPage:false});
-      await firstCard.scrollIntoViewIfNeeded();
+      await page.locator('.inspiration-source-directory').scrollIntoViewIfNeeded();
       await page.waitForTimeout(450);
       await page.screenshot({path:'browser-artifacts/'+name+'-select-inspirations.png',fullPage:false});
       await page.locator('.inspiration-search input').fill('portfolio');
-      assert.ok((await page.locator('.inspiration-card').count())>=1,'Portfolio filter should yield references');
+      assert.equal(await page.locator('.inspiration-card').count(),0,
+        'Filtering must not invent a portfolio reference');
       await page.locator('.inspiration-search input').fill('');
       await page.reload({waitUntil:'networkidle'});
       // /studio deep links now restore the studio without replaying the dome.
@@ -240,8 +236,9 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.getByText('No matching designs').waitFor();
       await page.getByRole('textbox',{name:'Search saved conversations'}).fill('');
       await page.locator('.fl-project-card').first().click();
-      await page.locator('.inspiration-save.selected').first().waitFor({timeout:10000});
-      assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Inspiration pick should survive refresh');
+      await page.locator('.inspiration-source-links a').first().waitFor({timeout:10000});
+      assert.equal(await page.locator('.inspiration-source-links a').count(),14,
+        'All fourteen original publishers remain available after refresh');
       await page.locator('.pw-workbench .pw-card').first().waitFor({timeout:9000});
       assert.equal(await page.locator('.pw-workbench .pw-card').count(),2,
         'Private board cards must survive project reopening');
