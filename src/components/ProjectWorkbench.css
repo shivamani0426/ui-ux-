@@ -164,3 +164,33 @@
   animation-duration:.01ms!important;transition-duration:.01ms!important
  }
 }
+
+/* Milestone 14A: local approved-design handoff, mobile-first and theme-aware. */
+.pw-handoff{padding-top:19px;min-width:0}
+.pw-handoff h4{font:800 17px/1.35 Manrope,sans-serif;margin:7px 0 9px}
+.pw-handoff>p{font:500 12px/1.65 'DM Sans',sans-serif;color:var(--muted,#667993);margin:0 0 15px}
+.pw-handoff-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:15px 0}
+.pw-handoff-summary>div{display:flex;flex-direction:column;gap:4px;border-radius:11px;
+ padding:12px;background:var(--soft,#eef4ff);min-width:0}
+.pw-handoff-summary strong{font:800 20px/1.25 Manrope,sans-serif;color:var(--lav,#4868c6)}
+.pw-handoff-summary span{font:650 10px/1.4 'DM Sans',sans-serif;color:var(--muted,#667993)}
+.pw-handoff-list{display:grid;gap:7px;list-style:none;margin:12px 0 17px;padding:0}
+.pw-handoff-list li{display:flex;align-items:center;gap:10px;min-width:0;
+ padding:9px 11px;border:1px solid var(--line,#d9e3f7);border-radius:9px}
+.pw-handoff-list span{font:800 9px/1.3 Manrope,sans-serif;text-transform:uppercase;
+ color:var(--lav,#4868c6);min-width:64px}
+.pw-handoff-list strong{font:700 11px/1.4 Manrope,sans-serif;overflow-wrap:anywhere}
+.pw-handoff-actions{display:flex;flex-wrap:wrap;gap:9px;margin:12px 0}
+.pw-handoff-actions button{display:inline-flex;justify-content:center;align-items:center;gap:7px;
+ min-height:39px;padding:9px 12px;border:1px solid var(--line,#d9e3f7);
+ border-radius:10px;background:var(--soft,#eef4ff);color:var(--text,#223451);
+ font:750 11px/1.4 Manrope,sans-serif}
+.pw-handoff-actions button.pw-primary{background:var(--lav,#4868c6);color:#fff}
+.pw-handoff .pw-handoff-privacy{display:flex;gap:8px;align-items:flex-start;
+ margin-top:14px;color:var(--muted,#667993);font:500 11px/1.6 'DM Sans',sans-serif}
+.pw-handoff-privacy svg{flex:none;color:var(--lav,#4868c6)}
+@media(max-width:420px){
+ .pw-handoff-summary{gap:6px}
+ .pw-handoff-summary>div{padding:9px}
+ .pw-handoff-actions button{flex:1 1 100%}
+}
