@@ -59,7 +59,7 @@ test('12B: last feedback per project/style replaces earlier reactions, and contr
 });
 
 test('12B: low-confidence feedback never outweighs an explicit style or accessibility instruction',()=>{
- const brief='Create an accessible minimal education portal for teachers with assignments and student progress.';
+ const brief='Create an accessible education portal for teachers with assignments and student progress.';
  const model=derivePrivateLearning(Array.from({length:22},(_,i)=>
   vote('id-'+i,'Education','glass','like')));
  const context=contextForCategory(model,'Education');
@@ -69,11 +69,17 @@ test('12B: low-confidence feedback never outweighs an explicit style or accessib
  const contextResult=recommend(brief,prefs);
  assert.ok(contextResult.designs.find(s=>s.id==='glass').match>=base.designs.find(s=>s.id==='glass').match);
  assert.equal(contextResult.designs[0].id,'minimal',
-   'Explicit minimal+accessible education requirements must outweigh glass feedback');
+   'Accessible education requirements must outweigh glass feedback');
  const glass=contextResult.designs.find(s=>s.id==='glass');
  assert.equal(glass.personalization.categoryEvidence.adjustment,3);
  assert.ok(glass.scoreFactors.some(f=>f.source==='private category evidence'));
  assert.equal(glass.match,Math.max(48,Math.min(96,glass.scoreFactors.reduce((sum,f)=>sum+f.points,0))));
+ const explicit=recommend('Create an accessible minimal education portal for teachers',
+   {...effectivePreferences(normalizeProfile({styleWeights:{glass:5,minimal:-5}})),
+     contextLearning:context});
+ assert.equal(explicit.designs[0].id,'minimal',
+   'Explicit style instructions must trump older preferences');
+ assert.equal(explicit.designs.find(x=>x.id==='glass').personalization.categoryEvidence.adjustment,0);
 });
 
 test('12B: paused personal learning cannot influence recommendations or expose unconfirmed memories',()=>{
