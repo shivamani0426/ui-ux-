@@ -38,7 +38,23 @@ test('Selection prompt describes original design deliverables, not cloned websit
   assert.match(prompt,/Do not copy layouts/);
   assert.throws(()=>makeSelectionPrompt({brief:'Any project'},[]),/Select at least one/);
 });
-test('Select API saves private inspirations, exports prompt, and respects guest isolation',async()=>{
+test('Select API saves publisher-indexed links, refuses synthetic prompts, and isolates guests',async()=>{
+  const originalFetch=globalThis.fetch;
+  const previousKey=process.env.FRONTLINE_BRAVE_SEARCH_API_KEY;
+  process.env.FRONTLINE_BRAVE_SEARCH_API_KEY='brave_TEST_ONLY_012345678901234567890';
+  globalThis.fetch=(url,options)=>{
+    if(String(url).startsWith('https://api.search.brave.com/res/v1/web/search')){
+      const terms=new URL(url).searchParams.get('q');
+      const host=terms.match(/^site:([^ ]+)/)?.[1];
+      const site=host==='tympanus.net'?'https://tympanus.net/codrops/hero':
+        'https://'+host+'/components/dashboard';
+      return Promise.resolve(new Response(JSON.stringify({web:{results:[
+        {url:site,title:'Student dashboard components at '+host}
+      ]}}),{status:200}));
+    }
+    return originalFetch(url,options);
+  };
+
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base='http://127.0.0.1:'+server.address().port;
   const alice=client(base),bob=client(base);
@@ -49,7 +65,10 @@ test('Select API saves private inspirations, exports prompt, and respects guest 
     const path='/api/projects/'+id+'/inspirations';
     const a=await alice(path);
     assert.equal(a.status,200);
-    assert.equal(a.data.librarySize,REFERENCES.length);
+    assert.equal(a.data.librarySize,14);
+    assert.equal(a.data.sources.length,14);
+    assert.ok(a.data.matches.every(item=>item.originalPromptStatus==='not-verified'));
+    assert.ok(a.data.matches.every(item=>item.id.startsWith('live_')));
     assert.ok(a.data.matches.length>=10);
     assert.equal(a.data.selected.length,0);
     assert.ok(a.data.matches[0].reasons.length>0);
@@ -67,20 +86,25 @@ test('Select API saves private inspirations, exports prompt, and respects guest 
     assert.deepEqual(again.data.selected,[first]);
     const otherSave=await bob(path,'PUT',{sourceId:first,selected:true});
     assert.equal(otherSave.status,404);
-    const exported=await alice(path+'/prompt','POST');
-    assert.equal(exported.status,200);
-    assert.ok(exported.data.prompt.includes('PROJECT BRIEF'));
-    assert.deepEqual(exported.data.references,[first]);
+    const exported=await alice(path+'/prompt','POST',{});
+    assert.equal(exported.status,409);
+    assert.equal(exported.data.prompt,undefined);
+    assert.deepEqual(exported.data.sources.map(x=>x.originalPromptStatus),['not-verified']);
     const remove=await alice(path,'PUT',{sourceId:first,selected:false});
     assert.equal(remove.status,200);
     assert.deepEqual(remove.data.selected,[]);
-    const noPrompt=await alice(path+'/prompt','POST');
-    assert.equal(noPrompt.status,400);
+    const noPrompt=await alice(path+'/prompt','POST',{});
+    assert.equal(noPrompt.status,409);
     const feedback=await alice('/api/profile','DELETE');
     assert.equal(feedback.status,200);
     const deleted=await alice(path);
     assert.equal(deleted.status,404);
-  }finally{await new Promise(resolve=>server.close(resolve));}
+  }finally{
+    globalThis.fetch=originalFetch;
+    if(previousKey===undefined)delete process.env.FRONTLINE_BRAVE_SEARCH_API_KEY;
+    else process.env.FRONTLINE_BRAVE_SEARCH_API_KEY=previousKey;
+    await new Promise(resolve=>server.close(resolve));
+  }
 });
 
 test('Saved inspiration prompts retain explicit requirements without claiming visual scans',()=>{
