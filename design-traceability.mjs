@@ -63,6 +63,15 @@ export function buildRequirementTrace(analysis={}){
       notes:routePresent?'Proposed page appears in the page map.':'Suggested destination; confirm page map before development.'
     };
   });
+  const exclusions=(Array.isArray(analysis.excludedFeatures)?analysis.excludedFeatures:[])
+    .map(f=>({
+      id:'X-'+safeId(f.id),type:'excluded-capability',label:squash(f.label,120),
+      evidence:'explicit no/without/exclude instruction',
+      page:'All affected flows',
+      acceptance:'The proposed interface does not add '+squash(f.label,100)+
+        ' by default. Review navigation, user actions, prompts and empty states to ensure the excluded capability does not reappear.',
+      notes:'This exclusion remains binding until the project owner explicitly changes it.'
+    }));
   const roleIsExplicit=analysis.audienceSource==='explicit';
   const roles=roleIsExplicit?(Array.isArray(analysis.audience)?analysis.audience:[]).map(role=>{
     const label=squash(role,110),page=roleDestination(label,analysis);
@@ -88,8 +97,9 @@ export function buildRequirementTrace(analysis={}){
     notes:'Do not silently override this instruction with suggested style choices.'
   }));
   return {
-    rows:[...features,...roles,...constraints,...decisions],
-    count:{features:features.length,roles:roles.length,constraints:constraints.length,decisions:decisions.length},
+    rows:[...features,...exclusions,...roles,...constraints,...decisions],
+    count:{features:features.length,exclusions:exclusions.length,roles:roles.length,
+      constraints:constraints.length,decisions:decisions.length},
     missingAudience:!roleIsExplicit,
     missingFeatures:features.length===0,
     evidence:'Proposed traceability from brief-derived requirements; no user-testing, accessibility or backend audit performed.',
