@@ -203,7 +203,13 @@ export function compareDirections(analysis,styles,preferences={}){
         :['Avoid making information dense by default; validate task hierarchy with actual users.',
           'Use distinctive but accessible brand accents without hiding important actions.'];
     return {id:s.id,name:s.name,match:score,personalization,
-      scoreFactors:factors.map(f=>({...f,points:f.label==='Private learned preference'?appliedPoints:f.points})),
+      scoreFactors:[
+        ...factors,
+        ...(score!==baseScore+prior*2?[{
+          label:'Bounded score adjustment',points:score-(baseScore+prior*2),
+          source:'heuristic score limit'
+        }]:[])
+      ],
       evidence:{category:key,requestedModules:applicableFeatures,
         constraints:(a.constraints||[]).slice(0,4),confidence:a.confidence||'low'},
       mitigations,comparisonSummary:applicableFeatures.length
