@@ -431,10 +431,19 @@ async function readBody(req){
   try{return JSON.parse(buff||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
 }
 function trustedMutationOrigin(req){
-  if(!['POST','PUT','PATCH','DELETE'].includes(req.method)||!req.headers.origin)return true;
+  if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;
+  const fetchSite=req.headers['sec-fetch-site'];
+  // Browsers mark requests from another origin even if their Origin header
+  // is omitted; reject those cookie-authenticated state changes.
+  if(fetchSite&&fetchSite!=='same-origin'&&fetchSite!=='none')return false;
+  if(!req.headers.origin)return true;
   try{
-    const origin=new URL(req.headers.origin);
-    return ['https:','http:'].includes(origin.protocol)&&origin.host===req.headers.host;
+    const origin=new URL(req.headers.origin).origin;
+    const production=Boolean(process.env.RENDER_SERVICE_ID)||isProd;
+    const expected=production?
+      new URL(process.env.FRONTLINE_SITE_URL||'https://ui-compass-studio.onrender.com').origin:
+      'http://'+req.headers.host;
+    return origin===expected;
   }catch{return false}
 }
 function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(obj));}
@@ -542,9 +551,17 @@ const server=http.createServer(async(req,res)=>{
   const guestOwner=owner;
   try{
     const pathname=new URL(req.url,'http://localhost').pathname;
-    if(req.method==='GET'&&pathname==='/auth/google/start')return await authGateway.start(req,res);
-    if(req.method==='GET'&&pathname==='/auth/callback')return await authGateway.callback(req,res,
-      user=>claimGuestData(guestOwner,authGateway.accountOwner(user)));
+    if(req.method==='GET'&&pathname==='/auth/google/start'){
+      res.setHeader('Referrer-Policy','no-referrer');
+      return await authGateway.start(req,res);
+    }
+    if(req.method==='GET'&&pathname==='/auth/callback'){
+      // OAuth codes are one-time secrets. Prevent the callback URL from
+      // appearing as the Referer on the final same-origin studio navigation.
+      res.setHeader('Referrer-Policy','no-referrer');
+      return await authGateway.callback(req,res,
+        user=>claimGuestData(guestOwner,authGateway.accountOwner(user)));
+    }
     if(req.url?.startsWith('/api/')){
       if(!trustedMutationOrigin(req))return json(res,403,{error:'Cross-origin changes are not permitted.'});
       if(req.method==='GET'&&pathname==='/api/auth/status')
