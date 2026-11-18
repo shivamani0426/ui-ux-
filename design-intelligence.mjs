@@ -1,5 +1,5 @@
 import {STYLES,inferCategory} from './design-engine.mjs';
-import {analyzeProject,compareDirections,planFusion,qualityReview,buildDecisionReport} from './project-intelligence.mjs';
+import {analyzeProject,compareDirections,planFusion,qualityReview,buildDecisionReport,inspectAdvisorScope} from './project-intelligence.mjs';
 import {designAiReply} from './ai-providers.mjs';
 import {preferenceHints} from './learning-engine.mjs';
 import {buildRequirementTrace,formatRequirementTrace,formatRoleNavigation,
@@ -190,6 +190,8 @@ export function inspectCreativeInsight(text,brief){
     return {accepted:false,reason:'insight-contains-code'};
   if(/\b(?:i (?:visited|inspected|scanned|audited) (?:the |your )?(?:live )?(?:website|screenshots?|site))\b/i.test(raw))
     return {accepted:false,reason:'insight-unverified-site-claim'};
+  if(!inspectAdvisorScope(raw,brief.analysis).passed)
+    return {accepted:false,reason:'insight-scope-conflict'};
   const lower=raw.toLowerCase(),mode=brief.mode;
   if(mode==='generate'&&!brief.selected.every(style=>lower.includes(style.name.toLowerCase())))
     return {accepted:false,reason:'insight-missing-style'};
