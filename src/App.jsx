@@ -63,6 +63,7 @@ function App(){
   const [lastSynced,setLastSynced]=useState(null);
   const [selected,setSelected]=useState(styleKeys);
   const [working,setWorking]=useState(false);
+  const [intelligenceBusy,setIntelligenceBusy]=useState(false);
   const [toast,setToast]=useState('');
   const [feedback,setFeedback]=useState('');
   const [reaction,setReaction]=useState('like');
@@ -343,6 +344,23 @@ function App(){
   const toggleStyle=id=>{
     setSelected(current=>current.includes(id)?current.filter(s=>s!==id):[...current,id]);
   };
+  const refineIntelligence=async refinement=>{
+    if(!project||intelligenceBusy||working)return;
+    setIntelligenceBusy(true);
+    try{
+      const response=await api('/api/projects/'+encodeURIComponent(project.id)+'/intelligence',{
+        method:'POST',body:JSON.stringify({refinement})
+      });
+      setProject(current=>current?.id===response.project.id?{...current,
+        recommendations:response.project.recommendations}:current);
+      setProjects(previous=>previous.map(item=>item.id===response.project.id?
+        {...item,recommendations:response.project.recommendations}:item));
+      setViewPreview(false);
+      notice(refinement?'Recommendations updated and saved to your private project.':
+        'Recommendation refinement reset. Original brief restored.');
+    }catch(error){notice('Could not update recommendations: '+error.message);}
+    finally{setIntelligenceBusy(false);}
+  };
   const feedbackSave=async()=>{
     if(!project){notice('Start a design conversation first.');return;}
     if(!selected.length){notice('Select at least one direction first.');return;}
@@ -481,7 +499,8 @@ function App(){
               <strong>Explore. Select. Make it yours.</strong>
               <p>Explore real inspiration sites first, then combine complementary style directions. We never copy other websites.</p>
             </div>
-            <ProjectIntelligencePanel project={project}/>
+            <ProjectIntelligencePanel project={project} onRefine={refineIntelligence}
+              busy={intelligenceBusy||working}/>
             {(designMode==='select'||designMode==='fusion')&&<InspirationExplorer key={project.id} project={project} api={api} notice={notice}/>}
             <div className="result-actions">
               <button className={selected.length===3?'quiet-active':''} onClick={()=>setSelected(styleKeys)}><CheckCheck size={15}/> Select all three</button>
@@ -508,7 +527,8 @@ function App(){
               </div><small>Illustrative composition only. Not exported working application code.</small>
             </div>}
             {(designMode==='generate'||designMode==='fusion')&&<DesignPromptPanel
-              key={project.id+':'+designMode} project={project} mode={designMode}
+              key={project.id+':'+designMode+':'+(project.recommendations?.refinement||'')}
+              project={project} mode={designMode}
               styles={selected} api={api} notice={notice}/>}
             <details className="feedback-details">
               <summary>Optional refinement notes</summary>
