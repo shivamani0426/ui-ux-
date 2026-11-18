@@ -515,3 +515,24 @@ existing Chromium/Firefox suite also exercises the full board/checkpoint
 journey, plus the original login, mobile, theme, inspiration and AI prompt
 workflows. The system still exports design specifications, not editable Figma
 files or production application code.
+
+
+## Milestone 14A — Private developer handoff (in review)
+
+The open project workbench adds a **Design handoff** tab. After moving at least
+one card into Approved and saving the board, the project owner can download a
+Markdown or versioned JSON handoff or copy the Markdown. It contains the brief,
+approved refinement, saved styles, the approved cards only, and curated
+inspiration links (if still available). It excludes Ideas/Explore cards, raw
+chat messages, feedback, owner identifiers, model credentials and checkpoint
+history. The export is built in the browser and never uploads to a third party.
+
+**Limitations:** This is design documentation, not editable Figma output,
+source-code generation, a live GitHub change or a usability/accessibility audit.
+People must review content and reference licensing before sharing. GitHub/Figma
+write integrations require their own consent-based connection and validation.
+
+**Verification:** Run npm test, npm run evaluate:learning, and Chromium/Firefox
+browser smoke. Automated tests exercise private export scoping, malicious URLs,
+malformed drafts, Markdown/JSON content, filesystem-safe names, and actual
+browser downloads. No database migration or new secrets are required.
