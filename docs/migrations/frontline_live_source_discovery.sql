@@ -11,8 +11,9 @@ ALTER TABLE frontline.design_sources
 CREATE INDEX IF NOT EXISTS idx_frontline_source_indexed
   ON frontline.design_sources(source_indexed_at DESC)
   WHERE active=true AND is_live_discovered=true;
-UPDATE frontline.design_sources
- SET active=false,updated_at=NOW()
- WHERE is_live_discovered=false AND active=true;
--- No DELETE: preserves old per-project rows and avoids breaking foreign keys.
--- Old sources are never returned or advertised as live source results.
+-- Deployment is two-phase: do NOT deactivate legacy rows in this
+-- backwards-compatible schema migration. The old production server needs
+-- them until the search provider and new code are ready for deployment.
+-- The new server filters is_live_discovered=true and will NOT suggest old rows.
+-- Once deployed and verified, operators can separately archive old rows
+-- with the explicit post-launch archive SQL. Historical selections remain intact.
