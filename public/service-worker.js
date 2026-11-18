@@ -1,10 +1,10 @@
 /* Frontline PWA: caches PUBLIC app shell and immutable assets only.
  * Never caches or replays account, API, OAuth or project responses.
  */
-const VERSION='frontline-public-v2';
+const VERSION='frontline-public-v3';
 const STATIC_CACHE=VERSION+'-static';
 const SHELL_CACHE=VERSION+'-shell';
-const SHELL=['/','/favicon.svg','/pwa-icon.svg','/manifest.webmanifest'];
+const SHELL=['/','/favicon.svg','/pwa-icon.svg','/pwa-icon-192.png','/pwa-icon-maskable-512.png','/apple-touch-icon.png','/manifest.webmanifest'];
 const isPrivate=path=>path.startsWith('/api/')||path.startsWith('/auth/');
 // Vite's script and stylesheet are loaded before the newly registered worker
 // controls the first tab. Precaching the exact hashed paths referenced by the
@@ -75,7 +75,7 @@ self.addEventListener('fetch',event=>{
     return;
   }
   // Skip cross-origin third-party assets; public icons/manifest can be cached.
-  if(['/favicon.svg','/pwa-icon.svg','/pwa-icon-maskable.svg','/manifest.webmanifest'].includes(url.pathname)){
+  if(['/favicon.svg','/pwa-icon.svg','/pwa-icon-maskable.svg','/apple-touch-icon.png','/pwa-icon-192.png','/pwa-icon-maskable-512.png','/manifest.webmanifest'].includes(url.pathname)){
     event.respondWith(caches.open(SHELL_CACHE).then(async cache=>{
       const hit=await cache.match(request);
       if(hit)return hit;
