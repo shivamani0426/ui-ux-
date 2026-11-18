@@ -92,6 +92,26 @@ test('Verified OAuth account claims guest data, retains it on refresh, and isola
     },body:JSON.stringify({scope:'others'})});
     assert.equal(others.status,200);
     assert.equal((await others.json()).scope,'others');
+    const consent=await call('/api/profile',{method:'PUT',headers:{
+      Cookie:allCookies,'Content-Type':'application/json'
+    },body:JSON.stringify({globalOptIn:true})});
+    assert.equal(consent.status,200,'Verified Google account may opt in voluntarily');
+    assert.equal((await consent.json()).globalOptIn,true);
+    const optInVote=await call('/api/feedback',{method:'POST',headers:{
+      Cookie:allCookies,'Content-Type':'application/json'
+    },body:JSON.stringify({projectId:project.id,styles:['minimal'],reaction:'like'})});
+    assert.equal(optInVote.status,200);
+    const cohort=await call('/api/insights',{headers:{Cookie:allCookies}});
+    assert.deepEqual((await cohort.json()).publicPatterns,[],
+      'One authenticated account cannot meet ten-account aggregate privacy threshold');
+    const revoked=await call('/api/profile',{method:'PUT',headers:{
+      Cookie:allCookies,'Content-Type':'application/json'
+    },body:JSON.stringify({globalOptIn:false})});
+    assert.equal(revoked.status,200);
+    assert.equal((await revoked.json()).globalOptIn,false);
+    const exportAfterRevocation=await call('/api/workspace/export',{headers:{Cookie:allCookies}});
+    assert.equal((await exportAfterRevocation.json()).feedback.every(x=>x.optIn===false),true,
+      'Opt-out must revoke previously eligible feedback, not just future choices');
     const listed=await call('/api/projects',{headers:{Cookie:allCookies}});
     assert.ok((await listed.json()).projects.some(p=>p.id===project.id));
     // A second device has a different guest cookie but the same verified
