@@ -72,6 +72,13 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
         'Pausing the feature sequence should hold the current scene');
       await page.getByRole('button',{name:/Show 04 \/ DESIGN PREFERENCES/}).click();
       await page.locator('.fl-chapter-4').waitFor({timeout:3000});
+      // Capture the settled design, not the intentionally animated intermediate
+      // crossfade between chapters. Ensure only the final scene is visible.
+      await page.waitForTimeout(1500);
+      const opacities=await page.locator('.fl-story-scene').evaluateAll(nodes=>
+        nodes.map(el=>Number(getComputedStyle(el).opacity)));
+      assert.ok(opacities[4]>.96&&opacities.slice(0,4).every(v=>v<.04),
+        'Sequential feature animation must finish without overlapping stories: '+JSON.stringify(opacities));
       assert.equal(await page.locator('.fl-spiral-art').count(),1,
         'Preserve the original animated spiral during the final feature');
       await page.screenshot({path:'browser-artifacts/'+name+'-friendly-spiral-highlight.png',fullPage:false});
@@ -90,6 +97,10 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     const googleConfig=await page.evaluate(()=>fetch('/api/auth/status').then(r=>r.json()));
     assert.equal(await page.getByRole('button',{name:'Continue with Google'}).isDisabled(),!googleConfig.googleEnabled,
       'Google Sign-In must be enabled only when the provider is configured');
+    // The preserved black-hole transition intentionally occludes the login
+    // screen for ~760ms. Verify the actual stable login rather than capturing
+    // a black frame mid-fade.
+    await page.locator('.fl-blackhole-transition').waitFor({state:'detached',timeout:4000});
     await page.screenshot({path:'browser-artifacts/'+name+'-friendly-login.png',fullPage:false});
     await page.getByRole('button',{name:'Enter Studio as Guest'}).click();
     await page.waitForFunction(()=>location.pathname==='/studio',null,{timeout:8500});
