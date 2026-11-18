@@ -58,7 +58,8 @@ const featureRules=[
 ['progress','Progress and insights','Progress and insights','review progress and identify next actions',/\b(progress|analytics|reports?|insights?|grades?|metrics?)\b/i],
 ['courses','Courses and content','Courses and content','find and resume learning material',/\b(courses?|lessons?|curriculum|modules?)\b/i],
 ['messages','Messages and conversations','Messages','send and return to a conversation',/\b(messages?|chats?|conversations?|inbox)\b/i],
-['commerce','Product discovery and checkout','Browse and checkout','compare products and complete checkout',/\b(products?|catalog|cart|checkout|shopping)\b/i],
+['commerce','Product discovery and catalog','Product catalog','browse and compare products',/\b(products?|catalog|shopping|storefront|marketplace)\b/i],
+['checkout','Cart and checkout','Checkout','review cart and complete checkout',/\b(cart|checkout|place (?:an )?order|purchase flow)\b/i],
 ['payments','Payments and transactions','Payments','review and complete a transaction',/\b(payments?|transactions?|invoices?|billing)\b/i],
 ['portfolio','Work and case studies','Work and case studies','inspect a case study and contact its creator',/\b(portfolio|case studies|project gallery)\b/i],
 ['notifications','Notification center','Notifications','review notifications and find unread items',/\b(notifications?|unread count|alerts?|reminders?)\b/i],
@@ -116,7 +117,8 @@ export function analyzeProject(brief,{category}={}){
   // pages collapse to a single destination, not two overlapping navigation items.
   // Excluded capabilities cannot quietly return through generic category pages.
   const disallowed=excludedFeatures.flatMap(f=>({
-    payments:[/checkout/i,/transactions/i,/payments/i],
+    payments:[/transactions/i,/payments/i],
+    checkout:[/checkout/i],
     commerce:[/discover products/i,/product details/i,/checkout/i,/orders and account/i],
     messages:[/conversations and results/i],
     tutor:[/ai assistance/i]
@@ -261,7 +263,8 @@ const FEATURE_ALIASES={
  progress:['progress','analytics','insights','metrics'],
  courses:['course','lesson','curriculum'],
  messages:['messages','conversation','inbox'],
- commerce:['product','shopping','checkout'],
+ commerce:['product','shopping','catalog'],
+ checkout:['checkout','cart','purchase','place an order'],
  payments:['payment','transaction','invoice'],
  portfolio:['portfolio','case study','case studies'],
  profile:['profile','student account','user account'],
