@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {analyzeProject,compareDirections,buildDecisionReport,planFusion,inferProjectCategory} from '../project-intelligence.mjs';
+import {analyzeProject,compareDirections,buildDecisionReport,planFusion,inferProjectCategory,inspectAdvisorScope} from '../project-intelligence.mjs';
 import {STYLES,recommend,exportPrompt} from '../design-engine.mjs';
 import {buildDesignBrief,deterministicDesignPrompt,createDesignPrompt} from '../design-intelligence.mjs';
 import {buildRequirementTrace,reviewRequirementTrace} from '../design-traceability.mjs';
@@ -112,4 +112,21 @@ test('11C: missing evidence is labeled provisional and options remain user-contr
  const followup=analyzeProject('Create a healthcare portal for patients and nurses without administrators.');
  assert.ok(followup.audience.includes('Patients'));
  assert.ok(!followup.audience.includes('Administrators'));
+});
+
+test('11D: optional model replies cannot quietly reintroduce excluded project functionality',()=>{
+  const analysis=analyzeProject('Build a student dashboard with assignments and calendar, but do not add chat, checkout or payments.');
+  assert.ok(['messages','checkout','payments'].every(id=>
+    analysis.excludedFeatures.some(f=>f.id===id)));
+  const unsafe='Build a chat inbox so students can message each other. Add checkout to the navigation and enable payments.';
+  const review=inspectAdvisorScope(unsafe,analysis);
+  assert.equal(review.passed,false);
+  assert.ok(review.conflicting.includes('messages'));
+  assert.ok(review.conflicting.includes('checkout'));
+  assert.ok(review.conflicting.includes('payments'));
+  const safe='Use a focused assignment list, calendar review, keyboard-friendly navigation and clear loading states.';
+  assert.equal(inspectAdvisorScope(safe,analysis).passed,true);
+  assert.equal(inspectAdvisorScope(unsafe,analyzeProject('Design a blank interface')).passed,true,
+    'Scope guard must only enforce exclusions the user actually gave');
+  assert.match(review.warning,/not certify/i);
 });
