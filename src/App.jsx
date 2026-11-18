@@ -88,6 +88,31 @@ function App(){
     setToast(message);clearTimeout(toastTimer.current);
     toastTimer.current=setTimeout(()=>setToast(''),3800);
   };
+  // GitHub OAuth status lives in a transient URL parameter. Never trust that
+  // parameter as proof of account connection: verify against owner-scoped server
+  // state before showing a success notification.
+  useEffect(()=>{
+    const url=new URL(window.location.href);
+    const outcome=url.searchParams.get('github');
+    if(!outcome)return;
+    url.searchParams.delete('github');
+    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+    if(outcome==='connected'){
+      api('/api/integrations/github').then(status=>{
+        notice(status.connected&&status.login?
+          'GitHub connected as '+status.login+'. Your approved designs can now be published.':
+          'GitHub connection was not verified. Open Design handoff to reconnect.');
+      }).catch(()=>notice('GitHub connection could not be verified. Try again.'));
+      return;
+    }
+    const failures={
+      invalid_state:'GitHub sign-in expired or was interrupted. Please reconnect securely.',
+      login_required:'Sign in with Google before connecting GitHub.',
+      connect_failed:'GitHub could not be connected. Check App installation and try again.',
+      cancelled:'GitHub authorization was cancelled. Nothing was shared.'
+    };
+    if(Object.hasOwn(failures,outcome))notice(failures[outcome]);
+  },[]);
   useEffect(()=>{
     const onHistory=()=>{
       clearTimeout(gateTimer.current);setGatePhase('');
