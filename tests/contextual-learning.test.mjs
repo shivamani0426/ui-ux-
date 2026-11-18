@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {derivePrivateLearning,contextForCategory,publicLearningSummary,
-  verifiedCohortBand,VERIFIED_COHORT_MIN} from '../contextual-learning.mjs';
+  verifiedCohortBand,VERIFIED_COHORT_MIN,summarizeVerifiedPatterns} from '../contextual-learning.mjs';
 import {recommend} from '../design-engine.mjs';
 import {normalizeProfile,effectivePreferences} from '../learning-engine.mjs';
 
@@ -113,4 +113,35 @@ test('12D: public trends cannot be released below ten distinct authenticated acc
  assert.equal(verifiedCohortBand(24),'10–24');
  assert.equal(verifiedCohortBand(25),'25–49');
  assert.equal(verifiedCohortBand(500),'50+');
+});
+
+test('12D: ten verified opted-in accounts count once per style, with revocation removing cohorts',()=>{
+ const account=n=>'acct:'+String(n).padStart(8,'0')+'-0000-4000-8000-000000000000';
+ const profiles=new Map(Array.from({length:10},(_,i)=>[account(i),
+   {globalOptIn:true,personalization:{enabled:true}}]));
+ const votes=Array.from({length:10},(_,i)=>({
+   owner:account(i),id:'project-'+i,style:'minimal',reaction:'like',optIn:true
+ }));
+ for(let i=0;i<100;i++)votes.push({
+   owner:account(0),id:'extra-'+i,style:'minimal',reaction:'like',optIn:true
+ });
+ for(let i=0;i<100;i++)votes.push({
+   owner:'00000000-0000-4000-8000-000000000000',id:'guest-'+i,
+   style:'minimal',reaction:'like',optIn:true
+ });
+ const allowed=summarizeVerifiedPatterns(votes,profiles);
+ assert.deepEqual(allowed,[{style:'minimal',contributorsBand:'10–24'}]);
+ assert.ok(!JSON.stringify(allowed).includes('acct:'));
+ const optedOut=new Map(profiles);
+ optedOut.set(account(9),{globalOptIn:false,personalization:{enabled:true}});
+ assert.deepEqual(summarizeVerifiedPatterns(votes,optedOut),[],
+   'One revocation must suppress the whole small cohort');
+ const paused=new Map(profiles);
+ paused.set(account(9),{globalOptIn:true,personalization:{enabled:false}});
+ assert.deepEqual(summarizeVerifiedPatterns(votes,paused),[],
+   'Paused personal learning automatically removes shared-trend eligibility');
+ const reversed=votes.map(row=>row.owner===account(9)?
+   {...row,reaction:'dislike'}:row);
+ assert.deepEqual(summarizeVerifiedPatterns(reversed,profiles),[],
+   'Latest negative net vote must stop a formerly positive account contribution');
 });
