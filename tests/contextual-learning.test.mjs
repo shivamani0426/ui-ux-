@@ -55,7 +55,7 @@ test('12B: last feedback per project/style replaces earlier reactions, and contr
  assert.equal(v.evidence.glass.dislikes,2);
  assert.equal(v.adjustments.glass,0);
  assert.equal(v.active,false);
- assert.equal(v.evidence.glass.confidence,'medium');
+ assert.equal(v.evidence.glass.confidence,'low', 'Conflicting opinions must not receive medium confidence');
 });
 
 test('12B: low-confidence feedback never outweighs an explicit style or accessibility instruction',()=>{
@@ -93,7 +93,7 @@ test('12B: paused personal learning cannot influence recommendations or expose u
 
 test('12C: category model is deterministic, bounded and contains no private project IDs or feedback details',()=>{
  const rows=Array.from({length:50},(_,i)=>vote('PRIVATE_PROJECT_IDENTIFIER_'+i,
-   'Portfolio','creative',i%7===0?'dislike':'like'));
+   'Portfolio','creative',i%10===0?'dislike':'like'));
  const a=derivePrivateLearning(rows),b=derivePrivateLearning([...rows]);
  assert.deepEqual(a,b);
  const out=JSON.stringify(publicLearningSummary(a));
