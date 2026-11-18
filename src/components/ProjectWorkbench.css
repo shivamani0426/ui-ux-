@@ -194,3 +194,25 @@
  .pw-handoff-summary>div{padding:9px}
  .pw-handoff-actions button{flex:1 1 100%}
 }
+
+/* Scoped developer integrations — no global animation or theme changes. */
+.pw-github,.pw-figma{padding:15px;margin-top:17px;border:1px solid var(--line,#d9e3f7);
+ border-radius:12px;background:var(--soft,#eef4ff)}
+.pw-github h5,.pw-figma h5{display:flex;align-items:center;gap:9px;
+ color:var(--text,#223451);font:800 13px/1.45 Manrope,sans-serif;margin:0 0 7px}
+.pw-github p,.pw-figma p{color:var(--muted,#667993);
+ font:500 11px/1.65 'DM Sans',sans-serif;margin:5px 0 10px}
+.pw-github form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
+ gap:10px;align-items:end}
+.pw-github label{display:flex;flex-direction:column;min-width:0;gap:6px;
+ font:650 10px/1.5 Manrope,sans-serif}
+.pw-github input{max-width:100%;min-width:0;width:100%;padding:10px;border-radius:9px;
+ background:var(--surface,#fff);color:var(--text,#223451);
+ border:1px solid var(--line,#d9e3f7);font:500 12px/1.4 'DM Sans',sans-serif}
+.pw-github button,.pw-figma a,.pw-github a{display:inline-flex;align-items:center;
+ justify-content:center;gap:7px;border-radius:9px;padding:10px;
+ background:var(--lav,#4868c6);color:#fff;border:1px solid var(--lav,#4868c6);
+ font:700 11px/1.45 Manrope,sans-serif;text-decoration:none}
+.pw-github a,.pw-figma a{width:fit-content}
+@media(max-width:900px){.pw-github form{grid-template-columns:1fr}}
+@media(max-width:420px){.pw-github a,.pw-figma a{max-width:100%;white-space:normal}}
