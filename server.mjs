@@ -146,8 +146,17 @@ async function updateInspirationSelection(owner,projectId,sourceId,selected){
 async function savedSourceRows(owner,projectId){
   const ids=await selectionIds(owner,projectId);
   if(!ids.length)return [];
-  const refs=await listReferences();
-  return ids.map(id=>refs.find(r=>r.id===id)).filter(Boolean).slice(0,8);
+  if(!pg)return ids.map(id=>memoryLiveReferences.get(id)).filter(Boolean).slice(0,8);
+  // Query the owner's selected rows directly; a global top-250 source index
+  // would silently lose old private selections as other users discover links.
+  const result=await pg.query(`SELECT s.id,s.name,s.site,s.award,s.category,
+    s.styles,s.tags,s.summary,s.rank,s.score,s.source_provider AS provider,
+    s.source_kind AS "sourceKind"
+    FROM frontline.reference_selections r JOIN frontline.design_sources s ON s.id=r.source_id
+    WHERE r.visitor_id=$1 AND r.project_id=$2 AND r.selected=true
+      AND s.is_live_discovered=true
+    ORDER BY r.created_at ASC LIMIT 8`,[owner,projectId]);
+  return result.rows;
 }
 async function makeInspirationResponse(owner,project){
   const [discovery,raw,picks,personalTags]=await Promise.all([
@@ -984,7 +993,7 @@ const server=http.createServer(async(req,res)=>{
           const alreadySaved=(await selectionIds(owner,id)).includes(b.sourceId);
           const searched=b.selected?await makeInspirationResponse(owner,p):null;
           const found=b.selected?searched.matches.find(x=>x.id===b.sourceId):
-            (await listReferences()).find(x=>x.id===b.sourceId&&alreadySaved);
+            (await savedSourceRows(owner,id)).find(x=>x.id===b.sourceId&&alreadySaved);
           if(!found)return json(res,404,{error:'Source not found in this project live search.'});
           await updateInspirationSelection(owner,id,found.id,b.selected);
           return json(res,200,await makeInspirationResponse(owner,p));
@@ -1026,18 +1035,17 @@ const server=http.createServer(async(req,res)=>{
         if(req.method==='GET'){
           const p=await getProject(owner,id);
           if(!p)return json(res,404,{error:'Project not found'});
-          const [selected,library]=await Promise.all([selectionIds(owner,id),listReferences()]);
+          const selectedSources=await savedSourceRows(owner,id);
           return json(res,200,{projectId:id,workspace:normalizeWorkspace(p.recommendations?._workspace),
             refinement:p.recommendations?.refinement||'',
             comparisons:p.recommendations?.comparison||[],
-            savedInspirations:library.filter(ref=>selected.includes(ref.id))
-              .map(ref=>({id:ref.id,name:ref.name,site:ref.site,styles:ref.styles}))});
+            savedInspirations:selectedSources.map(ref=>({id:ref.id,name:ref.name,site:ref.site,styles:ref.styles}))});
         }
         if(req.method!=='PUT')return json(res,405,{error:'Method not allowed'});
         // Only the bounded board route needs more room for 24 cards with
         // short notes. Every other write retains the original 12 KB limit.
         const body=await readBody(req,24_000);
-        const catalogue=new Set((await listReferences()).map(ref=>ref.id));
+        const catalogue=new Set((await savedSourceRows(owner,id)).map(ref=>ref.id));
         const update=validateBoardUpdate(body,{referenceIds:catalogue});
         const next=await modifyProjectWorkspace(owner,id,update.revision,
           async(project,workspace)=>({workspace:withUpdatedBoard(workspace,update)}));
