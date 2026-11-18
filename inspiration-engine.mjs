@@ -25,6 +25,7 @@ const terms=v=>String(v||'').toLowerCase().match(/[a-z0-9]+/g)||[];
 const normalize=v=>terms(v).filter(w=>!STOP.has(w)).map(w=>syn.get(w)||w);
 const unique=v=>[...new Set(v)];
 const list=v=>Array.isArray(v)?v.filter(x=>typeof x==='string').slice(0,35):[];
+const cleanArray=list; // Preserve the established Select prompt contract.
 const overlap=(left,right)=>unique(left.flatMap(normalize)).filter(w=>right.has(w));
 const numeric=(value,low,high)=>Number.isFinite(Number(value))?Math.max(low,Math.min(high,Number(value))):0;
 const safeUrl=value=>{
