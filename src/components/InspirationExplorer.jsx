@@ -1,169 +1,167 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {ArrowUpRight,Bookmark,Check,Copy,Layers3,Search,
-  SlidersHorizontal,Sparkles,Info,ArrowUpDown} from 'lucide-react';
+import {ArrowUpRight,Bookmark,Check,ExternalLink,Globe2,Info,
+  RefreshCw,Search,ShieldCheck,Sparkles} from 'lucide-react';
 
-const labels={
-  minimal:'Calm structure',glass:'Atmospheric layers',creative:'Expressive editorial'
-};
-const maxCards=30;
-function subset(items,search,filter,onlySaved,selected,sort){
-  const q=search.trim().toLowerCase();
-  const found=(Array.isArray(items)?items:[]).filter(item=>{
-    const styleOk=filter==='all'||item.styles?.includes(filter);
-    const savedOk=!onlySaved||selected.has(item.id);
-    const searchOk=!q||[item.name,item.category,item.summary,...(item.tags||[]),
-      ...(item.styles||[])].join(' ').toLowerCase().includes(q);
-    return styleOk&&savedOk&&searchOk;
-  });
-  if(sort==='name')found.sort((a,b)=>a.name.localeCompare(b.name));
-  if(sort==='reference')found.sort((a,b)=>(a.rank??Infinity)-(b.rank??Infinity)||a.name.localeCompare(b.name));
-  return found.slice(0,maxCards);
-}
-
+// M08: these are actual URLs returned by an authorized search index, NOT
+// generated mockups, stored leaderboards, or invented publisher prompts.
 export default function InspirationExplorer({project,api,notice}){
   const [loading,setLoading]=useState(true);
-  const [data,setData]=useState({matches:[],selected:[],librarySize:0});
+  const [error,setError]=useState('');
+  const [data,setData]=useState({matches:[],selected:[],sources:[],discovery:null,librarySize:0});
   const [search,setSearch]=useState('');
-  const [filter,setFilter]=useState('all');
-  const [onlySaved,setOnlySaved]=useState(false);
-  const [sort,setSort]=useState('relevance');
+  const [kind,setKind]=useState('all');
+  const [savedOnly,setSavedOnly]=useState(false);
   const [saving,setSaving]=useState('');
-  const [exporting,setExporting]=useState(false);
+  const [retry,setRetry]=useState(0);
   useEffect(()=>{
-    let cancelled=false;
-    setLoading(true);setSearch('');setFilter('all');setOnlySaved(false);setSort('relevance');
+    let active=true;
+    setLoading(true);setError('');
     api('/api/projects/'+encodeURIComponent(project.id)+'/inspirations')
-      .then(response=>{if(!cancelled)setData(response)})
-      .catch(e=>{if(!cancelled)notice('Could not load inspirations: '+e.message)})
-      .finally(()=>{if(!cancelled)setLoading(false)});
-    return()=>{cancelled=true};
-  },[project.id,api]);
-  const chosen=useMemo(()=>new Set(data.selected||[]),[data.selected]);
-  const matches=useMemo(()=>subset(data.matches,search,filter,onlySaved,chosen,sort),
-    [data.matches,search,filter,onlySaved,chosen,sort]);
-  const selectedCount=chosen.size;
-  const toggle=async item=>{
-    const next=!chosen.has(item.id);
-    if(next&&selectedCount>=8){
-      notice('Save up to eight references per project so the design handoff remains focused.');return;
-    }
+      .then(result=>{if(active)setData(result)})
+      .catch(e=>{if(active)setError('Source discovery failed: '+e.message)})
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[project.id,api,retry]);
+  const selected=useMemo(()=>new Set(data.selected||[]),[data.selected]);
+  const matches=useMemo(()=>{
+    const q=search.trim().toLowerCase();
+    return (data.matches||[]).filter(x=>
+      (kind==='all'||x.sourceKind===kind)&&
+      (!savedOnly||selected.has(x.id))&&
+      (!q||[x.name,x.category,x.provider,...(x.tags||[])].join(' ').toLowerCase().includes(q))
+    ).slice(0,30);
+  },[data.matches,kind,search,savedOnly,selected]);
+  const sources=data.sources||[];
+  const status=data.discovery?.status||'pending';
+  async function toggle(item){
+    const next=!selected.has(item.id);
+    if(next&&selected.size>=8){notice('Save no more than eight source links per project.');return;}
     setSaving(item.id);
     try{
       const response=await api('/api/projects/'+encodeURIComponent(project.id)+'/inspirations',{
         method:'PUT',body:JSON.stringify({sourceId:item.id,selected:next})
       });
       setData(response);
-      window.dispatchEvent(new CustomEvent('frontline:inspiration-change',{detail:{projectId:project.id}}));
-      notice(next?item.name+' saved to your inspirations.':item.name+' removed from your selections.');
-    }catch(e){notice('Could not save inspiration: '+e.message)}
+      window.dispatchEvent(new CustomEvent('frontline:inspiration-change',{
+        detail:{projectId:project.id}}));
+      notice(next?'Original source link saved.':'Source link removed.');
+    }catch(e){notice('Could not save source: '+e.message)}
     finally{setSaving('')}
-  };
-  const copy=async()=>{
-    if(!selectedCount||exporting)return;
-    setExporting(true);
-    try{
-      const response=await api('/api/projects/'+encodeURIComponent(project.id)+'/inspirations/prompt',{method:'POST'});
-      await navigator.clipboard.writeText(response.prompt);
-      notice('Original UI/UX prompt copied from '+response.references.length+' references.');
-    }catch(e){notice('Could not copy prompt: '+e.message)}
-    finally{setExporting(false)}
-  };
-  return <section className="inspiration-explorer" aria-label="Select UI/UX design inspirations">
+  }
+  return <section className="inspiration-explorer" aria-label="Live original-source design discoveries">
     <div className="inspiration-intro">
-      <div className="inspiration-topline"><Sparkles size={15}/> <span>SELECT UI/UX / CURATED DESIGN INTELLIGENCE</span></div>
+      <div className="inspiration-topline"><Sparkles size={15}/>
+        <span>SELECT UI/UX / ORIGINAL PUBLISHER SOURCES</span></div>
       <div className="inspiration-title-line">
         <div>
-          <h2>Find a design worth <em>exploring.</em></h2>
-          <p>Ranked from relevant metadata, explicit constraints and limited private preferences.
-            The current brief always takes priority.</p>
+          <h2>Discover real design <em>sources.</em></h2>
+          <p>On-demand search across design libraries and animation collections.
+            We only recommend indexed URLs from the original publishers—no invented
+            inspiration cards, mock screenshots or copied prompts.</p>
         </div>
-        <span className="inspiration-collection-count">{data.librarySize||'—'}<small>curated references</small></span>
+        <span className="inspiration-collection-count">{data.librarySize||0}
+          <small>indexed page matches</small></span>
       </div>
+    </div>
+    <div className="inspiration-discovery-state" role="status">
+      <div><Globe2 size={16}/><strong>{status==='ready'?'Live source index searched':
+        status==='partial'?'Partial live search':status==='no-matches'?'No matching source pages':
+        status==='not-configured'?'Search integration not configured':
+        status==='unavailable'?'Live source search unavailable':'Searching source websites'}</strong></div>
+      {data.discovery?.note&&<p>{data.discovery.note}</p>}
+      {error&&<p>{error}</p>}
+      {data.discovery?.query&&<p>Only search keywords were sent to the search provider:
+        <strong> {data.discovery.query}</strong>. Private chats, accounts and feedback were not sent.</p>}
+      <button type="button" onClick={()=>setRetry(n=>n+1)} disabled={loading}>
+        <RefreshCw size={14}/>{loading?'Searching…':'Retry source discovery'}
+      </button>
     </div>
     <div className="inspiration-controls">
       <label className="inspiration-search"><Search size={16}/>
         <input value={search} onChange={e=>setSearch(e.target.value)}
-          placeholder="Search education, agency, dashboard, motion…" aria-label="Search recommended inspirations"/>
+          placeholder="Filter real source matches…" aria-label="Filter original website results"/>
       </label>
-      <div className="inspiration-filters" role="group" aria-label="Filter design inspirations by style">
-        {['all','minimal','glass','creative'].map(t=><button key={t} type="button"
-          className={filter===t?'is-active':''} onClick={()=>setFilter(t)}
-          aria-pressed={filter===t}>{t==='all'?'All styles':t==='minimal'?'Minimal':t==='glass'?'Glass':'Creative'}</button>)}
+      <div className="inspiration-filters" role="group" aria-label="Type of source">
+        {[['all','All sources'],['inspiration','UI/UX inspiration'],['animation','Components & animation']]
+          .map(([id,label])=><button key={id} type="button"
+            className={kind===id?'is-active':''} aria-pressed={kind===id}
+            onClick={()=>setKind(id)}>{label}</button>)}
       </div>
       <div className="inspiration-advanced-controls">
         <label className="inspiration-saved-only">
-          <input type="checkbox" checked={onlySaved} onChange={e=>setOnlySaved(e.target.checked)}/>
+          <input type="checkbox" checked={savedOnly} onChange={e=>setSavedOnly(e.target.checked)}/>
           Saved only
-        </label>
-        <label className="inspiration-order"><ArrowUpDown size={14}/>
-          <span>Order</span>
-          <select value={sort} onChange={e=>setSort(e.target.value)} aria-label="Sort design inspirations">
-            <option value="relevance">Brief relevance</option>
-            <option value="name">Name A–Z</option>
-            <option value="reference">Archived source rank</option>
-          </select>
         </label>
         <span role="status" className="inspiration-result-count">{matches.length} shown</span>
       </div>
     </div>
-    {loading?<div className="inspiration-loading" role="status"><span className="inspiration-pulse"/><span>Matching curated references…</span></div>:
-      matches.length===0?<div className="inspiration-none"><SlidersHorizontal size={18}/>
-        No references match these filters. Try another keyword, uncheck Saved only or choose All styles.
-      </div>:
-      <div className="inspiration-grid">
-        {matches.map((item,index)=>{
-          const saved=chosen.has(item.id);
-          const primary=item.styles?.[0]||'minimal';
-          return <article className={'inspiration-card '+(saved?'is-saved':'')} key={item.id}>
-            <div className={'inspiration-art art-'+primary} aria-hidden="true">
-              <span className="inspiration-art-orbit"/><span className="inspiration-art-grid"/>
-              <span className="inspiration-art-index">{String(index+1).padStart(2,'0')}</span>
-              <span className="inspiration-art-label">{labels[primary]||'Original direction'}</span>
-            </div>
-            <div className="inspiration-card-body">
-              <div className="inspiration-meta"><span>{item.category}</span>
-                <span className="inspiration-signal">{item.matchLabel}</span></div>
-              <h3>{item.name}</h3>
-              <div className="inspiration-reasons">
-                {(item.reasons||[]).map((reason,i)=><p key={i}><Check size={12}/>{reason}</p>)}
-              </div>
-              {item.summary&&<p className="inspiration-summary">{item.summary}</p>}
-              <details className="inspiration-evidence">
-                <summary><Info size={13}/> Why this result?</summary>
-                <p>Brief match: {item.evidence?.direct??0} metadata points.
-                  {item.evidence?.personal>0?' Private taste adjustment: +'+item.evidence.personal+'.':''}
-                  {item.evidence?.excludedPenalty>0?' Exclusion caution: −'+item.evidence.excludedPenalty+'.':''}
-                  {' '}These are heuristic ranking signals, not verified site quality or usability scores.</p>
-                <p>{item.provenance||'Curated metadata; no live website inspection.'}</p>
-              </details>
-              <div className="inspiration-tags">{(item.tags||[]).slice(0,3).map(t=><span key={t}>{t}</span>)}</div>
-              <div className="inspiration-actions">
-                <button type="button" className={'inspiration-save '+(saved?'selected':'')}
-                  disabled={Boolean(saving)} aria-pressed={saved} onClick={()=>toggle(item)}>
-                  {saved?<Check size={15}/>:<Bookmark size={15}/>}
-                  {saving===item.id?'Saving…':saved?'Saved':'Save inspiration'}
-                </button>
-                <a href={item.site} target="_blank" rel="noopener noreferrer" aria-label={'Visit '+item.name+' website'}>
-                  Visit site <ArrowUpRight size={15}/>
-                </a>
-              </div>
-            </div>
-          </article>;
-        })}
-      </div>}
+    {loading?<div className="inspiration-loading" role="status">
+      <span className="inspiration-pulse"/>Searching original domains, not pre-saved recommendations…
+    </div>:matches.length? <div className="inspiration-grid">
+      {matches.map(item=><article className={'inspiration-card '+(selected.has(item.id)?'is-saved':'')} key={item.id}>
+        <div className="inspiration-card-body">
+          <div className="inspiration-meta">
+            <span>{item.sourceKind==='animation'?'ANIMATION / COMPONENT':'DESIGN REFERENCE'}</span>
+            <span className="inspiration-signal">{item.matchLabel}</span>
+          </div>
+          <h3>{item.name}</h3>
+          <p className="inspiration-publisher"><Globe2 size={13}/>{item.provider} · Search-index URL</p>
+          <div className="inspiration-reasons">{(item.reasons||[]).slice(0,3).map((reason,i)=>
+            <p key={i}><Check size={12}/>{reason}</p>)}</div>
+          <details className="inspiration-evidence">
+            <summary><Info size={13}/> Source provenance & ranking</summary>
+            <p>{item.provenance}</p>
+            <p>Relevance is heuristic metadata matching, not verified usability quality.
+              Search results may change or become unavailable.</p>
+          </details>
+          <div className="inspiration-original-prompt">
+            <ShieldCheck size={15}/>
+            <span>Original publisher prompt: <strong>Not verified for reproduction.</strong>
+              {' '}Open the original site to view any prompt it provides.
+              Frontline never invents a prompt and calls it the source original.</span>
+          </div>
+          <div className="inspiration-actions">
+            <button type="button" className={'inspiration-save '+(selected.has(item.id)?'selected':'')}
+              onClick={()=>toggle(item)} disabled={Boolean(saving)}
+              aria-pressed={selected.has(item.id)}>
+              {selected.has(item.id)?<Check size={15}/>:<Bookmark size={15}/>}
+              {saving===item.id?'Saving…':selected.has(item.id)?'Saved source':'Save source'}
+            </button>
+            <a href={item.originalPromptUrl||item.site} target="_blank" rel="noopener noreferrer"
+              aria-label={'Open original '+item.provider+' source for '+item.name}>
+              {item.originalPromptUrl?'View publisher prompt':'Open original source'} <ArrowUpRight size={15}/>
+            </a>
+          </div>
+        </div>
+      </article>)}
+    </div>:
+    <div className="inspiration-none">
+      <Info size={18}/>
+      {savedOnly?'No saved source links match these filters.':
+        status==='not-configured'?'No live results were invented. An administrator must configure the search provider.':
+        'No original indexed pages match this project right now. Open a publisher below or try another brief.'}
+    </div>}
+    <div className="inspiration-source-directory">
+      <h3>Original websites covered</h3>
+      <p>Each opens the original publisher. Listings below are a source directory,
+        <strong> not fabricated matches for your project.</strong></p>
+      <div className="inspiration-source-links">
+        {sources.filter(s=>kind==='all'||s.kind===kind).map(source=>
+          <a key={source.id} href={source.website} target="_blank" rel="noopener noreferrer">
+            <span>{source.name}</span><ExternalLink size={14}/>
+          </a>)}
+      </div>
+    </div>
     <div className="inspiration-bottom">
-      <div className="inspiration-saved-counter"><Layers3 size={18}/>
-        <span><strong>{selectedCount} saved</strong>
-          <small>Up to 8 used for a prompt. Private to this guest or signed-in account.</small>
+      <div className="inspiration-saved-counter"><Bookmark size={17}/>
+        <span><strong>{selected.size} saved original source links</strong>
+          <small>Private to this project. Review publisher permissions before reuse.</small>
         </span>
       </div>
-      <button type="button" className="inspiration-export" disabled={!selectedCount||exporting} onClick={copy}>
-        <Copy size={16}/>{exporting?'Preparing…':'Copy design prompt'}
-      </button>
     </div>
-    <p className="inspiration-disclosure">
-      Matching uses stored reference metadata only. Decorated artwork is illustrative, not screenshots.
-      Archived awards or ranks are not live rankings. Verify licensing before reusing any third-party assets.
-    </p>
+    <p className="inspiration-disclosure">No pre-loaded website suggestions, scraped
+      screenshots or Frontline-generated “original publisher prompts.”
+      Publisher prompts require authorized source access and reuse rights.
+      Generate UI/UX and Design Fusion remain separate Frontline-original workflows.</p>
   </section>;
 }
