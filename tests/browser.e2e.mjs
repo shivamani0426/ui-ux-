@@ -405,6 +405,24 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
         'Side-by-side comparison must reflow into mobile-friendly cards');
     }
     await mobile.close();
+    // M15: a genuine Chromium service worker must reopen the public PWA shell
+    // offline from its FIRST completed install; private APIs must remain offline.
+    if(!remote&&name==='Chromium'){
+      const offlineContext=await browser.newContext({serviceWorkers:'allow'});
+      const offlinePage=await offlineContext.newPage();
+      try{
+        await offlinePage.goto(url+'/studio',{waitUntil:'load',timeout:45000});
+        await offlinePage.evaluate(async()=>{await navigator.serviceWorker.ready;});
+        await offlinePage.waitForFunction(()=>!!navigator.serviceWorker.controller,{timeout:7000});
+        await offlineContext.setOffline(true);
+        await offlinePage.reload({waitUntil:'domcontentloaded',timeout:25000});
+        await offlinePage.locator('.studio-title').waitFor({timeout:10000});
+        assert.equal(await offlinePage.evaluate(async()=>{
+          try{await fetch('/api/health');return false;}catch{return true;}
+        }),true,'Private and account APIs must never be replayed from the PWA cache');
+        await offlinePage.screenshot({path:'browser-artifacts/Chromium-PWA-first-offline-reopen.png'});
+      }finally{await offlineContext.close();}
+    }
     // Reduced-motion users see the black orb briefly, then a STATIC landing.
     // They can still choose any feature or account route manually.
     const reducedPage=await browser.newPage({viewport:{width:1024,height:720},reducedMotion:'reduce'});
