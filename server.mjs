@@ -285,18 +285,34 @@ async function updateMessages(owner,id,messages){
 // Paginate owner-scoped history so accounts with more than 50 conversations
 // can actually reach their full history without fetching every chat message.
 const PROJECT_PAGE_SIZE=50;
+function compactRecommendationForList(value){
+  const rec=value&&typeof value==='object'?value:{};
+  const board=normalizeWorkspace(rec._workspace);
+  // A dashboard only needs counts; never send 12 stored full board snapshots
+  // for every item in a 50-project page.
+  return {...rec,_workspace:{itemCount:board.items.length,
+    versionCount:board.versions.length}};
+}
 async function listProjects(owner,offset=0){
   if(!pg){
-    const mine=[...live.values()].filter(x=>x.owner===owner).reverse().map(({owner:_,...p})=>({
-      ...p,updatedAt:p.updatedAt||p.createdAt,
-      messageCount:p.messages?.length||0,
+    const mine=[...live.values()].filter(x=>x.owner===owner).reverse().map(({owner:_,messages,...p})=>({
+      ...p,recommendations:compactRecommendationForList(p.recommendations),
+      updatedAt:p.updatedAt||p.createdAt,
+      messageCount:messages?.length||0,
       inspirationCount:memorySelections.get(owner+':'+p.id)?.size||0,
       promptCount:[...finalizedModes].filter(k=>k.startsWith(owner+':'+p.id+':')).length
     }));
     return {projects:mine.slice(offset,offset+PROJECT_PAGE_SIZE),
       nextOffset:offset+PROJECT_PAGE_SIZE<mine.length?offset+PROJECT_PAGE_SIZE:null};
   }
-  const r=await pg.query(`SELECT p.id,p.title,p.brief,p.recommendation AS recommendations,
+  const r=await pg.query(`SELECT p.id,p.title,p.brief,
+    (COALESCE(p.recommendation,'{}'::jsonb)-'_workspace') ||
+      jsonb_build_object('_workspace',jsonb_build_object(
+        'itemCount',CASE WHEN jsonb_typeof(p.recommendation #> '{_workspace,items}')='array'
+          THEN jsonb_array_length(p.recommendation #> '{_workspace,items}') ELSE 0 END,
+        'versionCount',CASE WHEN jsonb_typeof(p.recommendation #> '{_workspace,versions}')='array'
+          THEN jsonb_array_length(p.recommendation #> '{_workspace,versions}') ELSE 0 END
+      )) AS recommendations,
     p.created_at AS "createdAt",p.updated_at AS "updatedAt",
     jsonb_array_length(p.messages)::int AS "messageCount",
     (SELECT COUNT(*)::int FROM frontline.reference_selections s
