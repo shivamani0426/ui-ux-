@@ -5,8 +5,9 @@ import crypto from 'node:crypto';
 import {createAuthGateway} from './auth-gateway.mjs';
 import {createGitHubAppConnection} from './github-app-connect.mjs';
 import {fileURLToPath} from 'node:url';
-import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
-import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
+import {recommend,STYLES,exportPrompt} from './design-engine.mjs';
+import {discoverLiveSources} from './live-source-discovery.mjs';
+import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
@@ -26,6 +27,7 @@ const live=new Map();
 const guests=new Map();
 const votes=[];
 const memorySelections=new Map();
+const memoryLiveReferences=new Map();
 const finalizedModes=new Set();
 const isProd=process.env.NODE_ENV==='production';
 const cookieName=isProd?'__Host-uic_guest':'uic_guest';
@@ -78,25 +80,53 @@ async function setupDb(){
   console.log('PostgreSQL persistence is active.');
 }
 async function listReferences(){
-  if(!pg) return REFERENCES;
-  const result=await pg.query(`SELECT id,name,site,award,category,styles,tags,rank,score
-    FROM frontline.design_sources WHERE active = true ORDER BY rank ASC NULLS LAST, name ASC LIMIT 250`);
+  if(!pg)return [...memoryLiveReferences.values()];
+  const result=await pg.query(`SELECT id,name,site,award,category,styles,tags,summary,
+    rank,score,source_provider AS provider,source_kind AS "sourceKind"
+    FROM frontline.design_sources WHERE active=true AND is_live_discovered=true
+    ORDER BY source_indexed_at DESC LIMIT 250`);
   return result.rows;
+}
+// Store original URLs returned by an authorized search index for use in
+// private saved boards. Cached records are NEVER served as default suggestions.
+async function storeDiscoveredReferences(rows){
+  if(!Array.isArray(rows)||!rows.length)return;
+  if(!pg){for(const row of rows)memoryLiveReferences.set(row.id,row);return;}
+  const safe=rows.map(r=>({
+    id:r.id,name:r.name,site:r.site,category:r.category,
+    tags:r.tags||[],styles:r.styles||[],provider:r.provider||'',kind:r.sourceKind||''
+  }));
+  await pg.query(`INSERT INTO frontline.design_sources
+    (id,name,site,category,tags,styles,summary,active,is_live_discovered,source_provider,source_kind,source_indexed_at)
+    SELECT x.id,x.name,x.site,x.category,x.tags,x.styles,'',true,true,x.provider,x.kind,NOW()
+    FROM jsonb_to_recordset($1::jsonb) AS x(
+      id text,name text,site text,category text,tags text[],styles text[],
+      provider text,kind text
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      name=EXCLUDED.name,site=EXCLUDED.site,category=EXCLUDED.category,
+      tags=EXCLUDED.tags,styles=EXCLUDED.styles,active=true,
+      is_live_discovered=true,source_provider=EXCLUDED.source_provider,
+      source_kind=EXCLUDED.source_kind,source_indexed_at=NOW()`,
+    [JSON.stringify(safe)]);
 }
 async function selectionIds(owner,projectId){
   if(!pg)return [...(memorySelections.get(owner+':'+projectId)||new Set())];
-  const r=await pg.query('SELECT source_id FROM frontline.reference_selections WHERE visitor_id=$1 AND project_id=$2 AND selected=true ORDER BY created_at ASC',[owner,projectId]);
+  const r=await pg.query('SELECT r.source_id FROM frontline.reference_selections r
+    JOIN frontline.design_sources s ON s.id=r.source_id
+    WHERE r.visitor_id=$1 AND r.project_id=$2 AND r.selected=true AND s.is_live_discovered=true
+    ORDER BY r.created_at ASC',[owner,projectId]);
   return r.rows.map(x=>x.source_id);
 }
 async function personalInspirationTags(owner){
   if(!pg){
     const ids=new Set();
     for(const [key,values] of memorySelections){if(key.startsWith(owner+':'))for(const value of values)ids.add(value);}
-    return REFERENCES.filter(x=>ids.has(x.id)).flatMap(x=>x.tags).slice(0,60);
+    return [...memoryLiveReferences.values()].filter(x=>ids.has(x.id)).flatMap(x=>x.tags||[]).slice(0,60);
   }
   const r=await pg.query(`SELECT s.tags FROM frontline.reference_selections r
     JOIN frontline.design_sources s ON s.id=r.source_id
-    WHERE r.visitor_id=$1 AND r.selected=true ORDER BY r.created_at DESC LIMIT 60`,[owner]);
+    WHERE r.visitor_id=$1 AND r.selected=true AND s.is_live_discovered=true ORDER BY r.created_at DESC LIMIT 60`,[owner]);
   return r.rows.flatMap(x=>x.tags||[]);
 }
 async function updateInspirationSelection(owner,projectId,sourceId,selected){
@@ -120,19 +150,31 @@ async function savedSourceRows(owner,projectId){
   return ids.map(id=>refs.find(r=>r.id===id)).filter(Boolean).slice(0,8);
 }
 async function makeInspirationResponse(owner,project){
-  const [refs,raw,picks,personalTags]=await Promise.all([listReferences(),profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)]);
+  const [discovery,raw,picks,personalTags]=await Promise.all([
+    discoverLiveSources(project.brief),profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
+  ]);
+  if(discovery.matches.length)await storeDiscoveredReferences(discovery.matches);
+  // Saved historical LIVE results may be retained for continuity, but are
+  // never substituted for a current search when discovery fails.
+  const saved=await savedSourceRows(owner,project.id);
+  const seen=new Set(discovery.matches.map(x=>x.id));
+  const refs=[...discovery.matches,...saved.filter(x=>!seen.has(x.id))];
+  const index=new Map(refs.map(r=>[r.id,r]));
   const prefs=effectivePreferences(raw);
-  return {
-    projectId:project.id,
-    matches:rankInspirations(project.brief,refs,{
-      styleWeights:prefs.personalization.enabled?prefs.styleWeights||{}:{},
-      favoriteTags:prefs.personalization.enabled?personalTags:[]
-    }),
-    selected:picks,
-    librarySize:refs.length,
-    rankingVersion:2,
-    ranking:'Auditable brief-first metadata, explicit exclusions and bounded private taste; no live visual scanning',
-  };
+  const matches=rankInspirations(project.brief,refs,{
+    styleWeights:prefs.personalization.enabled?prefs.styleWeights||{}:{},
+    favoriteTags:prefs.personalization.enabled?personalTags:[]
+  }).map(item=>{
+    const source=index.get(item.id);
+    return {...item,provider:source.provider||'',sourceKind:source.sourceKind||'',
+      originalPromptStatus:'not-verified',originalPromptUrl:null,
+      provenance:'Indexed URL from original publisher; no publisher prompt has been licensed or verified.'};
+  });
+  return {projectId:project.id,matches,selected:picks.filter(id=>index.has(id)),
+    librarySize:discovery.matches.length,rankingVersion:3,
+    discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
+      providers:discovery.providerStatus||[]},sources:discovery.sources,
+    ranking:'Live search-index metadata only. No fake prompts, stored website leaderboard, or third-party screenshots.'};
 }
 async function profile(owner){
   if(!pg)return normalizeProfile(guests.get(owner));
