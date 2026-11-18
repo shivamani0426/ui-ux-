@@ -116,3 +116,36 @@ export function verifiedCohortBand(count){
   const n=Number(count)||0;
   return n>=50?'50+':n>=25?'25–49':n>=VERIFIED_COHORT_MIN?'10–24':null;
 }
+
+/**
+ * Pure in-memory counterpart of the production account-cohort SQL query.
+ * Profiles are a Map<owner, {globalOptIn,personalization:{enabled}}>.
+ * Each account contributes at most one net-positive vote per style; adding
+ * more projects or pressing Like repeatedly cannot increase cohort size.
+ */
+export function summarizeVerifiedPatterns(rows,profiles){
+  const eligibleProfiles=profiles instanceof Map?profiles:new Map();
+  const latest=new Map();
+  for(const row of Array.isArray(rows)?rows:[]){
+    if(!row||typeof row.owner!=='string'||!/^acct:[a-f0-9-]{36}$/i.test(row.owner)
+      ||!safeStyle(row.style)||typeof row.id!=='string')continue;
+    const owner=eligibleProfiles.get(row.owner);
+    if(!owner?.globalOptIn||owner?.personalization?.enabled===false||!row.optIn)continue;
+    const key=JSON.stringify([row.owner,row.id,row.style]);
+    latest.set(key,row);
+  }
+  const byAccount=new Map();
+  for(const row of latest.values()){
+    const key=JSON.stringify([row.owner,row.style]);
+    byAccount.set(key,(byAccount.get(key)||0)+
+      (row.reaction==='like'?1:row.reaction==='dislike'?-1:0));
+  }
+  const counts=new Map(STYLE_IDS.map(style=>[style,0]));
+  for(const [key,net] of byAccount){
+    if(net<=0)continue;
+    const style=JSON.parse(key)[1];
+    counts.set(style,counts.get(style)+1);
+  }
+  return [...counts].filter(([,count])=>count>=VERIFIED_COHORT_MIN)
+    .map(([style,count])=>({style,contributorsBand:verifiedCohortBand(count)}));
+}
