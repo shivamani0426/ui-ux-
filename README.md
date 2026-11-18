@@ -366,3 +366,7 @@ HMAC-bound fresh verification, admin fail-closed behavior, guest/CSRF
 denial, and existing user/guest isolation. Browser tests exercise the
 guest security panel alongside the complete cinematic UI and design modes.
 
+
+### Render build test-origin regression
+
+Render exposes `RENDER_SERVICE_ID` while running the project's `postinstall` tests with `NODE_ENV=test`. In that isolated test process, the Origin check must accept the local test server's `http://127.0.0.1:<port>` Origin; in an actual running Render production server, only the configured `FRONTLINE_SITE_URL` HTTPS origin is allowed. `tests/render-origin-regression.test.mjs` asserts both cases, plus rejection of cross-site writes. This exception is for test mode only and does not permit HTTP production cookie-authenticated mutations.
