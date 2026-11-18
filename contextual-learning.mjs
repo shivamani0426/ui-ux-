@@ -129,13 +129,13 @@ export function summarizeVerifiedPatterns(rows,profiles){
   for(const row of Array.isArray(rows)?rows:[]){
     if(!row||typeof row.owner!=='string'||!/^acct:[a-f0-9-]{36}$/i.test(row.owner)
       ||!safeStyle(row.style)||typeof row.id!=='string')continue;
-    const owner=eligibleProfiles.get(row.owner);
-    if(!owner?.globalOptIn||owner?.personalization?.enabled===false||!row.optIn)continue;
     const key=JSON.stringify([row.owner,row.id,row.style]);
     latest.set(key,row);
   }
   const byAccount=new Map();
   for(const row of latest.values()){
+    const owner=eligibleProfiles.get(row.owner);
+    if(!owner?.globalOptIn||owner?.personalization?.enabled===false||!row.optIn)continue;
     const key=JSON.stringify([row.owner,row.style]);
     byAccount.set(key,(byAccount.get(key)||0)+
       (row.reaction==='like'?1:row.reaction==='dislike'?-1:0));
