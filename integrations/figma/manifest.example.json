@@ -1,0 +1,10 @@
+{
+  "name": "Frontline Approved Design Import",
+  "id": "REPLACE_WITH_YOUR_FIGMA_PLUGIN_ID",
+  "api": "1.0.0",
+  "editorType": ["figma"],
+  "main": "code.js",
+  "ui": "ui.html",
+  "documentAccess": "dynamic-page",
+  "networkAccess": {"allowedDomains": ["none"]}
+}

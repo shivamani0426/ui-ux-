@@ -11,6 +11,8 @@ import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {derivePrivateLearning,contextForCategory,publicLearningSummary,
   verifiedCohortBand,VERIFIED_COHORT_MIN,summarizeVerifiedPatterns} from './contextual-learning.mjs';
+import {buildDesignHandoff,designHandoffMarkdown} from './design-handoff.mjs';
+import {validateGitHubPublishInput,publishApprovedHandoff} from './github-handoff.mjs';
 import {normalizeWorkspace,validateBoardUpdate,requireRevision,withUpdatedBoard,
   addCheckpoint,restoreCheckpoint,compareCheckpoint} from './project-workspace.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
@@ -113,11 +115,14 @@ async function makeInspirationResponse(owner,project){
   const prefs=effectivePreferences(raw);
   return {
     projectId:project.id,
-    matches:rankInspirations(project.brief,refs,{styleWeights:prefs.styleWeights||{},
-      favoriteTags:prefs.personalization.enabled?personalTags:[]}),
+    matches:rankInspirations(project.brief,refs,{
+      styleWeights:prefs.personalization.enabled?prefs.styleWeights||{}:{},
+      favoriteTags:prefs.personalization.enabled?personalTags:[]
+    }),
     selected:picks,
     librarySize:refs.length,
-    ranking:'Metadata signals + your private selection history; not live website scraping',
+    rankingVersion:2,
+    ranking:'Auditable brief-first metadata, explicit exclusions and bounded private taste; no live visual scanning',
   };
 }
 async function profile(owner){
@@ -737,12 +742,17 @@ async function serveFile(req,res){
   let name;
   try{name=decodeURIComponent(pathname);}catch{return json(res,400,{error:'Invalid path'});}
   if(name==='/'||(!path.posix.extname(name)&&!name.startsWith('/assets/')))name='/index.html';
-  const allowed=/^\/(?:index\.html|favicon\.svg|robots\.txt|assets\/[a-zA-Z0-9_.-]+\.(?:js|css|png|svg|woff|woff2))$/;
+  const allowed=/^\/(?:index\.html|favicon\.svg|robots\.txt|manifest\.webmanifest|service-worker\.js|pwa-icon(?:-maskable)?\.svg|assets\/[a-zA-Z0-9_.-]+\.(?:js|css|png|svg|woff|woff2))$/;
   if(!allowed.test(name))return json(res,404,{error:'Not found'});
-  const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.txt':'text/plain; charset=utf-8','.png':'image/png','.woff':'font/woff','.woff2':'font/woff2'};
+  const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.txt':'text/plain; charset=utf-8','.png':'image/png','.webmanifest':'application/manifest+json','.woff':'font/woff','.woff2':'font/woff2'};
   try{
     const data=await fs.readFile(path.join(root,'dist',name));
-    res.writeHead(200,{'Content-Type':types[path.extname(name)]||'application/octet-stream','Cache-Control':name==='/index.html'?'no-store':'public, max-age=31536000, immutable'});
+    const cacheControl=name==='/index.html'?'no-store':
+      ['/service-worker.js','/manifest.webmanifest'].includes(name)?'no-cache':
+      name.startsWith('/assets/')?'public, max-age=31536000, immutable':'public, max-age=86400';
+    res.writeHead(200,{'Content-Type':types[path.extname(name)]||'application/octet-stream',
+      'Cache-Control':cacheControl,
+      ...(name==='/service-worker.js'?{'Service-Worker-Allowed':'/'}:{})});
     if(req.method==='HEAD')return res.end();
     res.end(data);
   }catch(e){if(e.code==='ENOENT')return json(res,404,{error:'Asset unavailable'});throw e;}
@@ -914,6 +924,25 @@ const server=http.createServer(async(req,res)=>{
           return json(res,200,{prompt,references:chosen.map(x=>x.id)});
         }
         return json(res,405,{error:'Method not allowed'});
+      }
+      // M14B: explicit one-time GitHub authorization, account-scoped, approved-only.
+      const githubHandoffRoute=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/github-handoff$/);
+      if(githubHandoffRoute){
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        if(!signedIn)return json(res,401,{error:'Sign in with Google before publishing to GitHub.'});
+        const body=validateGitHubPublishInput(await readBody(req,1600));
+        const project=await getProject(owner,githubHandoffRoute[1]);
+        if(!project)return json(res,404,{error:'Project not found'});
+        const workspace=normalizeWorkspace(project.recommendations?._workspace);
+        requireRevision(workspace,body.revision);
+        const handoff=buildDesignHandoff({
+          project,workspace,references:await savedSourceRows(owner,project.id)
+        });
+        const result=await publishApprovedHandoff({
+          repository:body.repository,token:body.token,projectId:project.id,
+          title:project.title,markdown:designHandoffMarkdown(handoff)
+        });
+        return json(res,201,{...result,content:'Approved design handoff only; no chat, private feedback or tokens were stored.'});
       }
       // M13: private visual board and bounded, manually named checkpoints.
       const boardRoute=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/workspace$/);

@@ -64,7 +64,7 @@ The first deliberate Generate/Fusion action per project/mode automatically stren
 
 **Provider troubleshooting:** The chat bubble labels actual Gemini/OpenRouter answers by provider; a 'Guided recommendations · AI fallback' label means AI did not return an answer. Render logs show only sanitized provider HTTP status (e.g. 400/403/429/503) or timeout, not private prompts, keys or server error response bodies. Google now limits Gemini 2.5 availability for new projects; `gemini-3.5-flash-lite` is the recommended starting model for eligible new free-tier API projects. Confirm model availability and free limits in AI Studio.
 
-**Current limitations:** no user accounts (anonymous browser-cookie identity only), no live crawling or screenshot analysis, and visual previews are original illustrative mockups rather than rendered generated application code. Do not describe these as implemented. These are future milestones.
+**Historical v0.4 limitation (superseded in part by Milestone 10):** The original release had only anonymous cookie identity. Later milestones added optional verified Google accounts. Live crawling/screenshot analysis and working generated application code are still NOT shipped; visual previews remain original illustrative mockups.
 
 ## Privacy and attribution
 
@@ -536,3 +536,90 @@ write integrations require their own consent-based connection and validation.
 browser smoke. Automated tests exercise private export scoping, malicious URLs,
 malformed drafts, Markdown/JSON content, filesystem-safe names, and actual
 browser downloads. No database migration or new secrets are required.
+
+
+## Milestone 08 hardening — Inspiration Intelligence V2 (candidate)
+
+- Brief-first, deterministic metadata scoring with an itemized ledger: direct
+  topical evidence, capped private taste adjustment and explicit exclusion
+  penalties. Archived awards are NOT user-experience scores, and there is no
+  live screenshot analysis or web crawler.
+- Deduplicated and HTTP(S)-verified external reference metadata, name/source
+  sorting, saved-only filter and visible reasons. Cautious near-tie diversity
+  does not outrank strong requirements. No recommendation confidence percentages
+  or claims of empirically measured UX quality.
+- Saving an inspiration refreshes the related design board's reference choices
+  without overwriting unsaved cards. Personalization no longer affects
+  inspiration sorting while learning is disabled.
+- Node regression tests cover requirement/exclusion precedence, safe metadata,
+  duplicate-source rejection, deterministic ranking and bounded personalization.
+
+## Milestone 14B — GitHub draft-pull-request integration (candidate)
+
+The **Design handoff** tab now offers a one-time optional publishing action.
+Only signed-in Google account users may use it. The user provides:
+1. The exact repository in \`owner/repository\` form.
+2. A **fine-grained, short-lived GitHub token** with **Contents: Read and write**
+   and **Pull requests: Read and write** permission limited to that repository.
+3. Their explicit confirmation that the selected *approved-only* specification
+   may be uploaded to the named GitHub repository.
+
+The server verifies project ownership and board revision, generates approved-only
+Markdown, reads the target repository's default branch, creates a NEW dedicated
+branch and NEW file under \`frontline/handoffs/\`, and opens a **draft** PR.
+It never updates an existing file, merges a PR or persists tokens. Tokens are
+cleared from the browser form after the attempted operation. GitHub receives
+the approved project brief; do not publish confidential briefs to public
+repositories. A partial GitHub failure may leave a newly created branch; inspect
+the repository before retrying.
+
+**Not an OAuth account connection:** GitHub fine-grained token creation and
+granting those exact repository permissions are user-managed prerequisites.
+Persistent OAuth/App installation, automatic repository sync and GitHub token
+storage are not implemented. Tests mock all GitHub HTTP operations and verify
+request scoping; real-user GitHub publication still needs acceptance testing.
+
+## Milestone 14C — Figma editable local importer (candidate)
+
+The companion development plugin under \`integrations/figma/\` imports the
+approved-only JSON handoff into the currently open Figma file as editable
+frames, text and color swatches. Figma assigns a separate plugin ID when the
+user creates a local development plugin; follow the folder README to register
+it. The plugin requests **no network access**, does not copy third-party site
+assets, and does not touch other user layers. Figma itself stores the generated
+design notes in the chosen document. Node tests exercise plugin behavior with
+mock Figma APIs; actual Figma editor acceptance and publication are separate
+steps. This is not direct OAuth-based Figma API writing or faithful pixel-for-
+pixel reconstruction of external websites.
+
+## Milestone 15 — Installable PWA, mobile usability and multi-device safety (candidate)
+
+- Standard web manifest, scalable icons, service worker and browser-initiated
+  installation prompt (where supported). Browser options may differ; iOS
+  users can use Share → Add to Home Screen.
+- Public app shell and Vite's content-hashed static assets are eligible for
+  offline caching; **all /api/* and /auth/* requests are network-only** and no
+  personal projects, conversations, credentials or offline write queues enter
+  the service-worker cache. Offline mode is a read-only shell, not offline AI.
+- Improved responsive touch areas, safe-area insets, 100dvh composer handling,
+  keyboard input sizing and accessible connection-status messaging. Full
+  animations remain; reduced-motion preferences still take precedence.
+- Signed-in devices re-fetch account-scoped project summaries on reconnection,
+  focus or return to the tab. The current editor is never silently overwritten.
+  Workbench revision checks and same-origin tab signaling surface changes; the
+  user explicitly refreshes conflicting boards. A stable Google account and
+  persistent database are required for cross-device server sync. Guests remain
+  browser-cookie identities.
+- Full production acceptance still requires real Android/iOS installation and
+  offline/reconnect testing, a Google login on two devices, a developer-authorized
+  GitHub PR creation and an editable Figma import. Automated tests cannot prove
+  device-specific runtime behavior or external provider permissions.
+
+### Validation and release gate
+
+Run \`npm test\`, \`npm run evaluate:learning\`, and the Chromium/Firefox browser
+suite. After merging, the GitHub release workflow MUST confirm the exact new
+Render commit and run live guest smoke/browser checks. A successful pull-request
+CI run does not prove production has deployed. Earlier release checks observed
+Render still serving an old commit; resolve deployment configuration before
+claiming a new production release.

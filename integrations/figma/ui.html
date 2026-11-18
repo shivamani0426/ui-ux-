@@ -1,0 +1,47 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+*{box-sizing:border-box}body{font:13px/1.55 Inter,system-ui,sans-serif;margin:0;padding:20px;color:var(--figma-color-text,#16233b);
+background:var(--figma-color-bg,#fff)}h1{font-size:18px;margin:0 0 8px}p{font-size:12px;margin:0 0 13px}
+label{display:grid;gap:10px;font-weight:650;padding:16px;border:1px dashed #7186b4;border-radius:12px}
+input{max-width:100%;font:inherit}button{border:0;border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}#import{background:#4775d1;color:#fff}
+.actions{display:flex;gap:10px;margin-top:16px}#status{min-height:30px;color:var(--figma-color-text-secondary,#63758f);margin-top:12px}
+</style></head><body>
+<h1>Frontline approved design import</h1>
+<p>Choose a downloaded Frontline handoff JSON file. It will become editable Figma
+frames, text and swatches in the currently open file. This plugin has no network access.</p>
+<label>Approved design JSON <input id="file" type="file" accept=".json,application/json"/></label>
+<div id="status" role="status">No file selected.</div>
+<div class="actions"><button id="import" disabled>Import editable design</button>
+<button id="cancel">Cancel</button></div>
+<script>
+let payload=null;
+const file=document.getElementById('file'),status=document.getElementById('status');
+const button=document.getElementById('import');
+file.addEventListener('change',async()=>{
+ payload=null;button.disabled=true;status.textContent='Inspecting file…';
+ const chosen=file.files?.[0];
+ if(!chosen){status.textContent='No file selected.';return;}
+ if(chosen.size>70000){status.textContent='File exceeds 70 KB.';return;}
+ try{
+   const next=JSON.parse(await chosen.text());
+   if(next.format!=='frontline-design-handoff'||next.schemaVersion!==1||
+       !next.approved||!Array.isArray(next.selectedStyles))
+     throw Error('Choose a supported Frontline design handoff.');
+   payload=next;button.disabled=false;
+   status.textContent='Ready: '+String(next.project?.title||'Untitled').slice(0,80)+
+     '. Import adds new editable layers without deleting existing layers.';
+ }catch(e){status.textContent=e.message;}
+});
+button.addEventListener('click',()=>{
+ if(!payload)return;
+ button.disabled=true;status.textContent='Creating editable layers…';
+ parent.postMessage({pluginMessage:{type:'import',payload}},'*');
+});
+document.getElementById('cancel').addEventListener('click',()=>parent.postMessage({pluginMessage:{type:'cancel'}},'*'));
+onmessage=event=>{
+ const msg=event.data?.pluginMessage;
+ if(msg?.type==='error'){status.textContent=msg.message;button.disabled=false;}
+};
+</script></body></html>

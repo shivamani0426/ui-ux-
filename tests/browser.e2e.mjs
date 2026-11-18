@@ -159,6 +159,15 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await firstCard.getByRole('button',{name:'Save inspiration'}).click();
       await page.waitForFunction(()=>document.querySelector('.inspiration-saved-counter strong')?.textContent?.includes('1 saved'));
       assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Chosen inspiration should be saved');
+      // M08: evidence is visible, and filtering cannot expose unsaved references.
+      await page.locator('.inspiration-evidence summary').first().click();
+      assert.match(await page.locator('.inspiration-evidence').first().innerText(),/metadata/i);
+      await page.getByRole('checkbox',{name:'Saved only'}).check();
+      assert.equal(await page.locator('.inspiration-card').count(),1);
+      await page.getByRole('checkbox',{name:'Saved only'}).uncheck();
+      await page.getByRole('combobox',{name:'Sort design inspirations'}).selectOption('name');
+      assert.ok(await page.locator('.inspiration-card').count()>=10);
+      await page.getByRole('combobox',{name:'Sort design inspirations'}).selectOption('relevance');
       // M13: board, style comparison, checkpoint and nondestructive restore.
       const workbench=page.locator('.pw-workbench');
       await workbench.waitFor({timeout:10000});
@@ -175,6 +184,10 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       // M14A: a saved, approved card is required for a local-only export.
       await workbench.getByRole('button',{name:/Design handoff/}).click();
       await workbench.getByRole('list',{name:'Cards included in handoff'}).waitFor();
+      assert.match(await workbench.locator('.pw-figma').innerText(),/Editable Figma handoff/);
+      assert.match(await workbench.locator('.pw-github').innerText(),/Sign in with Google/);
+      assert.equal(await workbench.getByRole('button',{name:'Create draft pull request'}).count(),0,
+        'Guest browser must not display a privileged GitHub publishing form');
       assert.match(await workbench.locator('.pw-handoff-summary').innerText(),/Approved cards/);
       const markdownDownload=page.waitForEvent('download');
       await workbench.getByRole('button',{name:'Download Markdown'}).click();

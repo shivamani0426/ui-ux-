@@ -1,7 +1,7 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {ArrowLeftRight,BookOpen,Check,CheckCircle2,FolderKanban,
   GitCompareArrows,History,Layers3,Plus,RefreshCw,RotateCcw,Save,
-  ShieldCheck,Trash2,Download,FileJson,FileText,Copy} from 'lucide-react';
+  ShieldCheck,Trash2,Download,FileJson,FileText,Copy,GitPullRequest,ExternalLink} from 'lucide-react';
 import {buildDesignHandoff,designHandoffMarkdown,designHandoffFilename} from '../../design-handoff.mjs';
 import './ProjectWorkbench.css';
 
@@ -21,7 +21,7 @@ const stamp=value=>{
 
 /** Private board and checkpoint UI; never changes project chat or prompt history. */
 export default function ProjectWorkbench({
-  project,selected=[],onSelectedChange,api,notice,onWorkspaceChange,onRestore
+  project,selected=[],onSelectedChange,api,notice,onWorkspaceChange,onRestore,authenticated=false
 }){
   const [tab,setTab]=useState('board');
   const [workspace,setWorkspace]=useState(null);
@@ -36,6 +36,11 @@ export default function ProjectWorkbench({
   const [sourceId,setSourceId]=useState('');
   const [versionTitle,setVersionTitle]=useState('');
   const [comparison,setComparison]=useState(null);
+  const [remoteRevision,setRemoteRevision]=useState(null);
+  const [githubRepository,setGithubRepository]=useState('');
+  const [githubToken,setGithubToken]=useState('');
+  const [githubBusy,setGithubBusy]=useState(false);
+  const [publishedPr,setPublishedPr]=useState(null);
   const selectedKey=selected.join('|');
   const dirty=!!workspace&&(JSON.stringify(items)!==JSON.stringify(workspace.items)||
     JSON.stringify(selected)!==JSON.stringify(workspace.selectedStyles));
@@ -43,8 +48,16 @@ export default function ProjectWorkbench({
   const approvedItems=items.filter(item=>item.stage==='approved');
   const handoffReady=!!workspace&&!dirty&&!loading&&!busy&&approvedItems.length>0;
 
+  const announceRevision=revision=>{
+    try{
+      const channel=new BroadcastChannel('frontline-workspace-revisions');
+      channel.postMessage({type:'workspace-updated',projectId:project.id,revision});
+      channel.close();
+    }catch{/* BroadcastChannel is optional; server revision checks still apply. */}
+  };
   useEffect(()=>{
     let cancelled=false;
+    setRemoteRevision(null);
     setLoading(true);setError('');setWorkspace(null);setItems([]);
     setComparison(null);setTab('board');
     api('/api/projects/'+encodeURIComponent(project.id)+'/workspace').then(data=>{
@@ -56,6 +69,56 @@ export default function ProjectWorkbench({
       .finally(()=>{if(!cancelled)setLoading(false);});
     return ()=>{cancelled=true};
   },[project.id]);
+  // Refresh just the curated reference choices; never reset unsaved board cards.
+  useEffect(()=>{
+    let active=true;
+    const refreshSources=event=>{
+      if(event?.detail?.projectId!==project.id)return;
+      api('/api/projects/'+encodeURIComponent(project.id)+'/workspace')
+        .then(data=>{if(active)setSavedSources(data.savedInspirations||[]);})
+        .catch(()=>{});
+    };
+    window.addEventListener('frontline:inspiration-change',refreshSources);
+    return ()=>{active=false;window.removeEventListener('frontline:inspiration-change',refreshSources)};
+  },[project.id,api]);
+
+  // Multi-device change detection is read-only and never replaces unsaved
+  // local edits. Each user explicitly chooses when to refresh.
+  useEffect(()=>{
+    if(!workspace)return;
+    let alive=true,channel=null;
+    const check=()=>{
+      if(document.visibilityState==='hidden'||navigator.onLine===false)return;
+      api('/api/projects/'+encodeURIComponent(project.id)+'/workspace').then(result=>{
+        if(alive&&result.workspace?.revision>workspace.revision)
+          setRemoteRevision(result.workspace.revision);
+      }).catch(()=>{});
+    };
+    const onVisible=()=>{if(document.visibilityState==='visible')check()};
+    const onMessage=event=>{
+      if(event.data?.type==='workspace-updated'&&
+        event.data?.projectId===project.id&&
+        event.data?.revision>workspace.revision)
+        setRemoteRevision(event.data.revision);
+    };
+    try{
+      if('BroadcastChannel' in window){
+        channel=new BroadcastChannel('frontline-workspace-revisions');
+        channel.onmessage=onMessage;
+      }
+    }catch{channel=null;}
+    window.addEventListener('focus',check);
+    window.addEventListener('online',check);
+    window.addEventListener('frontline:workspace-maybe-updated',check);
+    document.addEventListener('visibilitychange',onVisible);
+    return ()=>{
+      alive=false;channel?.close();
+      window.removeEventListener('focus',check);
+      window.removeEventListener('online',check);
+      window.removeEventListener('frontline:workspace-maybe-updated',check);
+      document.removeEventListener('visibilitychange',onVisible);
+    };
+  },[project.id,workspace?.revision,api]);
 
   const refresh=async()=>{
     if(busy)return;
@@ -64,6 +127,7 @@ export default function ProjectWorkbench({
     try{
       const data=await api('/api/projects/'+encodeURIComponent(project.id)+'/workspace');
       setWorkspace(data.workspace);setItems(data.workspace.items||[]);
+      setRemoteRevision(null);
       setSavedSources(data.savedInspirations||[]);
       onSelectedChange(data.workspace.selectedStyles||[]);
       setComparison(null);
@@ -87,6 +151,7 @@ export default function ProjectWorkbench({
         })
       });
       setWorkspace(result.workspace);setItems(result.workspace.items);
+      setRemoteRevision(null);announceRevision(result.workspace.revision);
       onWorkspaceChange?.(result.workspace);setComparison(null);
       notice('Your design board was saved privately.');
     }catch(e){fail(e)}
@@ -116,6 +181,7 @@ export default function ProjectWorkbench({
         method:'POST',body:JSON.stringify({revision:workspace.revision,title:versionTitle.trim()})
       });
       setWorkspace(result.workspace);setVersionTitle('');setComparison(null);
+      setRemoteRevision(null);announceRevision(result.workspace.revision);
       onWorkspaceChange?.(result.workspace);
       notice('Design checkpoint saved. Previous project chats and prompts remain untouched.');
     }catch(e){fail(e)}
@@ -141,6 +207,7 @@ export default function ProjectWorkbench({
         method:'POST',body:JSON.stringify({revision:workspace.revision})
       });
       setWorkspace(response.workspace);setItems(response.workspace.items);
+      setRemoteRevision(null);announceRevision(response.workspace.revision);
       onSelectedChange(response.workspace.selectedStyles);
       onRestore?.(response.recommendations);
       setComparison(null);
@@ -172,6 +239,26 @@ export default function ProjectWorkbench({
     document.body.appendChild(anchor);anchor.click();anchor.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     notice('Approved design handoff downloaded locally. Review it before sharing.');
+  };
+  const publishGitHub=async(event)=>{
+    event.preventDefault();
+    if(!handoffReady||!authenticated||githubBusy)return;
+    if(!/^[a-zA-Z0-9-]+\/[a-zA-Z0-9_.-]+$/.test(githubRepository.trim())){
+      notice('Use an exact GitHub owner/repository name.');return;
+    }
+    if(!window.confirm('Publish ONLY approved decisions to '+githubRepository.trim()+
+      ' as a draft GitHub pull request? This writes a new branch and Markdown file.'))return;
+    setGithubBusy(true);setPublishedPr(null);
+    try{
+      const response=await api('/api/projects/'+encodeURIComponent(project.id)+'/github-handoff',{
+        method:'POST',body:JSON.stringify({
+          repository:githubRepository.trim(),token:githubToken,revision:workspace.revision
+        })
+      });
+      setPublishedPr(response);
+      notice('Draft GitHub pull request created. Review it before merging.');
+    }catch(e){notice('GitHub publish not completed: '+e.message)}
+    finally{setGithubToken('');setGithubBusy(false)}
   };
   const copyHandoff=async()=>{
     const handoff=prepareHandoff();
@@ -219,6 +306,11 @@ export default function ProjectWorkbench({
         <History size={15}/> Checkpoints <span className="pw-tab-count">{versions.length}</span>
       </button>
     </div>
+    {remoteRevision!==null&&remoteRevision>workspace?.revision&&
+      <div className="pw-device-warning" role="status">
+        This project was updated on another tab or device. Your current edits are preserved.
+        <button type="button" onClick={refresh} disabled={busy}>Review latest saved board</button>
+      </div>}
     {error&&<div className="pw-error" role="alert">
       {error}{conflict&&<button type="button" onClick={refresh}>Review latest board</button>}
     </div>}
@@ -361,6 +453,46 @@ export default function ProjectWorkbench({
               onClick={()=>downloadHandoff('json')}><FileJson size={15}/> Download JSON</button>
             <button type="button" disabled={!handoffReady}
               onClick={copyHandoff}><Copy size={15}/> Copy Markdown</button>
+          </div>
+          <div className="pw-github">
+            <h5><GitPullRequest size={17}/> Publish as a GitHub draft PR</h5>
+            <p>Optional account integration. Uses a one-time fine-grained token
+              with Contents and Pull requests write access to just your chosen repository.
+              The token is sent only to the Frontline server for this operation and is
+              not saved. GitHub may retain the published design specification.</p>
+            {!authenticated?<p role="status">Sign in with Google before publishing a project to GitHub.</p>:
+              <form onSubmit={publishGitHub}>
+                <label>Target repository
+                  <input value={githubRepository} maxLength={140}
+                    onChange={e=>setGithubRepository(e.target.value)}
+                    placeholder="owner/repository" autoComplete="off"
+                    aria-label="GitHub target repository" required/>
+                </label>
+                <label>One-time fine-grained GitHub token
+                  <input value={githubToken} type="password" maxLength={500}
+                    onChange={e=>setGithubToken(e.target.value)}
+                    placeholder="Paste a scoped token for this publish only" autoComplete="off"
+                    aria-label="One-time GitHub access token" required/>
+                </label>
+                <button type="submit" disabled={!handoffReady||githubBusy||githubToken.length<20}>
+                  <GitPullRequest size={15}/>{githubBusy?'Publishing…':'Create draft pull request'}
+                </button>
+              </form>}
+            {publishedPr&&<p role="status">Created draft PR:
+              <a href={publishedPr.pullRequestUrl} target="_blank" rel="noopener noreferrer">
+                Review on GitHub <ExternalLink size={13}/></a>
+            </p>}
+          </div>
+          <div className="pw-figma">
+            <h5>Editable Figma handoff</h5>
+            <p>Download JSON and import it with the Frontline Figma development plugin.
+              This creates editable frames, colors and labeled decision cards in your
+              selected Figma file. It does not copy third-party site layouts or send
+              a private chat transcript to Figma.</p>
+            <a href="https://github.com/shivamani0426/ui-ux-/tree/main/integrations/figma"
+              target="_blank" rel="noopener noreferrer">
+              Figma plugin setup instructions <ExternalLink size={13}/>
+            </a>
           </div>
           <p className="pw-handoff-privacy"><ShieldCheck size={15}/>
             Nothing is uploaded to GitHub, Figma or any new provider. These exports contain

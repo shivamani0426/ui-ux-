@@ -1,6 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {ArrowUp, Check, CheckCheck, ChevronLeft, ChevronRight, Copy, ExternalLink, Heart, Layers3, Menu, Moon, Plus, RotateCcw, Search, ShieldCheck, Sparkles, Sun, X} from 'lucide-react';
+import {ArrowUp, Check, CheckCheck, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Heart, Layers3, Menu, Moon, Plus, RotateCcw, Search, ShieldCheck, Sparkles, Sun, WifiOff, X} from 'lucide-react';
 import TechText from './components/TechText.jsx';
 import StarBorder from './components/StarBorder.jsx';
 import FrontlineLanding from './components/FrontlineLanding.jsx';
@@ -14,6 +14,7 @@ import InspirationExplorer from './components/InspirationExplorer.jsx';
 import DesignPromptPanel from './components/DesignPromptPanel.jsx';
 import ProjectIntelligencePanel from './components/ProjectIntelligencePanel.jsx';
 import ProjectWorkbench from './components/ProjectWorkbench.jsx';
+import usePwaExperience from './hooks/usePwaExperience.js';
 import MessageMarkdown from './components/MessageMarkdown.jsx';
 import LearningPreferencesPanel from './components/LearningPreferencesPanel.jsx';
 import './styles.css';
@@ -37,6 +38,8 @@ const starterNotes=[
 const safeRead=(key,fallback)=>{try{return localStorage.getItem(key)||fallback}catch{return fallback}};
 
 function App(){
+  const pwa=usePwaExperience();
+  const syncAttemptRef=useRef(0);
   const [theme,setTheme]=useState(()=>safeRead('uic-theme','light')==='dark'?'dark':'light');
   const [menuOpen,setMenuOpen]=useState(false);
   const [panel,setPanel]=useState('menu');
@@ -115,6 +118,52 @@ function App(){
     });
     return ()=>{clearTimeout(scrollTimer.current);clearTimeout(toastTimer.current);clearTimeout(portalTimer.current);clearTimeout(portalFinishTimer.current);clearTimeout(gateTimer.current);};
   },[]);
+
+  // M15: same-account project summaries reconcile on focus, reconnection and
+  // a cross-tab change signal. Never overwrite a live editor or unsaved board.
+  useEffect(()=>{
+    if(!authState.authenticated)return;
+    let disposed=false;
+    let channel=null;
+    const sync=async(force=false)=>{
+      if(disposed||document.visibilityState==='hidden'||navigator.onLine===false)return;
+      const now=Date.now();
+      if(now-syncAttemptRef.current<(force?1500:45000))return;
+      syncAttemptRef.current=now;
+      try{
+        const [list,summary]=await Promise.all([
+          api('/api/projects'),api('/api/workspace/overview')
+        ]);
+        if(disposed)return;
+        setProjects(list.projects||[]);
+        setNextProjectOffset(list.nextOffset??null);
+        setWorkspaceOverview(summary);
+        setLastSynced(Date.now());
+        window.dispatchEvent(new Event('frontline:workspace-maybe-updated'));
+      }catch{/* Keep existing data and manual retry; never claim a successful sync. */}
+    };
+    const onFocus=()=>sync();
+    const onVisible=()=>{if(document.visibilityState==='visible')sync()};
+    const onOnline=()=>sync(true);
+    try{
+      if('BroadcastChannel' in window){
+        channel=new BroadcastChannel('frontline-workspace-revisions');
+        channel.onmessage=event=>{
+          if(event.data?.type==='workspace-updated')sync(true);
+        };
+      }
+    }catch{channel=null;}
+    window.addEventListener('focus',onFocus);
+    window.addEventListener('online',onOnline);
+    document.addEventListener('visibilitychange',onVisible);
+    return ()=>{
+      disposed=true;channel?.close();
+      window.removeEventListener('focus',onFocus);
+      window.removeEventListener('online',onOnline);
+      document.removeEventListener('visibilitychange',onVisible);
+    };
+  },[authState.authenticated]);
+
   // Only tick while a user-visible, rate-limited retry button is cooling down.
   // This does not make network requests or persist any API credentials.
   useEffect(()=>{
@@ -479,6 +528,9 @@ function App(){
       onBegin={focusChat} onMode={enterLandingMode}
       onLogin={()=>enterGateway('login')} onSignup={startGoogleSignup}/>}
     {isLanding&&portalState!=='done'&&<FrontlineOrbIntro/>}
+    {!pwa.online&&<div className="fl-network-banner" role="status">
+      <WifiOff size={15}/> Offline: public app shell may be available, but AI and private workspace edits require a connection.
+    </div>}
     <main className={'scene '+(active?'conversation-scene':'landing-scene')}>
       {active&&<section className="conversation" aria-label="Design conversation">
         <div className="conversation-inner">
@@ -537,7 +589,7 @@ function App(){
             </div>
             <ProjectWorkbench key={project.id} project={project}
               selected={selected} onSelectedChange={setSelected} api={api}
-              notice={notice} onWorkspaceChange={saveWorkbenchState}
+              notice={notice} authenticated={authState.authenticated} onWorkspaceChange={saveWorkbenchState}
               onRestore={restoreWorkbench}/>
             <div className="result-footer">
               <button className="text-action" disabled={!selected.length} onClick={()=>{setViewPreview(v=>!v);setMobilePreview(false)}}><Layers3 size={15}/>{viewPreview?'Hide fusion preview':'Preview selected design'} <ChevronRight size={14}/></button>
@@ -625,6 +677,14 @@ function App(){
             :<button onClick={()=>{setMenuOpen(false);enterGateway('login')}}>
               <ShieldCheck size={17}/> Sign in to sync designs <ChevronRight size={15}/>
             </button>}
+            <p className="menu-eyebrow">THIS DEVICE</p>
+            {pwa.installed?<p className="menu-fineprint">Frontline is installed on this device.</p>:
+              pwa.installAvailable?<button type="button" onClick={async()=>{
+                const installed=await pwa.install();
+                if(!installed)notice('You can also install Frontline from your browser menu.');
+              }}><Download size={17}/> Install Frontline app <ChevronRight size={15}/></button>:
+              <p className="menu-fineprint">To install: use your browser's Install app option,
+                or on iPhone open Share → Add to Home Screen.</p>}
             <p className="menu-eyebrow">APPEARANCE</p>
             <button onClick={()=>setTheme(t=>t==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>} Switch to {theme==='dark'?'light':'dark'} theme <span className="theme-chip">{theme==='dark'?'Dark':'Light'}</span></button>
             <p className="menu-fineprint">{config.persistent?'Project memory is connected':'Guest preview · project memory resets on server restart'}<br/>{config.aiEnabled?'AI provider connected':'Rule-based design guidance · AI generation not yet connected'}</p>
