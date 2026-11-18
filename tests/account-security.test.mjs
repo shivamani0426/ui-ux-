@@ -72,7 +72,13 @@ test('10D recently verified Google identity is HMAC-signed, short-lived and subj
     }
     throw Error('Unexpected '+url);
   },{adminKey:admin,signingSecret:signing});
-  const start=response();await auth.start({headers:{cookie:''}},start);
+  const reverify=response();
+  await auth.start({url:'/auth/google/start?reauth=1',headers:{cookie:''}},reverify);
+  assert.equal(new URL(reverify.location).searchParams.get('prompt'),'select_account',
+    'Sensitive actions must ask Google to select the identity again');
+  const start=response();await auth.start({url:'/auth/google/start',headers:{cookie:''}},start);
+  assert.equal(new URL(start.location).searchParams.get('prompt'),null,
+    'Normal login should preserve the existing frictionless Google experience');
   const callback=response();
   await auth.callback({url:'/auth/callback?code=valid',headers:{cookie:cookies(start)}},callback,async()=>{});
   assert.equal(callback.location,'/studio?auth=connected');
