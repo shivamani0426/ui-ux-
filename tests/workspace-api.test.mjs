@@ -132,7 +132,11 @@ test('13: design board checkpoints are private, durable and non-destructive acro
       'Restoring a design checkpoint must not remove saved inspirations');
     const listing=await alice('/api/projects');
     assert.equal(listing.status,200);
-    assert.equal(listing.body.projects.find(p=>p.id===id).recommendations._workspace.revision,4);
+    const listedBoard=listing.body.projects.find(p=>p.id===id).recommendations._workspace;
+    assert.equal(listedBoard.itemCount,2);
+    assert.equal(listedBoard.versionCount,1);
+    assert.ok(!('versions' in listedBoard),
+      'Project lists must not duplicate full checkpoint snapshots for all projects');
     assert.equal((await bob(root)).status,404);
     assert.equal((await alice('/api/projects/'+other.body.project.id+'/workspace')).status,404);
 
@@ -156,6 +160,11 @@ test('13: design board checkpoints are private, durable and non-destructive acro
     assert.equal(maxSaved.status,200,
       '24 valid cards and 360-character notes must fit the scoped board request limit');
     assert.equal(maxSaved.body.workspace.items.length,24);
+    const maxInList=(await alice('/api/projects')).body.projects.find(
+      p=>p.id===maxProject.body.project.id);
+    assert.equal(maxInList.recommendations._workspace.itemCount,24);
+    assert.ok(!('items' in maxInList.recommendations._workspace),
+      'A full board must be omitted from lightweight project-list results');
     // Two concurrent saves using the same revision must produce one winner,
     // not silent last-write-wins data loss (in-memory and PostgreSQL row locks).
     const competing=await Promise.all([
