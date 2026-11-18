@@ -33,10 +33,17 @@ const ruleStatus=(text,re)=>{
 };
 export const inferProjectCategory=brief=>{
   const text=clean(brief);
-  const choices=categories.map(([name,re],order)=>({
-    name,order,status:ruleStatus(text,re),
-    evidence:[...text.matchAll(new RegExp(re.source,'gi'))].length
-  })).filter(c=>c.status&&!c.status.excluded)
+  const choices=categories.map(([name,re],order)=>{
+    const matches=[...text.matchAll(new RegExp(re.source,'gi'))];
+    return {
+      name,order,status:ruleStatus(text,re),
+      // Generic words like "dashboard" and "analytics" are weak SaaS clues;
+      // they must not overpower an explicit AI, healthcare or school domain.
+      evidence:matches.reduce((score,m)=>score+
+        (name==='SaaS'&&/^(dashboard|analytics)$/i.test(m[0])?.35:
+          name==='SaaS'?2.5:2.2),0)
+    };
+  }).filter(c=>c.status&&!c.status.excluded)
     .sort((a,b)=>b.evidence-a.evidence||a.order-b.order);
   return choices[0]?.name||'Digital product';
 };
