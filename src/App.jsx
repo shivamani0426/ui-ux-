@@ -13,6 +13,7 @@ import FrontlineMark from './components/FrontlineMark.jsx';
 import InspirationExplorer from './components/InspirationExplorer.jsx';
 import DesignPromptPanel from './components/DesignPromptPanel.jsx';
 import ProjectIntelligencePanel from './components/ProjectIntelligencePanel.jsx';
+import ProjectWorkbench from './components/ProjectWorkbench.jsx';
 import MessageMarkdown from './components/MessageMarkdown.jsx';
 import LearningPreferencesPanel from './components/LearningPreferencesPanel.jsx';
 import './styles.css';
@@ -338,13 +339,27 @@ function App(){
   const openProject=async p=>{
     try{
       const r=await api('/api/projects/'+encodeURIComponent(p.id));
-      setProject(r.project);setMessages(r.project.messages||[]);setSelected(styleKeys);
+      setProject(r.project);setMessages(r.project.messages||[]);
+      setSelected(Array.isArray(r.project.recommendations?._workspace?.selectedStyles)?
+        r.project.recommendations._workspace.selectedStyles:styleKeys);
       setMode('chat');routeTo('/studio');setMenuOpen(false);setViewPreview(false);setBrief('');
       window.scrollTo({top:0,behavior:'instant'});
     }catch(e){notice(e.message);}
   };
   const toggleStyle=id=>{
     setSelected(current=>current.includes(id)?current.filter(s=>s!==id):[...current,id]);
+  };
+  const saveWorkbenchState=workspace=>{
+    setProject(current=>current?{...current,
+      recommendations:{...current.recommendations,_workspace:workspace}}:current);
+    setProjects(previous=>previous.map(item=>item.id===project?.id?{...item,
+      recommendations:{...item.recommendations,_workspace:workspace}}:item));
+  };
+  const restoreWorkbench=nextRecommendations=>{
+    setProject(current=>current?{...current,recommendations:nextRecommendations}:current);
+    setProjects(previous=>previous.map(item=>item.id===project?.id?
+      {...item,recommendations:nextRecommendations}:item));
+    setViewPreview(false);
   };
   const refineIntelligence=async refinement=>{
     if(!project||intelligenceBusy||working)return;
@@ -520,6 +535,10 @@ function App(){
                 <span className="select-check">{selected.includes(d.id)?<Check size={13}/>:null}</span>
               </button>)}
             </div>
+            <ProjectWorkbench key={project.id} project={project}
+              selected={selected} onSelectedChange={setSelected} api={api}
+              notice={notice} onWorkspaceChange={saveWorkbenchState}
+              onRestore={restoreWorkbench}/>
             <div className="result-footer">
               <button className="text-action" disabled={!selected.length} onClick={()=>{setViewPreview(v=>!v);setMobilePreview(false)}}><Layers3 size={15}/>{viewPreview?'Hide fusion preview':'Preview selected design'} <ChevronRight size={14}/></button>
               <button className="text-action" disabled={!selected.length} onClick={copyPrompt}><Copy size={15}/> Copy build prompt</button>

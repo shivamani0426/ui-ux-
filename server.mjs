@@ -11,6 +11,8 @@ import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {derivePrivateLearning,contextForCategory,publicLearningSummary,
   verifiedCohortBand,VERIFIED_COHORT_MIN,summarizeVerifiedPatterns} from './contextual-learning.mjs';
+import {normalizeWorkspace,validateBoardUpdate,requireRevision,withUpdatedBoard,
+  addCheckpoint,restoreCheckpoint,compareCheckpoint} from './project-workspace.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
   resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
@@ -209,19 +211,72 @@ async function getProject(owner,id){
   return r.rows[0]||null;
 }
 async function updateRecommendations(owner,id,recommendations){
+  // Intelligence refresh must preserve the independent user's design board.
+  // This is done atomically even when two devices save at the same time.
   if(!pg){
     const entry=live.get(id);
-    if(!entry||entry.owner!==owner)return false;
-    entry.recommendations=recommendations;
+    if(!entry||entry.owner!==owner)return null;
+    entry.recommendations={...recommendations,
+      _workspace:entry.recommendations?._workspace||{}};
     entry.updatedAt=new Date().toISOString();
     live.set(id,entry);
-    return true;
+    return entry.recommendations;
   }
-  const result=await pg.query(
-    'UPDATE frontline.uic_projects SET recommendation=$1,updated_at=NOW() WHERE id=$2 AND visitor_id=$3',
-    [JSON.stringify(recommendations),id,owner]
-  );
-  return result.rowCount===1;
+  const result=await pg.query(`UPDATE frontline.uic_projects SET
+    recommendation=jsonb_set($1::jsonb,'{_workspace}',
+      COALESCE(recommendation->'_workspace','{}'::jsonb),true),
+    updated_at=NOW()
+    WHERE id=$2 AND visitor_id=$3 RETURNING recommendation AS recommendations`,
+    [JSON.stringify(recommendations),id,owner]);
+  return result.rows[0]?.recommendations||null;
+}
+// One owner-scoped row-lock/revision gate for every board and checkpoint
+// mutation. No extra public tables, privileged database keys or chat rewrites.
+const inMemoryWorkspaceLocks=new Map();
+async function modifyProjectWorkspace(owner,id,revision,build){
+  const readAndBuild=async project=>{
+    if(!project)return null;
+    const old=normalizeWorkspace(project.recommendations?._workspace);
+    requireRevision(old,revision);
+    const proposal=await build(project,old);
+    if(!proposal?.workspace)throw Object.assign(new Error('Invalid workspace edit.'),{status:400});
+    const updated=proposal.recommendation||project.recommendations||{};
+    return {...project,recommendations:{...updated,_workspace:proposal.workspace},
+      workspace:proposal.workspace};
+  };
+  if(!pg){
+    const key=owner+':'+id;
+    const previous=inMemoryWorkspaceLocks.get(key)||Promise.resolve();
+    let release;
+    const pending=new Promise(resolve=>{release=resolve});
+    inMemoryWorkspaceLocks.set(key,pending);
+    await previous;
+    try{
+      const project=live.get(id);
+      const next=await readAndBuild(project?.owner===owner?project:null);
+      if(!next)return null;
+      next.updatedAt=new Date().toISOString();
+      const {workspace:responseOnly,...stored}=next;
+      live.set(id,stored);
+      return next;
+    }finally{
+      release();
+      if(inMemoryWorkspaceLocks.get(key)===pending)inMemoryWorkspaceLocks.delete(key);
+    }
+  }
+  const client=await pg.connect();
+  try{
+    await client.query('BEGIN');
+    const row=await client.query(`SELECT id,title,brief,recommendation AS recommendations
+      FROM frontline.uic_projects WHERE id=$1 AND visitor_id=$2 FOR UPDATE`,[id,owner]);
+    const next=await readAndBuild(row.rows[0]);
+    if(!next){await client.query('ROLLBACK');return null;}
+    await client.query(`UPDATE frontline.uic_projects SET recommendation=$1,updated_at=NOW()
+      WHERE id=$2 AND visitor_id=$3`,[JSON.stringify(next.recommendations),id,owner]);
+    await client.query('COMMIT');
+    return next;
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}
+  finally{client.release();}
 }
 async function updateMessages(owner,id,messages){
   if(!pg){const p=live.get(id);if(p?.owner===owner){p.messages=messages;p.updatedAt=new Date().toISOString();live.set(id,p);}return;}
@@ -230,18 +285,34 @@ async function updateMessages(owner,id,messages){
 // Paginate owner-scoped history so accounts with more than 50 conversations
 // can actually reach their full history without fetching every chat message.
 const PROJECT_PAGE_SIZE=50;
+function compactRecommendationForList(value){
+  const rec=value&&typeof value==='object'?value:{};
+  const board=normalizeWorkspace(rec._workspace);
+  // A dashboard only needs counts; never send 12 stored full board snapshots
+  // for every item in a 50-project page.
+  return {...rec,_workspace:{itemCount:board.items.length,
+    versionCount:board.versions.length}};
+}
 async function listProjects(owner,offset=0){
   if(!pg){
-    const mine=[...live.values()].filter(x=>x.owner===owner).reverse().map(({owner:_,...p})=>({
-      ...p,updatedAt:p.updatedAt||p.createdAt,
-      messageCount:p.messages?.length||0,
+    const mine=[...live.values()].filter(x=>x.owner===owner).reverse().map(({owner:_,messages,...p})=>({
+      ...p,recommendations:compactRecommendationForList(p.recommendations),
+      updatedAt:p.updatedAt||p.createdAt,
+      messageCount:messages?.length||0,
       inspirationCount:memorySelections.get(owner+':'+p.id)?.size||0,
       promptCount:[...finalizedModes].filter(k=>k.startsWith(owner+':'+p.id+':')).length
     }));
     return {projects:mine.slice(offset,offset+PROJECT_PAGE_SIZE),
       nextOffset:offset+PROJECT_PAGE_SIZE<mine.length?offset+PROJECT_PAGE_SIZE:null};
   }
-  const r=await pg.query(`SELECT p.id,p.title,p.brief,p.recommendation AS recommendations,
+  const r=await pg.query(`SELECT p.id,p.title,p.brief,
+    (COALESCE(p.recommendation,'{}'::jsonb)-'_workspace') ||
+      jsonb_build_object('_workspace',jsonb_build_object(
+        'itemCount',CASE WHEN jsonb_typeof(p.recommendation #> '{_workspace,items}')='array'
+          THEN jsonb_array_length(p.recommendation #> '{_workspace,items}') ELSE 0 END,
+        'versionCount',CASE WHEN jsonb_typeof(p.recommendation #> '{_workspace,versions}')='array'
+          THEN jsonb_array_length(p.recommendation #> '{_workspace,versions}') ELSE 0 END
+      )) AS recommendations,
     p.created_at AS "createdAt",p.updated_at AS "updatedAt",
     jsonb_array_length(p.messages)::int AS "messageCount",
     (SELECT COUNT(*)::int FROM frontline.reference_selections s
@@ -547,12 +618,16 @@ function cookie(req,res){
   }
   return id;
 }
-async function readBody(req){
+async function readBody(req,limit=MAX_BODY){
   // Cookie-authenticated writes must be JSON. Browsers cannot silently submit
   // this content type from a cross-site HTML form.
   if(String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase()!=='application/json')
     throw Object.assign(new Error('Use application/json for API writes.'),{status:415});
-  let buff='';for await(const part of req){buff+=part;if(buff.length>MAX_BODY)throw Object.assign(new Error('Request too large'),{status:413});}
+  let buff='';for await(const part of req){
+    buff+=part;
+    if(Buffer.byteLength(buff,'utf8')>limit)
+      throw Object.assign(new Error('Request too large'),{status:413});
+  }
   try{return JSON.parse(buff||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
 }
 function trustedMutationOrigin(req){
@@ -840,6 +915,77 @@ const server=http.createServer(async(req,res)=>{
         }
         return json(res,405,{error:'Method not allowed'});
       }
+      // M13: private visual board and bounded, manually named checkpoints.
+      const boardRoute=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/workspace$/);
+      if(boardRoute){
+        const id=boardRoute[1];
+        if(req.method==='GET'){
+          const p=await getProject(owner,id);
+          if(!p)return json(res,404,{error:'Project not found'});
+          const [selected,library]=await Promise.all([selectionIds(owner,id),listReferences()]);
+          return json(res,200,{projectId:id,workspace:normalizeWorkspace(p.recommendations?._workspace),
+            refinement:p.recommendations?.refinement||'',
+            comparisons:p.recommendations?.comparison||[],
+            savedInspirations:library.filter(ref=>selected.includes(ref.id))
+              .map(ref=>({id:ref.id,name:ref.name,site:ref.site,styles:ref.styles}))});
+        }
+        if(req.method!=='PUT')return json(res,405,{error:'Method not allowed'});
+        // Only the bounded board route needs more room for 24 cards with
+        // short notes. Every other write retains the original 12 KB limit.
+        const body=await readBody(req,24_000);
+        const catalogue=new Set((await listReferences()).map(ref=>ref.id));
+        const update=validateBoardUpdate(body,{referenceIds:catalogue});
+        const next=await modifyProjectWorkspace(owner,id,update.revision,
+          async(project,workspace)=>({workspace:withUpdatedBoard(workspace,update)}));
+        if(!next)return json(res,404,{error:'Project not found'});
+        return json(res,200,{projectId:id,workspace:next.workspace});
+      }
+      const versionsCreate=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/workspace\/versions$/);
+      if(versionsCreate){
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        const id=versionsCreate[1],body=await readBody(req);
+        const next=await modifyProjectWorkspace(owner,id,body.revision,
+          async(project,workspace)=>({workspace:addCheckpoint(workspace,{
+            revision:body.revision,title:body.title,
+            refinement:project.recommendations?.refinement||'',
+            id:crypto.randomUUID(),now:new Date().toISOString()
+          })}));
+        if(!next)return json(res,404,{error:'Project not found'});
+        return json(res,201,{projectId:id,workspace:next.workspace});
+      }
+      const versionAction=pathname.match(
+        /^\/api\/projects\/([a-f0-9-]{36})\/workspace\/versions\/([a-zA-Z0-9_-]{1,80})\/(compare|restore)$/);
+      if(versionAction){
+        const [,id,versionId,action]=versionAction;
+        if(action==='compare'){
+          if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
+          const p=await getProject(owner,id);
+          if(!p)return json(res,404,{error:'Project not found'});
+          return json(res,200,{comparison:compareCheckpoint(
+            normalizeWorkspace(p.recommendations?._workspace),
+            versionId,p.recommendations?.refinement||'')});
+        }
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        const body=await readBody(req);
+        const project=await getProject(owner,id);
+        if(!project)return json(res,404,{error:'Project not found'});
+        // Prefetch static catalogue and current private preferences outside the
+        // row lock. A revision conflict still rejects a stale restoration.
+        const [prefs,library]=await Promise.all([
+          recommendationPreferences(owner,project.brief,id),listReferences()]);
+        const next=await modifyProjectWorkspace(owner,id,body.revision,
+          async(current,workspace)=>{
+            const restored=restoreCheckpoint(workspace,{
+              revision:body.revision,versionId,now:new Date().toISOString()});
+            return {workspace:restored.workspace,
+              recommendation:recommend(current.brief,prefs,library,
+                {refinement:restored.refinement})};
+          });
+        if(!next)return json(res,404,{error:'Project not found'});
+        return json(res,200,{projectId:id,workspace:next.workspace,
+          recommendations:next.recommendations,
+          note:'Board and design refinement restored. Original brief, chat, prior prompts and all checkpoints were kept.'});
+      }
       const intelligenceMatch=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/intelligence$/);
       if(intelligenceMatch){
         const id=intelligenceMatch[1],project=await getProject(owner,id);
@@ -855,7 +1001,7 @@ const server=http.createServer(async(req,res)=>{
         const next=recommend(project.brief,prefs,await listReferences(),{refinement});
         const stored=await updateRecommendations(owner,id,next);
         if(!stored)return json(res,404,{error:'Project not found'});
-        return json(res,200,{project:{...project,recommendations:next},decision:next.decision});
+        return json(res,200,{project:{...project,recommendations:stored},decision:next.decision});
       }
       const designMatch=new URL(req.url,'http://localhost').pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/design-prompt$/);
       if(designMatch){
@@ -911,7 +1057,9 @@ const server=http.createServer(async(req,res)=>{
           // private history and approved selections are never overwritten.
           const recommendations=recommend(p.brief,prefs,await listReferences(),
             {refinement:p.recommendations?.refinement||''});
-          return json(res,200,{project:{...p,recommendations}});
+          return json(res,200,{project:{...p,recommendations:{
+            ...recommendations,_workspace:p.recommendations?._workspace||{}
+          }}});
         }
         if(req.method==='POST'&&action==='/messages'){
           const b=await readBody(req);if(!validateText(b.message,2,1200))return json(res,400,{error:'Message must be 2–1,200 characters.'});

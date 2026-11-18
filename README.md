@@ -460,3 +460,58 @@ sparse data, repeated and reversed feedback, category separation, bounded
 adjustments, manual pause/reset, aggregate cohort privacy, and full UI flows.
 Synthetic passing tests are **not** real-world recommendation accuracy,
 usability validation, statistical confidence, or AI-model training.
+
+
+## Milestone 13 — Advanced Design Workspace
+
+The existing Select UI/UX, Generate UI/UX and Design Fusion journeys now
+include a **Design Workbench** in the open project. There are three views:
+
+- **Design board:** Organize suggested project pages, decisions and curated
+  inspiration links into Ideas / Explore / Approved. Add optional short notes
+  and move cards through explicit controls usable on mobile or with a keyboard.
+  Save the board to persist the selected design directions.
+- **Compare styles:** A side-by-side assessment of the three original
+  directions, including layout, typography, motion, relative heuristic fit,
+  strengths and tradeoffs. These are *comparisons*, not measured usability or
+  accessibility evaluations. Style choices stay shared with the existing
+  Generate and Design Fusion tools.
+- **Checkpoints:** Manually create a named snapshot of the design board,
+  selected styles and the currently approved project refinement. Review
+  changes from the checkpoint, then deliberately restore a chosen snapshot.
+  Restoring recalculates the design recommendation from the original project
+  brief plus the saved refinement; original conversation messages, curated
+  references, generated prompts, and other checkpoints remain unchanged.
+
+**Persistence and privacy.** Workspace state is saved as a bounded
+`_workspace` extension of the project's existing
+`frontline.uic_projects.recommendation` JSONB document. No new database
+schema, third-party account or model provider is required. The server resolves
+the owner from the validated session/guest cookie and checks both project ID
+and ownership for each operation. PostgreSQL writes are serialized using
+row-level locks and an optimistic `revision` field: stale edits fail with
+HTTP 409 instead of silently overwriting a second device's work. Intelligence
+refreshes preserve the workspace atomically via `jsonb_set`.
+
+**Limits:** Up to 24 board cards and 12 checkpoints per project, 360-character
+notes, and curated reference IDs only. The old project archive now includes
+board/card counts and filters for saved boards and checkpoints. Workspace
+history is deliberately **not** a full copy of the AI conversation or provider
+outputs.
+
+**Endpoints (same-origin, session-authenticated):**
+
+- `GET/PUT /api/projects/:id/workspace`
+- `POST /api/projects/:id/workspace/versions`
+- `GET /api/projects/:id/workspace/versions/:versionId/compare`
+- `POST /api/projects/:id/workspace/versions/:versionId/restore`
+
+Board updates, checkpoint saves and restores require the current integer
+revision. The API rejects unknown item fields, invented inspiration IDs,
+duplicate cards, foreign projects, malformed selections and oversize notes.
+
+**Verification:** Run `npm test` and `npm run evaluate:learning`. The
+existing Chromium/Firefox suite also exercises the full board/checkpoint
+journey, plus the original login, mobile, theme, inspiration and AI prompt
+workflows. The system still exports design specifications, not editable Figma
+files or production application code.

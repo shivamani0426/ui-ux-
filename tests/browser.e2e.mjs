@@ -159,6 +159,41 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await firstCard.getByRole('button',{name:'Save inspiration'}).click();
       await page.waitForFunction(()=>document.querySelector('.inspiration-saved-counter strong')?.textContent?.includes('1 saved'));
       assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Chosen inspiration should be saved');
+      // M13: board, style comparison, checkpoint and nondestructive restore.
+      const workbench=page.locator('.pw-workbench');
+      await workbench.waitFor({timeout:10000});
+      await workbench.getByRole('button',{name:'Refresh design workbench'}).click();
+      await workbench.getByRole('combobox',{name:'Choose saved inspiration'}).selectOption({index:1});
+      await workbench.getByRole('button',{name:'Pin reference'}).click();
+      await workbench.getByRole('combobox',{name:'Choose suggested page'}).selectOption({index:1});
+      await workbench.getByRole('button',{name:'Add page'}).click();
+      assert.equal(await workbench.locator('.pw-card').count(),2);
+      await workbench.locator('.pw-card').first().getByRole('combobox').selectOption('approved');
+      await workbench.getByRole('button',{name:'Save design board'}).click();
+      await page.waitForFunction(()=>document.querySelector('.pw-save-row small')
+        ?.textContent?.includes('Saved board'));
+      await workbench.getByRole('button',{name:/Compare styles/}).click();
+      assert.equal(await workbench.locator('.pw-style-card').count(),3,
+        'Show all three original design directions side by side');
+      await page.screenshot({path:'browser-artifacts/'+name+'-side-by-side-design-review.png',fullPage:false});
+      await workbench.getByRole('button',{name:/Checkpoints/}).click();
+      await workbench.getByRole('textbox',{name:'Checkpoint name'}).fill('First approved board');
+      await workbench.getByRole('button',{name:'Save checkpoint'}).click();
+      await workbench.locator('.pw-version-list li').first().waitFor({timeout:9000});
+      await workbench.getByRole('button',{name:'Compare',exact:true}).click();
+      await workbench.locator('.pw-change-report').waitFor({timeout:6000});
+      await workbench.getByRole('button',{name:/Design board/}).click();
+      await workbench.locator('.pw-card textarea').first().fill('Updated while reviewing the board');
+      await workbench.getByRole('button',{name:'Save design board'}).click();
+      await workbench.getByRole('button',{name:/Checkpoints/}).click();
+      await workbench.getByRole('button',{name:'Compare',exact:true}).click();
+      assert.match(await workbench.locator('.pw-change-report').innerText(),/Edited or moved/i);
+      page.once('dialog',dialog=>dialog.accept());
+      await workbench.getByRole('button',{name:'Restore',exact:true}).click();
+      await workbench.getByRole('button',{name:/Design board/}).click();
+      assert.equal(await workbench.locator('.pw-card textarea').first().inputValue(),'',
+        'Checkpoint restore must recover saved notes without deleting the chat');
+      await page.screenshot({path:'browser-artifacts/'+name+'-advanced-design-board.png',fullPage:false});
       await firstCard.scrollIntoViewIfNeeded();
       await page.waitForTimeout(450);
       await page.screenshot({path:'browser-artifacts/'+name+'-select-inspirations.png',fullPage:false});
@@ -182,6 +217,12 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.locator('.fl-project-card').first().click();
       await page.locator('.inspiration-save.selected').first().waitFor({timeout:10000});
       assert.equal(await page.locator('.inspiration-save.selected').count(),1,'Inspiration pick should survive refresh');
+      await page.locator('.pw-workbench .pw-card').first().waitFor({timeout:9000});
+      assert.equal(await page.locator('.pw-workbench .pw-card').count(),2,
+        'Private board cards must survive project reopening');
+      await page.locator('.pw-workbench').getByRole('button',{name:/Checkpoints/}).click();
+      assert.equal(await page.locator('.pw-version-list li').count(),1,
+        'Named design checkpoints must survive browser reloads');
     }
     if(!remote){
       await page.getByRole('button',{name:'Open navigation menu'}).click();
@@ -322,6 +363,22 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-studio.png',fullPage:false});
     assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
       'Mobile studio must have no horizontal overflow');
+    if(!remote){
+      // M13 mobile regression: the real board must remain usable at 390px
+      // without clipping its columns or introducing horizontal scrolling.
+      await mobile.locator('.composer textarea').fill(
+        'Design a mobile-first creator portfolio with case studies, projects and accessible navigation.');
+      await mobile.locator('.composer textarea').press('Enter');
+      await mobile.locator('.pw-workbench').waitFor({timeout:15000});
+      await mobile.locator('.pw-workbench .pw-tabs button').first().waitFor();
+      await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-design-workbench.png',fullPage:false});
+      assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
+        'Mobile project workbench must not create horizontal overflow');
+      await mobile.locator('.pw-workbench').getByRole('button',{name:/Compare styles/}).click();
+      assert.equal(await mobile.locator('.pw-style-card').count(),3);
+      assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
+        'Side-by-side comparison must reflow into mobile-friendly cards');
+    }
     await mobile.close();
     // Reduced-motion users see the black orb briefly, then a STATIC landing.
     // They can still choose any feature or account route manually.
