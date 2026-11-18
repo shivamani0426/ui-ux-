@@ -382,29 +382,52 @@ async function recordFeedback(owner,id,styles,reaction,detail){
     throw error;
   }finally{client.release()}
 }
+// Shared trends are deliberately display-only: NEVER feed them into the
+// personalized recommendation ranking. A browser cookie is not a person.
+// Ten distinct verified account identities must independently have positive
+// net feedback for one style, with currently active opt-in and consent on each
+// counted historical event. No names, project IDs or precise counts leave.
 async function insights(){
-  const counts=pg?(await pg.query(`WITH latest AS (
+  let counts;
+  if(pg){
+    const result=await pg.query(`WITH latest AS (
       SELECT DISTINCT ON (visitor_id,project_id,style_id)
         visitor_id,style_id,reaction,eligible_global
       FROM frontline.uic_feedback
+      WHERE visitor_id LIKE 'acct:%'
       ORDER BY visitor_id,project_id,style_id,created_at DESC,id DESC
+    ), eligible AS (
+      SELECT f.visitor_id,f.style_id,
+        SUM(CASE WHEN f.reaction='like' THEN 1
+                 WHEN f.reaction='dislike' THEN -1 ELSE 0 END)::int AS net
+      FROM latest f
+      JOIN frontline.uic_profiles p ON p.visitor_id=f.visitor_id
+      WHERE f.eligible_global=true AND p.global_opt_in=true
+        AND COALESCE(p.style_weights->'_personalization'->>'enabled','true')='true'
+      GROUP BY f.visitor_id,f.style_id
     )
-    SELECT f.style_id,COUNT(DISTINCT f.visitor_id)::int AS visitors
-    FROM latest f
-    JOIN frontline.uic_profiles p ON p.visitor_id=f.visitor_id
-    WHERE f.eligible_global=true AND f.reaction='like' AND p.global_opt_in=true
-      AND COALESCE(p.style_weights->'_personalization'->>'enabled','true')='true'
-    GROUP BY f.style_id`)).rows:latestFeedbackChoices(votes)
-    .filter(v=>v.optIn&&v.reaction==='like')
-    .reduce((arr,v)=>{
-      let x=arr.find(i=>i.style_id===v.style);
-      if(!x){x={style_id:v.style,owners:new Set()};arr.push(x)}
-      x.owners.add(v.owner);
-      return arr;
-    },[]).map(x=>({style_id:x.style_id,visitors:x.owners.size}));
-  // Avoid exposing exact small-cohort sizes, member IDs or free-form details.
-  return counts.filter(x=>x.visitors>=5).map(x=>({
-    style:x.style_id,contributorsBand:visitorCohortBand(x.visitors),
+    SELECT style_id,COUNT(*)::int AS contributors
+    FROM eligible WHERE net>0 GROUP BY style_id`);
+    counts=result.rows;
+  }else{
+    const grouped=new Map();
+    for(const vote of latestFeedbackChoices(votes)){
+      if(!vote.owner.startsWith('acct:')||!vote.optIn)continue;
+      const ownerProfile=await profile(vote.owner);
+      if(!ownerProfile.globalOptIn||!ownerProfile.personalization.enabled)continue;
+      const key=vote.owner+':'+vote.style;
+      grouped.set(key,(grouped.get(key)||0)+(vote.reaction==='like'?1:vote.reaction==='dislike'?-1:0));
+    }
+    const byStyle=new Map();
+    for(const [key,net] of grouped){
+      if(net<=0)continue;
+      const style=key.slice(key.lastIndexOf(':')+1);
+      byStyle.set(style,(byStyle.get(style)||0)+1);
+    }
+    counts=[...byStyle].map(([style_id,contributors])=>({style_id,contributors}));
+  }
+  return counts.filter(x=>x.contributors>=VERIFIED_COHORT_MIN).map(x=>({
+    style:x.style_id,contributorsBand:verifiedCohortBand(x.contributors),
   }));
 }
 async function eraseProfile(owner){
@@ -695,6 +718,8 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='PUT'&&req.url==='/api/profile'){
         const data=await readBody(req);const old=await profile(owner);
         if(typeof data.globalOptIn!=='boolean')return json(res,400,{error:'Choose whether to opt into aggregated learning.'});
+        if(data.globalOptIn===true&&!signedIn)return json(res,403,{
+          error:'Sign in with Google before opting into shared trends. Guest identities are not verified contributors.'});
         const p={...old,globalOptIn:data.globalOptIn===true&&old.personalization.enabled};
         if(!p.globalOptIn)await revokeSharedFeedback(owner);
         await saveProfile(owner,p);return json(res,200,p);
@@ -727,9 +752,10 @@ const server=http.createServer(async(req,res)=>{
         await eraseProfile(owner);return json(res,200,{deleted:true});
       }
       if(req.method==='GET'&&req.url==='/api/insights')return json(res,200,{
-        publicPatterns:await insights(),minimumContributors:5,
-        contributorUnit:'distinct guest visitor IDs, not verified people',
-        counts:'privacy bands only; not precise totals or statistical findings',
+        publicPatterns:await insights(),minimumContributors:VERIFIED_COHORT_MIN,
+        contributorUnit:'distinct authenticated Google-linked Frontline accounts; not proven unique humans',
+        counts:'coarse size bands only; no individual votes, account identifiers or chat data',
+        personalizationUsage:'Shared trends are informational and do not automatically steer any user recommendations',
       });
       if(req.method==='GET'&&pathname==='/api/workspace/overview')
         return json(res,200,{identity:signedIn?'account':'guest',...(await workspaceOverview(owner))});
