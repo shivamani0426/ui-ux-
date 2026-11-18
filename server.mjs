@@ -894,6 +894,75 @@ const server=http.createServer(async(req,res)=>{
         }
         return json(res,405,{error:'Method not allowed'});
       }
+      // M13: private visual board and bounded, manually named checkpoints.
+      const boardRoute=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/workspace$/);
+      if(boardRoute){
+        const id=boardRoute[1];
+        if(req.method==='GET'){
+          const p=await getProject(owner,id);
+          if(!p)return json(res,404,{error:'Project not found'});
+          const [selected,library]=await Promise.all([selectionIds(owner,id),listReferences()]);
+          return json(res,200,{projectId:id,workspace:normalizeWorkspace(p.recommendations?._workspace),
+            refinement:p.recommendations?.refinement||'',
+            comparisons:p.recommendations?.comparison||[],
+            savedInspirations:library.filter(ref=>selected.includes(ref.id))
+              .map(ref=>({id:ref.id,name:ref.name,site:ref.site,styles:ref.styles}))});
+        }
+        if(req.method!=='PUT')return json(res,405,{error:'Method not allowed'});
+        const body=await readBody(req);
+        const catalogue=new Set((await listReferences()).map(ref=>ref.id));
+        const update=validateBoardUpdate(body,{referenceIds:catalogue});
+        const next=await modifyProjectWorkspace(owner,id,update.revision,
+          async(project,workspace)=>({workspace:withUpdatedBoard(workspace,update)}));
+        if(!next)return json(res,404,{error:'Project not found'});
+        return json(res,200,{projectId:id,workspace:next.workspace});
+      }
+      const versionsCreate=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/workspace\/versions$/);
+      if(versionsCreate){
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        const id=versionsCreate[1],body=await readBody(req);
+        const next=await modifyProjectWorkspace(owner,id,body.revision,
+          async(project,workspace)=>({workspace:addCheckpoint(workspace,{
+            revision:body.revision,title:body.title,
+            refinement:project.recommendations?.refinement||'',
+            id:crypto.randomUUID(),now:new Date().toISOString()
+          })}));
+        if(!next)return json(res,404,{error:'Project not found'});
+        return json(res,201,{projectId:id,workspace:next.workspace});
+      }
+      const versionAction=pathname.match(
+        /^\/api\/projects\/([a-f0-9-]{36})\/workspace\/versions\/([a-zA-Z0-9_-]{1,80})\/(compare|restore)$/);
+      if(versionAction){
+        const [,id,versionId,action]=versionAction;
+        if(action==='compare'){
+          if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
+          const p=await getProject(owner,id);
+          if(!p)return json(res,404,{error:'Project not found'});
+          return json(res,200,{comparison:compareCheckpoint(
+            normalizeWorkspace(p.recommendations?._workspace),
+            versionId,p.recommendations?.refinement||'')});
+        }
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        const body=await readBody(req);
+        const project=await getProject(owner,id);
+        if(!project)return json(res,404,{error:'Project not found'});
+        // Prefetch static catalogue and current private preferences outside the
+        // row lock. A revision conflict still rejects a stale restoration.
+        const [prefs,library]=await Promise.all([
+          recommendationPreferences(owner,project.brief,id),listReferences()]);
+        const next=await modifyProjectWorkspace(owner,id,body.revision,
+          async(current,workspace)=>{
+            const restored=restoreCheckpoint(workspace,{
+              revision:body.revision,versionId,now:new Date().toISOString()});
+            return {workspace:restored.workspace,
+              recommendation:recommend(current.brief,prefs,library,
+                {refinement:restored.refinement})};
+          });
+        if(!next)return json(res,404,{error:'Project not found'});
+        return json(res,200,{projectId:id,workspace:next.workspace,
+          recommendations:next.recommendations,
+          note:'Board and design refinement restored. Original brief, chat, prior prompts and all checkpoints were kept.'});
+      }
       const intelligenceMatch=pathname.match(/^\/api\/projects\/([a-f0-9-]{36})\/intelligence$/);
       if(intelligenceMatch){
         const id=intelligenceMatch[1],project=await getProject(owner,id);
