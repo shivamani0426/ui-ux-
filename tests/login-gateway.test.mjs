@@ -4,18 +4,25 @@ import {readFileSync} from 'node:fs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('Milestone 10 retains cinematic spiral but replaces chat birth with two entry paths',()=>{
+test('Frontline landing centers permanent Log In and Google Sign Up while preserving the original spiral',()=>{
   const app=read('src/App.jsx');
   const landing=read('src/components/FrontlineLanding.jsx');
-  const css=read('src/components/FrontlineLogin.css');
-  for(const part of ["isLanding&&landingFrame===4","className={'fl-landing-gateway'","Enter Studio","Login","enterGateway('studio')","enterGateway('login')","<StarBorder","inert={!landingComposerReady}"]){
-    assert.ok(app.includes(part),'Missing cinematic gateway detail: '+part);
+  const css=read('src/components/FrontlineAutoLanding.css');
+  const loginCss=read('src/components/FrontlineLogin.css');
+  for(const part of ["onLogin={()=>enterGateway('login')}","onSignup={startGoogleSignup}",
+    "<FrontlineOrbIntro/>","enterGateway('studio')","enterGateway('login')","<StarBorder"]){
+    assert.ok(app.includes(part),'Missing entry detail: '+part);
   }
-  assert.ok(app.includes("{active&&<div ref={composerDockRef}"),'Chat must be docked only inside studio');
-  assert.ok(!app.includes('composer-position.spiral-emerging'),'Former chat birth must not be re-enabled');
-  assert.match(landing,/--fl-spiral-progress/);
-  assert.match(landing,/--fl-compose-reveal/);
-  assert.ok(css.includes('.fl-landing-gateway.is-ready'),'Gateway should become interactive only after full reveal');
+  assert.ok(app.includes("{active&&<div ref={composerDockRef}"),
+    'Chat remains docked only inside studio');
+  assert.ok(!app.includes('composer-position.spiral-emerging'),'Former landing chat birth must stay removed');
+  assert.ok(!app.includes('landing-scrollspace scroll-story-space'),'No scrolling tour track');
+  assert.match(landing,/className="fl-auto-entry-actions"/);
+  assert.match(landing,/fl-spiral-stage/);
+  assert.match(landing,/SPIRAL_PATH/);
+  assert.match(css,/\.fl-auto-login/);
+  assert.match(css,/\.fl-auto-signup/);
+  assert.ok(loginCss.includes('.fl-blackhole-transition.is-expanding'),'Preserve existing login transition');
 });
 
 test('Bottom-centre black-hole motion leads to branded login and guest studio',()=>{
