@@ -31,6 +31,11 @@ test('10D security routes fail closed for guests and cross-site mutations',async
       headers:{Cookie:cookie,'Content-Type':'application/json',Origin:'https://attacker.invalid'},
       body:JSON.stringify({email:'victim@example.test',confirmation:'DELETE FRONTLINE ACCOUNT'})});
     assert.equal(crossSite.status,403,'Never allow cross-origin destructive requests');
+    const crossSiteWithoutOrigin=await fetch(base+'/api/auth/account',{method:'DELETE',
+      headers:{Cookie:cookie,'Content-Type':'application/json','Sec-Fetch-Site':'cross-site'},
+      body:JSON.stringify({email:'victim@example.test',confirmation:'DELETE FRONTLINE ACCOUNT'})});
+    assert.equal(crossSiteWithoutOrigin.status,403,
+      'Fetch metadata must block cross-site mutations even when Origin is missing');
     const guest=await fetch(base+'/api/workspace/overview',{headers:{Cookie:cookie}});
     assert.equal(guest.status,200,'Guest studio remains working after denied operations');
   }finally{
