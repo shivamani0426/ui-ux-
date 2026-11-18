@@ -130,3 +130,17 @@ test('11D: optional model replies cannot quietly reintroduce excluded project fu
     'Scope guard must only enforce exclusions the user actually gave');
   assert.match(review.warning,/not certify/i);
 });
+
+test('11D: a polished provider insight cannot override an explicit no-chat constraint',async()=>{
+ const brief='Design a student dashboard with calendar and assignments. Do not add chat.';
+ const project={brief,recommendations:recommend(brief)};
+ const generated='Minimal SaaS supports accessible assignments and calendar overview. Glass UI adds depth to optional analytics. Creative UI provides expressive but readable learning cards. Add a chat inbox so students can message teachers; include chat as an extra sidebar module. Offer keyboard navigation, loading states, and mobile responsive cards while showing calendar reminders.';
+ const mock=async()=>({ok:true,json:async()=>({choices:[{message:{content:generated},finish_reason:'stop'}]})});
+ const value=await createDesignPrompt({project,mode:'generate',styles:['minimal'],
+   env:{OPENROUTER_API_KEY:'fictional-test-key'},request:mock});
+ assert.equal(value.source,'guide');
+ assert.equal(value.review.reason[0],'insight-scope-conflict');
+ assert.equal(value.review.traceability.passed,true);
+ assert.match(value.prompt,/\[X-messages\]/);
+ assert.doesNotMatch(value.prompt,/Add a chat inbox/);
+});
