@@ -24,8 +24,8 @@ export function validateGitHubPublishInput(input){
   if(Object.keys(input).some(k=>!['repository','token','revision'].includes(k)))
     throw issue('Unknown GitHub handoff field.');
   if(!safeRepo(input.repository))throw issue('Use an exact owner/repository name.');
-  if(typeof input.token!=='string'||input.token.length<20||
-    input.token.length>500||/\s/.test(input.token))
+  if(input.token!==undefined&&(typeof input.token!=='string'||
+    (input.token!==''&&(input.token.length<20||input.token.length>500||/\s/.test(input.token)))))
     throw issue('Use a valid fine-grained GitHub access token.');
   if(!Number.isSafeInteger(input.revision)||input.revision<0)
     throw issue('Save the approved board before publishing.');
