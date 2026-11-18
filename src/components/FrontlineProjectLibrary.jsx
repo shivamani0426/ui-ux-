@@ -7,6 +7,10 @@ const safeDate=value=>{
   return Number.isFinite(date.valueOf())?date.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'Date unavailable';
 };
 const projectName=project=>String(project.title||'Untitled project').trim();
+const boardCards=project=>project.recommendations?._workspace?.itemCount??
+  project.recommendations?._workspace?.items?.length??0;
+const checkpoints=project=>project.recommendations?._workspace?.versionCount??
+  project.recommendations?._workspace?.versions?.length??0;
 export default function FrontlineProjectLibrary({projects=[],overview,account=false,
   query='',onQuery,onOpen,onRefresh,onLoadMore,nextOffset=null,
   loading=false,moreBusy=false}){
@@ -17,8 +21,8 @@ export default function FrontlineProjectLibrary({projects=[],overview,account=fa
     return projects.filter(p=>(projectName(p)+' '+String(p.brief||'')).toLowerCase().includes(search))
       .filter(p=>filter==='prompts'?Number(p.promptCount)>0:
         filter==='inspirations'?Number(p.inspirationCount)>0:
-        filter==='boards'?(p.recommendations?._workspace?.items?.length||0)>0:
-        filter==='versions'?(p.recommendations?._workspace?.versions?.length||0)>0:true)
+        filter==='boards'?boardCards(p)>0:
+        filter==='versions'?checkpoints(p)>0:true)
       .sort((a,b)=>sort==='alphabetical'?projectName(a).localeCompare(projectName(b)):
         (sort==='oldest'?1:-1)*(new Date(a.updatedAt||a.createdAt).getTime()-new Date(b.updatedAt||b.createdAt).getTime()));
   },[projects,query,sort,filter]);
@@ -82,8 +86,8 @@ export default function FrontlineProjectLibrary({projects=[],overview,account=fa
           <span><MessageCircleMore size={13}/> {p.messageCount??0} messages</span>
           <span><Sparkles size={13}/> {p.promptCount??0} prompts</span>
           <span><Images size={13}/> {p.inspirationCount??0} saved</span>
-          <span><LayoutGrid size={13}/> {p.recommendations?._workspace?.items?.length||0} board cards</span>
-          <span><Clock3 size={13}/> {p.recommendations?._workspace?.versions?.length||0} checkpoints</span>
+          <span><LayoutGrid size={13}/> {boardCards(p)} board cards</span>
+          <span><Clock3 size={13}/> {checkpoints(p)} checkpoints</span>
           <ArrowUpRight size={15} className="fl-project-open"/>
         </div>
       </button>)}
