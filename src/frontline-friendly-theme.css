@@ -148,3 +148,33 @@ body{background:var(--bg)}
   box-shadow:0 4px 16px #3d65ba16;
 }
 .app.in-welcome .topbar .menu-button:hover{background:#e8f0ff!important}
+
+/* M15: no loss of cinematics; touch/viewport handling is scoped to mobile. */
+.fl-network-banner{position:fixed;z-index:180;top:calc(80px + env(safe-area-inset-top,0px));
+ left:50%;transform:translateX(-50%);display:flex;gap:9px;align-items:center;
+ width:min(620px,calc(100% - 24px));padding:10px 14px;border-radius:11px;
+ border:1px solid #e9b678;background:#fff5df;color:#5b4124;
+ box-shadow:0 8px 30px rgba(48,50,54,.1);
+ font:650 11px/1.55 'DM Sans',sans-serif}
+.fl-network-banner svg{flex:none}
+@media(max-width:700px){
+  .fl-network-banner{top:calc(68px + env(safe-area-inset-top,0px))}
+  .topbar,.app.in-chat .topbar{padding-left:max(16px,env(safe-area-inset-left,0px));
+    padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .app.in-chat .menu-panel,.menu-layer .menu-panel{
+    bottom:max(8px,env(safe-area-inset-bottom,0px));
+    right:max(8px,env(safe-area-inset-right,0px));
+    max-height:calc(100dvh - 16px - env(safe-area-inset-bottom,0px))}
+  .app.in-chat .composer-position.docked{
+    top:calc(100dvh - max(10px,env(safe-area-inset-bottom,0px)))}
+  .app.in-chat .conversation{bottom:var(--chat-clearance,138px)}
+  .app.in-chat .result-message{min-width:0;overflow-wrap:anywhere}
+  .composer textarea,.inspiration-search input,.pw-workbench input,
+  .pw-workbench select,.pw-workbench textarea{font-size:16px}
+  .pw-tabs button,.inspiration-filters button,.inspiration-save,
+  .pw-handoff-actions button{min-height:44px}
+}
+@media(max-height:500px) and (max-width:700px){
+  .app.in-chat .conversation{top:61px}
+  .app.in-chat .composer-position.docked{transition:none}
+}
