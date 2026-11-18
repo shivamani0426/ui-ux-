@@ -15,7 +15,10 @@ export default function FrontlineProjectLibrary({projects=[],overview,account=fa
   const shown=useMemo(()=>{
     const search=String(query).trim().toLowerCase();
     return projects.filter(p=>(projectName(p)+' '+String(p.brief||'')).toLowerCase().includes(search))
-      .filter(p=>filter==='prompts'?Number(p.promptCount)>0:filter==='inspirations'?Number(p.inspirationCount)>0:true)
+      .filter(p=>filter==='prompts'?Number(p.promptCount)>0:
+        filter==='inspirations'?Number(p.inspirationCount)>0:
+        filter==='boards'?(p.recommendations?._workspace?.items?.length||0)>0:
+        filter==='versions'?(p.recommendations?._workspace?.versions?.length||0)>0:true)
       .sort((a,b)=>sort==='alphabetical'?projectName(a).localeCompare(projectName(b)):
         (sort==='oldest'?1:-1)*(new Date(a.updatedAt||a.createdAt).getTime()-new Date(b.updatedAt||b.createdAt).getTime()));
   },[projects,query,sort,filter]);
@@ -43,6 +46,8 @@ export default function FrontlineProjectLibrary({projects=[],overview,account=fa
             <option value="all">All designs</option>
             <option value="prompts">With prompts</option>
             <option value="inspirations">With inspirations</option>
+            <option value="boards">With design boards</option>
+            <option value="versions">With checkpoints</option>
           </select>
         </label>
         <label>Sort
@@ -77,6 +82,8 @@ export default function FrontlineProjectLibrary({projects=[],overview,account=fa
           <span><MessageCircleMore size={13}/> {p.messageCount??0} messages</span>
           <span><Sparkles size={13}/> {p.promptCount??0} prompts</span>
           <span><Images size={13}/> {p.inspirationCount??0} saved</span>
+          <span><LayoutGrid size={13}/> {p.recommendations?._workspace?.items?.length||0} board cards</span>
+          <span><Clock3 size={13}/> {p.recommendations?._workspace?.versions?.length||0} checkpoints</span>
           <ArrowUpRight size={15} className="fl-project-open"/>
         </div>
       </button>)}
