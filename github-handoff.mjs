@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 /**
  * Milestone 14B: deliberately consent-driven GitHub handoff publication.
  * Caller provides ONE-TIME fine-grained GitHub credentials. No persistence,
