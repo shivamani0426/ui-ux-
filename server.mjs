@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {createAuthGateway} from './auth-gateway.mjs';
+import {createGitHubAppConnection} from './github-app-connect.mjs';
 import {fileURLToPath} from 'node:url';
 import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
 import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
@@ -53,6 +54,14 @@ const authGateway=createAuthGateway({
   prod:isProd||Boolean(process.env.RENDER_SERVICE_ID)
 });
 let pg=null;
+const githubApp=()=>createGitHubAppConnection({
+  clientId:process.env.FRONTLINE_GITHUB_APP_CLIENT_ID||'',
+  clientSecret:process.env.FRONTLINE_GITHUB_APP_CLIENT_SECRET||'',
+  encryptionKey:process.env.FRONTLINE_GITHUB_ENCRYPTION_KEY||'',
+  stateSecret:process.env.FRONTLINE_ACTION_SIGNING_SECRET||'',
+  siteUrl:process.env.FRONTLINE_SITE_URL||'https://ui-compass-studio.onrender.com',
+  db:pg,prod:isProd||Boolean(process.env.RENDER_SERVICE_ID)
+});
 
 async function setupDb(){
   if(!process.env.DATABASE_URL){console.log('Database not configured. Using development-only memory store.');return;}
@@ -562,6 +571,9 @@ async function eraseProfile(owner){
   try{
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1),916)',[owner]);
+    // Account erasure also removes the encrypted GitHub authorization.
+    if((await client.query("SELECT to_regclass('frontline.github_app_connections') IS NOT NULL AS available")).rows[0]?.available)
+      await client.query('DELETE FROM frontline.github_app_connections WHERE account_owner=$1',[owner]);
     await client.query('DELETE FROM frontline.interaction_events WHERE visitor_id=$1',[owner]);
     await client.query('DELETE FROM frontline.uic_feedback WHERE visitor_id=$1',[owner]);
     await client.query('DELETE FROM frontline.reference_selections WHERE visitor_id=$1',[owner]);
@@ -785,6 +797,14 @@ const server=http.createServer(async(req,res)=>{
       return await authGateway.callback(req,res,
         user=>claimGuestData(guestOwner,authGateway.accountOwner(user)));
     }
+    if(req.method==='GET'&&(pathname==='/auth/github/start'||pathname==='/auth/github/callback')){
+      res.setHeader('Referrer-Policy','no-referrer');
+      const user=await authGateway.getUser(req,res);
+      const github=githubApp();
+      if(pathname==='/auth/github/start')
+        return await github.start(req,res,user?authGateway.accountOwner(user):'');
+      return await github.callback(req,res,user?authGateway.accountOwner(user):'');
+    }
     if(req.url?.startsWith('/api/')){
       if(!trustedMutationOrigin(req))return json(res,403,{error:'Cross-origin changes are not permitted.'});
       if(req.method==='GET'&&pathname==='/api/auth/status')
@@ -844,7 +864,16 @@ const server=http.createServer(async(req,res)=>{
         await claimGuestData(guestOwner,owner);
         return json(res,200,{claimed:true});
       }
-      if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.4.0'});
+      if(pathname==='/api/integrations/github'){
+         if(req.method==='GET')return json(res,200,await githubApp().status(signedIn?owner:''));
+         if(req.method==='DELETE'){
+           await readBody(req);
+           if(!signedIn)return json(res,401,{error:'Sign in before disconnecting GitHub.'});
+           return json(res,200,await githubApp().disconnect(owner));
+         }
+         return json(res,405,{error:'Method not allowed'});
+       }
+       if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.4.0'});
       if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
@@ -938,8 +967,10 @@ const server=http.createServer(async(req,res)=>{
         const handoff=buildDesignHandoff({
           project,workspace,references:await savedSourceRows(owner,project.id)
         });
-        const result=await publishApprovedHandoff({
-          repository:body.repository,token:body.token,projectId:project.id,
+        // The GitHub App token stays encrypted at rest and never reaches the browser.
+         const publishToken=body.token||await githubApp().getToken(owner);
+         const result=await publishApprovedHandoff({
+          repository:body.repository,token:publishToken,projectId:project.id,
           title:project.title,markdown:designHandoffMarkdown(handoff)
         });
         return json(res,201,{...result,content:'Approved design handoff only; no chat, private feedback or tokens were stored.'});
