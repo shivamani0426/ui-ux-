@@ -547,11 +547,13 @@ const server=http.createServer(async(req,res)=>{
       user=>claimGuestData(guestOwner,authGateway.accountOwner(user)));
     if(req.url?.startsWith('/api/')){
       if(!trustedMutationOrigin(req))return json(res,403,{error:'Cross-origin changes are not permitted.'});
-      if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
       if(req.method==='GET'&&pathname==='/api/auth/status')
         return json(res,200,{googleEnabled:authGateway.ready});
       const signedIn=await authGateway.getUser(req,res);
       if(signedIn)owner=authGateway.accountOwner(signedIn);
+      // Rate-limit by VERIFIED account identity, not an untrusted guest cookie
+      // that an authenticated user can rotate to evade an account limit.
+      if(rateLimited(owner))return json(res,429,{error:'Too many requests. Try again shortly.'});
       if(req.method==='GET'&&pathname==='/api/auth/me')return json(res,200,{
         authenticated:!!signedIn,googleEnabled:authGateway.ready,
         user:signedIn?{id:signedIn.id,email:signedIn.email||null,
