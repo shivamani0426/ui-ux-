@@ -124,7 +124,7 @@ test('12: anonymous guests cannot impersonate verified opt-in contributors',asyn
 
 test('12: similar-project feedback is transparent, context-specific, and never shared across visitors',async()=>{
   const env=await setup(),alice=env.client(),bob=env.client();
-  const portfolio='Create a creative illustrator portfolio with editorial case studies and project gallery';
+  const portfolio='Create an illustrator portfolio with case studies and a project gallery';
   const school='Build a school dashboard for teachers with grades and assignments';
   try{
     const other=await bob('/api/projects','POST',{brief:portfolio});
