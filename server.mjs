@@ -8,7 +8,7 @@ import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
 import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
-import {analyzeProject,compareDirections} from './project-intelligence.mjs';
+import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {normalizeProfile,persistableWeights,effectivePreferences,learnStyle,applyPreferenceChanges,
   resetPreferenceLearning,preferenceHints,learnFeedbackTransition,latestFeedbackChoices,visitorCohortBand} from './learning-engine.mjs';
 
@@ -482,14 +482,19 @@ function validateText(text,min,max){return typeof text==='string'&&text.trim().l
 async function chatReply(brief,messages,styleIds,preferences={}){
   const latest=messages.at(-1)?.content||'';
   const chosen=styleIds.map(i=>STYLES.find(s=>s.id===i)).filter(Boolean);
+  const analysis=analyzeProject(brief);
+  const excluded=analysis.excludedFeatures?.map(f=>f.label)||[];
+  const scopedBrief=brief+(excluded.length?'\nExplicitly out of scope: '+excluded.join('; '):'');
   // Tests never consume real API quotas or send content to model providers.
   let failure={reason:'provider-unavailable',retryAfterSeconds:0};
   const ai=process.env.NODE_ENV==='test'?null:await designAiReply({
-    brief,messages,styles:chosen,designPreferences:preferenceHints(preferences),
+    brief:scopedBrief,messages,styles:chosen,designPreferences:preferenceHints(preferences),
     onFailure:info=>{failure=info}
   });
-  if(ai)return ai;
-  const analysis=analyzeProject(brief);
+  if(ai){
+    if(inspectAdvisorScope(ai.text,analysis).passed)return ai;
+    failure={reason:'scope-conflict',retryAfterSeconds:0};
+  }
   const audience=analysis.audienceSource==='explicit'
     ?analysis.audience.join(', '):'Primary users not yet confirmed';
   const preferred=compareDirections(analysis,chosen.length?chosen:STYLES,effectivePreferences(preferences));
@@ -514,12 +519,15 @@ async function chatReply(brief,messages,styleIds,preferences={}){
       ?'OpenRouter timed out on this request. Free models can be slow or overloaded; the structured guidance below remains available.'
       :failure.reason==='incomplete-output'
         ?'OpenRouter stopped before its answer was complete. An unfinished AI answer was not passed off as a final design.'
-        :'OpenRouter did not provide an answer for this request.';
+        :failure.reason==='scope-conflict'
+          ?'The AI suggestion contradicted an explicitly excluded capability, so Frontline used a scoped design guide instead.'
+          :'OpenRouter did not provide an answer for this request.';
   const lines=[
     '## Project understanding',
     '**Audience:** '+audience,
     '**Requested modules:** '+(analysis.features.length?analysis.features.map(f=>f.label).join('; '):'No modules explicitly identified yet.'),
     '**Constraints:** '+(analysis.constraints.length?analysis.constraints.join('; '):'Responsive, accessible defaults proposed.'),
+    '**Explicitly out of scope:** '+(excluded.length?excluded.join('; '):'No exclusions stated.'),
     '',
     '## Recommended UI/UX direction',
     '**'+(best?.name||'Minimal SaaS')+'** is the strongest starting point for these requirements. '+(best?.strengths||'Favor clear task hierarchy.')+'.',
