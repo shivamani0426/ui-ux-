@@ -4,7 +4,7 @@ const fontRegular={family:'Inter',style:'Regular'};
 const fontBold={family:'Inter',style:'Bold'};
 const txt=(value,max)=>String(value||'').replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max);
 function checked(payload){
-  if(!payload||payload.format!=='frontline-design-handoff'||payload.schemaVersion!==1)
+  if(!payload||JSON.stringify(payload).length>70000||payload.format!=='frontline-design-handoff'||payload.schemaVersion!==1)
     throw new Error('Select a Frontline approved-design JSON file (schema version 1).');
   if(!payload.project||!payload.approved||!Array.isArray(payload.selectedStyles))
     throw new Error('The design handoff is incomplete.');
@@ -35,8 +35,10 @@ function textNode(parent,text,x,y,{bold=false,size=14,width=800,color={r:.12,g:.
   node.fontName=bold?fontBold:fontRegular;
   node.fontSize=size;
   node.fills=[{type:'SOLID',color}];
-  node.characters=txt(text,1200);
-  node.resize(width,Math.max(22,Math.ceil(node.characters.length/65)*size*1.75));
+  node.characters=txt(text,3000);
+  node.resize(width,Math.max(22,node.height));
+  // Ask Figma to measure wrapping and content height rather than guessing by character count.
+  node.textAutoResize='HEIGHT';
   node.x=x;node.y=y;
   return node;
 }
@@ -52,31 +54,40 @@ async function createEditableHandoff(payload){
     frame.x=figma.viewport.center.x-480;
     frame.y=figma.viewport.center.y-380;
     let y=32;
-    textNode(frame,'FRONTLINE / APPROVED DESIGN HANDOFF',36,y,{bold:true,size:15});
-    y+=40;
-    textNode(frame,txt(data.project.title,100),36,y,{bold:true,size:27});
-    y+=47;
-    textNode(frame,'Brief: '+txt(data.project.brief,250),36,y,{size:13,width:880});
-    y+=74;
+    let node=textNode(frame,'FRONTLINE / APPROVED DESIGN HANDOFF',36,y,{bold:true,size:15});
+    y+=Math.max(36,node.height+12);
+    node=textNode(frame,txt(data.project.title,100),36,y,{bold:true,size:27});
+    y+=Math.max(43,node.height+15);
+    // Preserve the full approved brief; HEIGHT auto-layout prevents text overlap.
+    node=textNode(frame,'Brief: '+txt(data.project.brief,2500),36,y,{size:13,width:880});
+    y+=Math.max(45,node.height+22);
     if(data.project.approvedRefinement){
-      textNode(frame,'Approved refinement: '+txt(data.project.approvedRefinement,240),36,y,{size:13,width:880});
-      y+=54;
+      node=textNode(frame,'Approved refinement: '+txt(data.project.approvedRefinement,450),36,y,
+        {size:13,width:880});
+      y+=Math.max(36,node.height+18);
     }
     const directions=(data.directions||[]).slice(0,3);
     if(directions.length){
-      textNode(frame,'SELECTED VISUAL DIRECTIONS',36,y,{bold:true,size:14});y+=28;
+      node=textNode(frame,'SELECTED VISUAL DIRECTIONS',36,y,{bold:true,size:14});
+      y+=Math.max(26,node.height+10);
       for(const direction of directions){
-        textNode(frame,txt(direction.name,60)+' — '+txt(direction.layout,90),36,y,{size:12,width:880});
+        const summary=[txt(direction.name,100),txt(direction.description,400),
+          'Layout: '+txt(direction.layout,250),'Typography: '+txt(direction.typography,200),
+          'Motion: '+txt(direction.motion,250),'Tradeoff: '+txt(direction.tradeoff,400)]
+          .filter(Boolean).join('  |  ');
+        node=textNode(frame,summary,36,y,{size:12,width:880});
+        y+=Math.max(26,node.height+9);
         const colors=(Array.isArray(direction.palette)?direction.palette:[]).slice(0,5);
-        let x=620;
+        let x=36;
         for(const color of colors){
           const fill=rgb(color);
           if(!fill)continue;
           const swatch=figma.createRectangle();
           frame.appendChild(swatch);swatch.resize(24,18);swatch.x=x;swatch.y=y;
-          swatch.fills=[{type:'SOLID',color:fill}];x+=31;
+          swatch.fills=[{type:'SOLID',color:fill}];x+=33;
         }
-        y+=34;
+        if(x>36)y+=25;
+        y+=14;
       }
     }
     for(const [key,label] of [
@@ -86,20 +97,25 @@ async function createEditableHandoff(payload){
     ]){
       const cards=data.approved[key];
       if(!cards.length)continue;
-      y+=12;textNode(frame,label,36,y,{bold:true,size:15});y+=31;
+      y+=12;node=textNode(frame,label,36,y,{bold:true,size:15});y+=Math.max(29,node.height+9);
       for(const card of cards){
         const row=figma.createFrame();
-        frame.appendChild(row);row.resize(888,Math.max(66,card.notes?85:66));
+        frame.appendChild(row);row.resize(888,66);
         row.x=36;row.y=y;row.cornerRadius=12;
         row.fills=[{type:'SOLID',color:{r:1,g:1,b:1}}];
-        textNode(row,txt(card.title,100),16,10,{bold:true,size:13,width:850});
-        if(card.notes)textNode(row,txt(card.notes,290),16,37,{size:11,width:850});
+        const heading=textNode(row,txt(card.title,100),16,10,{bold:true,size:13,width:850});
+        let contentBottom=heading.y+heading.height+15;
+        if(card.notes){
+          const notes=textNode(row,txt(card.notes,360),16,contentBottom,{size:11,width:850});
+          contentBottom=notes.y+notes.height+15;
+        }
+        row.resize(888,Math.max(66,contentBottom));
         y+=row.height+12;
       }
     }
-    textNode(frame,'Review the scope, reference permissions and accessibility before implementation.',
+    node=textNode(frame,'Review the scope, reference permissions and accessibility before implementation.',
       36,y+15,{size:12,width:850});
-    frame.resize(960,Math.max(760,y+95));
+    frame.resize(960,Math.max(760,node.y+node.height+40));
     figma.currentPage.selection=[frame];
     figma.viewport.scrollAndZoomIntoView([frame]);
     return frame;

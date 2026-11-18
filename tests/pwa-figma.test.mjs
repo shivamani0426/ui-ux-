@@ -90,6 +90,8 @@ test('14C: plugin creates editable layers only from approved handoff',async()=>{
  const root=mock.currentPage.selection[0];
  assert.equal(root.type,'FRAME');
  assert.ok(created.some(n=>n.type==='TEXT'&&n.characters==='Study planner'));
+ assert.ok(created.some(n=>n.type==='TEXT'&&n.textAutoResize==='HEIGHT'),
+   'Long imported text must resize based on Figma glyph wrapping');
  assert.ok(created.some(n=>n.type==='TEXT'&&n.characters==='Mobile tabs'));
  assert.ok(created.some(n=>n.type==='RECTANGLE'));
  assert.equal(mock.closed,true);
@@ -162,4 +164,42 @@ test('15B: installation refuses a misleading incomplete shell without JavaScript
   },caches:cachesMock,fetch:async()=>new Response(''),URL,Response,Promise});
   let pending=null;handlers.install({waitUntil(p){pending=p;}});
   await assert.rejects(pending,/bundle was not found/);
+});
+
+
+test('14C: full approved brief is not truncated and Figma importer rejects oversize payload',async()=>{
+ const source=await fs.readFile(new URL('../integrations/figma/code.js',import.meta.url),'utf8');
+ const nodes=[];
+ const make=type=>({type,width:0,height:0,
+   children:[],appendChild(x){this.children.push(x)},resize(w,h){this.width=w;this.height=h},
+   remove(){this.removed=true}});
+ const figma={
+   ui:{onmessage:null,postMessage(msg){this.error=msg.message}},
+   showUI(){},closePlugin(){this.closed=true},notify(){},
+   viewport:{center:{x:500,y:500},scrollAndZoomIntoView(){}},
+   currentPage:{selection:[]},loadFontAsync:async()=>{},
+   createFrame(){const n=make('FRAME');nodes.push(n);return n},
+   createText(){const n=make('TEXT');nodes.push(n);return n},
+   createRectangle(){const n=make('RECTANGLE');nodes.push(n);return n}
+ };
+ vm.runInNewContext(source,{figma,__html__:'',console});
+ const brief='Always include accessible keyboard navigation. '.repeat(28);
+ const data={format:'frontline-design-handoff',schemaVersion:1,
+   project:{title:'Accessible portal',brief,approvedRefinement:'No checkout'},
+   selectedStyles:['minimal'],
+   directions:[{name:'Minimal',description:'Readable',layout:'Two columns',
+     typography:'Sans serif',motion:'Reduced motion',tradeoff:'Less spectacle',
+     palette:['#334455']}],
+   approved:{pages:[{title:'Dashboard',notes:'Important details '.repeat(15)}],
+     decisions:[],inspirations:[]}};
+ await figma.ui.onmessage({type:'import',payload:data});
+ assert.equal(figma.closed,true);
+ assert.ok(nodes.some(n=>n.type==='TEXT'&&n.characters==='Brief: '+brief.trim()));
+ assert.ok(nodes.some(n=>n.type==='TEXT'&&n.characters.includes('Reduced motion')));
+ assert.ok(nodes.some(n=>n.type==='TEXT'&&n.characters.includes('Less spectacle')));
+ const unsafe=JSON.parse(JSON.stringify(data));unsafe.project.brief='X'.repeat(71000);
+ figma.closed=false;
+ await figma.ui.onmessage({type:'import',payload:unsafe});
+ assert.equal(figma.closed,false);
+ assert.match(figma.ui.error,/Select a Frontline approved-design JSON file/);
 });

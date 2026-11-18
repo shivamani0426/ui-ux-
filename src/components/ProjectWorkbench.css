@@ -224,3 +224,10 @@
 .pw-device-warning button{border:1px solid var(--lav,#4868c6);
  color:var(--lav,#4868c6);background:var(--surface,#fff);
  border-radius:8px;padding:8px 11px;font:750 11px/1.4 Manrope,sans-serif}
+
+/* Connected GitHub App is a whole-row permission state, not an additional required input. */
+.pw-github .pw-github-connected{grid-column:1/-1;display:flex;align-items:center;gap:10px;
+  flex-wrap:wrap;border:1px solid var(--line,#d9e3f7);border-radius:10px;padding:11px 13px;
+  background:var(--surface,#f8faff);margin:0;min-width:0}
+.pw-github .pw-github-connected strong{overflow-wrap:anywhere}
+@media(max-width:520px){.pw-github .pw-github-connected{flex-direction:column;align-items:flex-start}}

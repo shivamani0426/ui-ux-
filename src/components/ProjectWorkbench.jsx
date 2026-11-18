@@ -40,7 +40,26 @@ export default function ProjectWorkbench({
   const [githubRepository,setGithubRepository]=useState('');
   const [githubToken,setGithubToken]=useState('');
   const [githubBusy,setGithubBusy]=useState(false);
+  const [githubConnection,setGithubConnection]=useState({available:false,connected:false,login:null});
   const [publishedPr,setPublishedPr]=useState(null);
+  useEffect(()=>{
+    if(!authenticated){setGithubConnection({available:false,connected:false,login:null});return;}
+    let active=true;
+    api('/api/integrations/github').then(info=>{if(active)setGithubConnection(info)})
+      .catch(()=>{if(active)setGithubConnection({available:false,connected:false,login:null})});
+    return ()=>{active=false};
+  },[authenticated,project.id,api]);
+  const disconnectGitHub=async()=>{
+    if(!authenticated||githubBusy||!window.confirm(
+      'Disconnect GitHub from Frontline? Previously published pull requests remain on GitHub.'))return;
+    setGithubBusy(true);
+    try{
+      const result=await api('/api/integrations/github',{method:'DELETE',body:'{}'});
+      setGithubConnection({available:true,connected:false,login:null});
+      notice(result.revocationNotice||'GitHub disconnected from Frontline.');
+    }catch(e){notice('GitHub disconnect failed: '+e.message)}
+    finally{setGithubBusy(false)}
+  };
   const selectedKey=selected.join('|');
   const dirty=!!workspace&&(JSON.stringify(items)!==JSON.stringify(workspace.items)||
     JSON.stringify(selected)!==JSON.stringify(workspace.selectedStyles));
@@ -458,10 +477,20 @@ export default function ProjectWorkbench({
             <h5><GitPullRequest size={17}/> Publish as a GitHub draft PR</h5>
             <p>Optional account integration. Uses a one-time fine-grained token
               with Contents and Pull requests write access to just your chosen repository.
-              The token is sent only to the Frontline server for this operation and is
-              not saved. GitHub may retain the published design specification.</p>
+              One-time tokens are never stored. Connected GitHub App tokens are encrypted server-side. GitHub may retain the published design specification.</p>
             {!authenticated?<p role="status">Sign in with Google before publishing a project to GitHub.</p>:
               <form onSubmit={publishGitHub}>
+                {githubConnection.connected?<div className="pw-github-connected" role="status">
+                  Connected to GitHub as <strong>{githubConnection.login}</strong>.
+                  <button type="button" onClick={disconnectGitHub} disabled={githubBusy}>Disconnect GitHub</button>
+                </div>:githubConnection.available?<div className="pw-github-connected">
+                  Connect with GitHub to publish without pasting a token.
+                  <button type="button" onClick={()=>window.location.assign('/auth/github/start')}>
+                    Connect GitHub account
+                  </button>
+                </div>:<p className="pw-github-connected">
+                  Account linking awaits administrator GitHub App configuration. One-time tokens still work.
+                </p>}
                 <label>Target repository
                   <input value={githubRepository} maxLength={140}
                     onChange={e=>setGithubRepository(e.target.value)}
@@ -471,10 +500,10 @@ export default function ProjectWorkbench({
                 <label>One-time fine-grained GitHub token
                   <input value={githubToken} type="password" maxLength={500}
                     onChange={e=>setGithubToken(e.target.value)}
-                    placeholder="Paste a scoped token for this publish only" autoComplete="off"
-                    aria-label="One-time GitHub access token" required/>
+                    placeholder={githubConnection.connected?'Optional one-time token override':'Paste a scoped token for this publish only'} autoComplete="off"
+                    aria-label="One-time GitHub access token" required={!githubConnection.connected}/>
                 </label>
-                <button type="submit" disabled={!handoffReady||githubBusy||githubToken.length<20}>
+                <button type="submit" disabled={!handoffReady||githubBusy||(!githubConnection.connected&&githubToken.length<20)}>
                   <GitPullRequest size={15}/>{githubBusy?'Publishing…':'Create draft pull request'}
                 </button>
               </form>}
@@ -495,7 +524,7 @@ export default function ProjectWorkbench({
             </a>
           </div>
           <p className="pw-handoff-privacy"><ShieldCheck size={15}/>
-            Nothing is uploaded to GitHub, Figma or any new provider. These exports contain
+            Nothing is shared with GitHub or Figma until you approve publishing or importing. Exports contain
             project briefs and approved decisions, so inspect them before sharing.
             They are specifications, not tested layouts, executable code or Figma files.
           </p>
