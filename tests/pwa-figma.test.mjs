@@ -11,9 +11,21 @@ test('15A: installable manifest, scalable and maskable app icons',async()=>{
  assert.equal(m.display,'standalone');
  assert.ok(m.icons.some(i=>i.purpose==='any'));
  assert.ok(m.icons.some(i=>i.purpose==='maskable'));
+ assert.ok(m.icons.some(i=>i.type==='image/png'&&i.purpose==='any'&&i.sizes==='192x192'));
+ assert.ok(m.icons.some(i=>i.type==='image/png'&&i.purpose==='maskable'&&i.sizes==='512x512'));
  for(const i of m.icons){
-   assert.match(await fs.readFile(new URL('../public'+i.src,import.meta.url),'utf8'),/<svg/);
+   const bytes=await fs.readFile(new URL('../public'+i.src,import.meta.url));
+   if(i.type==='image/svg+xml')assert.match(bytes.toString('utf8'),/<svg/);
+   else{
+     assert.deepEqual([...bytes.subarray(0,8)],[137,80,78,71,13,10,26,10],
+       'Native install icon must be real PNG bytes, not renamed SVG');
+     assert.equal(bytes.readUInt32BE(16),Number(i.sizes.split('x')[0]));
+     assert.equal(bytes.readUInt32BE(20),Number(i.sizes.split('x')[1]));
+   }
  }
+ const apple=await fs.readFile(new URL('../public/apple-touch-icon.png',import.meta.url));
+ assert.deepEqual([...apple.subarray(0,8)],[137,80,78,71,13,10,26,10]);
+ assert.equal(apple.readUInt32BE(16),180);
 });
 test('15A: public static PWA files served with correct cache policy',async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -23,7 +35,10 @@ test('15A: public static PWA files served with correct cache policy',async()=>{
      ['/manifest.webmanifest','application/manifest+json'],
      ['/service-worker.js','text/javascript'],
      ['/pwa-icon.svg','image/svg+xml'],
-     ['/pwa-icon-maskable.svg','image/svg+xml']
+     ['/pwa-icon-maskable.svg','image/svg+xml'],
+     ['/pwa-icon-192.png','image/png'],
+     ['/pwa-icon-maskable-512.png','image/png'],
+     ['/apple-touch-icon.png','image/png']
    ]){
      const response=await fetch(base+url);
      assert.equal(response.status,200,url);
@@ -34,6 +49,7 @@ test('15A: public static PWA files served with correct cache policy',async()=>{
    }
    const html=await (await fetch(base+'/')).text();
    assert.match(html,/<link rel="manifest"/);
+   assert.match(html,/<link rel="apple-touch-icon" sizes="180x180" href="\/apple-touch-icon\.png"/);
    const missing=await fetch(base+'/private-backup.json');
    assert.equal(missing.status,404,'Static allowlist must remain restrictive');
  }finally{await new Promise(resolve=>server.close(resolve));}
