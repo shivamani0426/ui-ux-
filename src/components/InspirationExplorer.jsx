@@ -55,9 +55,10 @@ export default function InspirationExplorer({project,api,notice}){
       <div className="inspiration-title-line">
         <div>
           <h2>Discover real design <em>sources.</em></h2>
-          <p>On-demand search across design libraries and animation collections.
-            We only recommend indexed URLs from the original publishers—no invented
-            inspiration cards, mock screenshots or copied prompts.</p>
+          <p>Kage recommendations come directly from its official publisher MCP,
+            with real design links and exact original prompts when verified.
+            Explore the other original websites in the directory below; they are not
+            represented as results unless an authorized provider returns a match.</p>
         </div>
         <span className="inspiration-collection-count">{data.librarySize||0}
           <small>indexed page matches</small></span>
