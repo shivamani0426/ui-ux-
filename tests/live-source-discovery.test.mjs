@@ -67,7 +67,7 @@ test('Source discovery gives real publisher prompts, links and 13 link-only site
   const again=await discoverLiveSources('student dashboard',{transport:mockKageFetch,now:()=>100100});
   assert.deepEqual(again.matches,result.matches);
 });
-test('Search result without verified get_design prompt is NOT a recommended match',async()=>{
+test('Search result without prompt retains exact original link but never invents prompt',async()=>{
   clearDiscoveryCacheForTests();
   const withoutPrompt=async(url,options)=>{
     const request=JSON.parse(options.body);
@@ -82,8 +82,11 @@ test('Search result without verified get_design prompt is NOT a recommended matc
   };
   const response=await discoverLiveSources('student learning dashboard',{
     transport:withoutPrompt,now:()=>100000});
-  assert.equal(response.status,'no-matches');
-  assert.deepEqual(response.matches,[]);
+  assert.equal(response.status,'partial');
+  assert.equal(response.matches.length,1);
+  assert.equal(response.matches[0].site,'https://kage.design/designs/student-dashboard-original');
+  assert.equal(response.matches[0].originalPrompt,null);
+  assert.equal(response.matches[0].originalPromptStatus,'not-verified');
   assert.equal(response.sources.length,14);
 });
 
