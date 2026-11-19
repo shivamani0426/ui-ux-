@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {findKageOriginals} from './kage-publisher.mjs';
 
 // M08 Live discovery: use an authorized search-index API; NEVER invent results,
 // crawl a restricted gallery, infer that a prompt exists, or copy source code.
@@ -64,85 +65,67 @@ export function indexedReference(candidate,provider){
     indexVerified:true
   };
 }
-const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
-async function searchSource(provider,terms,{key,transport,signal}){
-  const url=new URL('https://api.search.brave.com/res/v1/web/search');
-  url.searchParams.set('q','site:'+provider.host+' '+terms+
-    (provider.kind==='animation'?' animation component':' interface design'));
-  url.searchParams.set('count','5');
-  url.searchParams.set('safesearch','strict');
-  url.searchParams.set('text_decorations','false');
-  try{
-    const res=await transport(url.toString(),{method:'GET',
-      headers:{Accept:'application/json','X-Subscription-Token':key},
-      redirect:'error',signal});
-    if(!res.ok)return {provider:provider.name,id:provider.id,status:res.status===429?'rate-limited':'unavailable',results:[]};
-    const data=await res.json();
-    const items=Array.isArray(data.web?.results)?data.web.results:[];
-    const unique=new Map();
-    for(const item of items){
-      const mapped=indexedReference(item,provider);
-      if(mapped&&!unique.has(mapped.id))unique.set(mapped.id,mapped);
-    }
-    return {provider:provider.name,id:provider.id,status:'searched',results:[...unique.values()].slice(0,3)};
-  }catch{return {provider:provider.name,id:provider.id,status:'unavailable',results:[]};}
-}
-const ttl=8*60*1000;
-const cache=new Map();
-const pending=new Map();
-const discoveryRuns=[];
-const runsPerHour=24; // 24 source searches * 14 provider queries = max 336 paid queries/hr/instance.
-export function clearDiscoveryCacheForTests(){cache.clear();pending.clear();discoveryRuns.length=0;}
-export async function discoverLiveSources(brief,{apiKey=process.env.FRONTLINE_BRAVE_SEARCH_API_KEY||'',
-  transport=fetch,now=()=>Date.now(),providers=LIVE_SOURCES,timeoutMs=5000}={}){
-  const terms=discoveryTerms(brief);
+// Only publisher-native MCP access is used. Generic search-engine results
+// must not be stored, cached as a permanent catalogue or presented as source
+// prompts. Publishers without authorized APIs remain honest source links.
+const cache=new Map(),pending=new Map(),requests=[];
+const TTL=4*60*1000,MAX_RUNS=12;
+export function clearDiscoveryCacheForTests(){cache.clear();pending.clear();requests.length=0;}
+export async function discoverLiveSources(brief,{
+  transport=fetch,now=()=>Date.now(),providers=LIVE_SOURCES,limit=3}={}){
+  const query=discoveryTerms(brief);
   const directories=providers.map(({id,name,host,kind})=>({
-    id,name,website:'https://'+host+'/',kind
+    id,name,website:'https://'+host+'/',kind,
+    mode:id==='kage'?'official-mcp':'original-link-only'
   }));
-  if(typeof apiKey!=='string'||apiKey.trim().length<16)
-    return {status:'not-configured',query:terms,matches:[],sources:directories,
-      note:'Live inspiration discovery needs an authorized search API. No archived or fabricated references will be substituted.'};
-  const key=crypto.createHash('sha256').update(terms+'|'+providers.map(p=>p.id).join('|')).digest('hex');
-  const record=cache.get(key);
-  if(record&&record.expires>now())return record.data;
+  // Deterministic browser tests must not contact external services.
+  if(process.env.NODE_ENV==='test'&&process.env.FRONTLINE_KAGE_TEST_MOCK!=='1'&&transport===fetch)
+    return {status:'not-configured',query,matches:[],sources:directories,
+      note:'Publisher calls are disabled in test mode; no fabricated matches.',
+      providerStatus:directories.map(x=>({id:x.id,status:'test-disabled',count:0}))};
+  const key=crypto.createHash('sha256').update(query+'|kage').digest('hex');
+  const cached=cache.get(key);
+  if(cached&&cached.expires>now())return cached.data;
   if(pending.has(key))return pending.get(key);
   const current=now();
-  while(discoveryRuns.length&&discoveryRuns[0]<current-3600000)discoveryRuns.shift();
-  if(discoveryRuns.length>=runsPerHour)
-    return {status:'rate-limited',query:terms,matches:[],sources:directories,
-      note:'Hourly live-search budget reached; open the publisher links or retry later.'};
-  discoveryRuns.push(current);
-  const run=(async()=>{
-    const jobs=[];
-    const concurrency=4;
-    let next=0;
-    async function worker(){
-      while(next<providers.length){
-        const index=next++,provider=providers[index];
-        const timeout=AbortSignal.timeout(clamp(timeoutMs,500,8000));
-        jobs[index]=await searchSource(provider,terms,{key:apiKey,transport,signal:timeout});
-      }
+  while(requests.length&&requests[0]<current-3600000)requests.shift();
+  if(requests.length>=MAX_RUNS)
+    return {status:'rate-limited',query,matches:[],sources:directories,
+      note:'Publisher lookup budget reached; open original sites or retry later.'};
+  requests.push(current);
+  const work=(async()=>{
+    let raw,available=false;
+    try{raw=await findKageOriginals(query,{transport,limit});available=true;}
+    catch{raw={status:'unavailable',matches:[]};}
+    const kage=LIVE_SOURCES.find(x=>x.id==='kage');
+    const references=(raw.matches||[]).map(match=>{
+      const source=indexedReference(matchToCandidate(match),kage);
+      return source?{
+        ...source,
+        provenance:'Official Kage MCP search result with original design URL.',
+        originalPrompt:match.originalPromptStatus==='verified-publisher'?match.originalPrompt:null,
+        originalPromptHash:match.originalPromptHash,
+        originalPromptStatus:match.originalPromptStatus,
+        originalPromptOrigin:match.originalPromptOrigin
+      }:null;
+    }).filter(Boolean);
+    const status=references.length?'partial':available?'no-matches':'unavailable';
+    const result={status,query,matches:references,sources:directories,
+      providerStatus:directories.map(d=>({id:d.id,
+        status:d.id==='kage'?(available?raw.status:'unavailable'):'link-only',
+        count:d.id==='kage'?references.length:0})),
+      note:references.length?
+        'Kage prompts come from the original publisher MCP. The other sources are direct links until their own authorized prompt integrations are available.':
+        'No authentic publisher results were retrieved; Frontline will not invent links, titles or prompts.'};
+    if(available){
+      if(cache.size>=32)cache.delete(cache.keys().next().value);
+      cache.set(key,{data:result,expires:now()+TTL});
     }
-    await Promise.all(Array.from({length:Math.min(concurrency,providers.length)},worker));
-    const seen=new Set(),matches=[];
-    for(const job of jobs){
-      for(const result of job.results){
-        if(!seen.has(result.id)){seen.add(result.id);matches.push(result);}
-      }
-    }
-    const successes=jobs.filter(x=>x.status==='searched').length;
-    const status=successes===0?'unavailable':successes<jobs.length?'partial':
-      matches.length?'ready':'no-matches';
-    const result={status,query:terms,matches,sources:directories,
-      providerStatus:jobs.map(({provider,id,status,results})=>({provider,id,status,count:results.length})),
-      note:status==='partial'?'Some providers were unreachable; no substitute results were fabricated.':
-        status==='unavailable'?'The search provider is unavailable. Please use the original source links.':
-        'Results are from the search index, not cloned websites; no third-party original prompt has been verified.'};
-    if(cache.size>=60)cache.delete(cache.keys().next().value);
-    if(status==='ready'||status==='no-matches'||status==='partial')
-      cache.set(key,{data:result,expires:now()+ttl});
     return result;
   })();
-  pending.set(key,run);
-  try{return await run;}finally{pending.delete(key);}
+  pending.set(key,work);
+  try{return await work;}finally{pending.delete(key);}
+}
+function matchToCandidate(match){
+  return {url:match.url,title:match.title};
 }
