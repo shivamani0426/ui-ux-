@@ -27,7 +27,7 @@ test('reject spoofed links and do not make up sources',()=>{
     'http://ui.aceternity.com/components/3d-card']){
     assert.equal(trustedPublisherLink({...original,site}),null);
   }
-  assert.match(formatSourceDiscovery({matches:[]}),/No verified original design/);
+  assert.match(formatSourceDiscovery({matches:[]}),/No matching original application-design page/);
 });
 test('consent is explicit; no ambiguous assent',()=>{
   assert.equal(isAffirmative('yes'),true);
