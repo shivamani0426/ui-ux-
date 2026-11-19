@@ -4,8 +4,9 @@ import {server} from '../server.mjs';
 import {clearReactBitsCacheForTests} from '../reactbits-official.mjs';
 import {clearAceternityCacheForTests} from '../aceternity-official.mjs';
 
-const brief='Create an AI chatbot with a collapsible conversation sidebar, '+
-  'interactive prompt input bar, animated text responses, floating navigation and interactive cards.';
+const brief='Design an AI chatbot workspace with a collapsible conversation sidebar, '+
+  'interactive message input, animated AI responses, floating navigation, and interactive cards. '+
+  'Find genuine UI/UX inspiration and matching original components with their publisher links.';
 
 test('Chat API returns actual publisher component links only after explicit Yes',async()=>{
   clearReactBitsCacheForTests();

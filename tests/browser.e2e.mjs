@@ -149,7 +149,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     // Public release: source-first chat is the only default response. No style panels.
     await page.locator('.message-markdown').first().waitFor({timeout:remote?100000:15000});
     try{
-      await page.getByRole('button',{name:'Yes, combine them'}).waitFor({timeout:15000});
+      await page.getByRole('button',{name:'Yes, show components'}).waitFor({timeout:15000});
     }catch(error){
       const messages=await page.locator('.message-row').allInnerTexts();
       const sourceResponse=await page.evaluate(()=>({url:location.href,
@@ -162,15 +162,15 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     assert.equal(await page.locator('.design-option').count(),0,
       'No Minimal, Glass or Creative style selectors in normal chat');
     const firstAnswer=await page.locator('.message-markdown').last().innerText();
-    assert.match(firstAnswer,/Would you like the best combination of UI\/UX designs and components/i);
+    assert.match(firstAnswer,/Would you like matching original UI components/i);
     assert.doesNotMatch(firstAnswer,/Matching components and animations/i,
       'Components must not appear before opt-in');
-    await page.getByRole('button',{name:'Yes, combine them'}).click();
+    await page.getByRole('button',{name:'Yes, show components'}).click();
     await page.locator('.message-markdown').nth(1).waitFor({timeout:15000});
     await page.waitForFunction(()=>document.querySelectorAll('.message-markdown').length>=2);
     const combined=await page.locator('.message-markdown').last().innerText();
     assert.match(combined,/No verified publisher|UI\/UX designs and original prompts/i);
-    assert.equal(await page.getByRole('button',{name:'Yes, combine them'}).count(),0,
+    assert.equal(await page.getByRole('button',{name:'Yes, show components'}).count(),0,
       'Consent prompt must disappear once the user answers');
     await page.screenshot({path:'browser-artifacts/'+name+'-simple-source-chat.png',fullPage:false});
     if(!remote){
@@ -182,7 +182,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.ok(await page.locator('.fl-project-card').count()>=1,'Project archive must remain usable');
       await page.locator('.fl-project-card').first().click();
       await page.locator('.message-markdown').nth(1).waitFor({timeout:10000});
-      assert.equal(await page.getByRole('button',{name:'Yes, combine them'}).count(),0,
+      assert.equal(await page.getByRole('button',{name:'Yes, show components'}).count(),0,
         'Saved answers must not recreate a previous consent step');
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/Guest account & privacy/i}).click();
@@ -220,7 +220,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await mobile.locator('.composer textarea').fill(
         'Design a mobile-first creator portfolio with case studies, projects and accessible navigation.');
       await mobile.locator('.composer textarea').press('Enter');
-      await mobile.getByRole('button',{name:'Yes, combine them'}).waitFor({timeout:15000});
+      await mobile.getByRole('button',{name:'Yes, show components'}).waitFor({timeout:15000});
       assert.equal(await mobile.locator('.result-message').count(),0);
       assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
         'Source-first mobile chat must not overflow horizontally');

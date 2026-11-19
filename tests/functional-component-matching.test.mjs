@@ -73,7 +73,7 @@ test('after Yes show compact genuine publisher links, not two giant repeated des
   assert.match(after,/reactbits.dev\/micro\/prompt-bar/);
   assert.match(after,/ui.aceternity.com\/components\/sidebar/);
   assert.doesNotMatch(after,/Squiggly Text|Canvas Text|Original prompt: see publisher page \(too long/);
-  assert.match(after,/original documentation links/);
+  assert.match(after,/original design prompts/);
 });
 test('publisher unavailability is transparent rather than pretending React Bits was checked',()=>{
   const after=formatSourceCombination({

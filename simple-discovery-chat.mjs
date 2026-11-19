@@ -69,8 +69,9 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
     return next;
   });
   const text=chunks.join('\n\n');
-  return (text||'No verified original design prompts or exact matching design links were found for this request. I won\'t substitute unrelated landing pages or invent them.')+
-    '\n\n**Would you like the best combination of UI/UX designs and components?** Reply **Yes** or **No**.';
+  if(!matches.length)return 'No matching original application-design page was found in the connected publisher results. I won\'t substitute unrelated landing pages or invent design prompts.'+
+    '\n\n**Would you like matching original UI components with their publisher links instead?** Reply **Yes** or **No**.';
+  return text+'\n\n**Would you like the best combination of UI/UX designs and components?** Reply **Yes** or **No**.';
 }
 export function formatSourceCombination(sources,{brief=''}={}){
   const designs=matchingPublisherDesigns(brief,sources?.matches).slice(0,3);
@@ -92,7 +93,9 @@ export function formatSourceCombination(sources,{brief=''}={}){
     '\n\n**Matching components and animations**\n\n'+
     (componentRows||'No verified matching components were found in the publisher indexes.')+
     reactNote+
-    '\n\nComponent publishers supply original documentation links, not publisher-authored design prompts. Original design prompts remain in the preceding chat reply when available.';
+    (designs.length?
+      '\n\nThe original design prompts, when published, were provided in the preceding chat reply.':
+      '\n\nThese are original component documentation links. No matching publisher design prompt was found.');
 }
 export function isAffirmative(value){
   return /^(yes|yes please)$/i.test(String(value||'').trim());

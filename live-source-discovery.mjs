@@ -70,6 +70,22 @@ export function indexedReference(candidate,provider){
 // Only publisher-native MCP access is used. Generic search-engine results
 // must not be stored, cached as a permanent catalogue or presented as source
 // prompts. Publishers without authorized APIs remain honest source links.
+function secondaryWorkspaceQuery(brief,results){
+  const q=String(brief||'').toLowerCase();
+  if(/\b(landing|homepage|home page|marketing page)\b/.test(q))return '';
+  const workspace=/\b(chatbot|chatgpt|chat interface|conversation sidebar|workspace|dashboard|student portal|school platform)\b/.test(q);
+  if(!workspace)return '';
+  const suitable=(results||[]).some(item=>{
+    const title=String(item.title||'').toLowerCase();
+    return /\b(chat|dashboard|workspace|portal|editor|application interface)\b/.test(title)&&
+      !/\b(landing|homepage|marketing page)\b/.test(title);
+  });
+  if(suitable)return '';
+  if(/\b(chatbot|chatgpt|chat interface|conversation sidebar)\b/.test(q))
+    return 'chat application workspace dashboard';
+  if(/\b(student|school)\b/.test(q))return 'student learning dashboard application';
+  return 'application dashboard workspace interface';
+}
 const cache=new Map(),pending=new Map(),requests=[];
 const TTL=4*60*1000,MAX_RUNS=12;
 export function clearDiscoveryCacheForTests(){cache.clear();pending.clear();requests.length=0;}
@@ -99,6 +115,17 @@ export async function discoverLiveSources(brief,{
     let raw,available=false;
     try{raw=await findKageOriginals(query,{transport,limit});available=true;}
     catch{raw={status:'unavailable',matches:[]};}
+    // An interior app request should not stop at three unrelated marketing
+    // landing pages. Ask Kage's official search tool once more with a concise
+    // interior-screen query; use only actual publisher results.
+    const retry=available?secondaryWorkspaceQuery(brief,raw.matches):'';
+    if(retry&&retry!==query){
+      try{
+        const second=await findKageOriginals(retry,{transport,limit});
+        const merged=new Map([...(raw.matches||[]),...(second.matches||[])].map(x=>[x.url,x]));
+        raw={...raw,matches:[...merged.values()]};
+      }catch{/* The first verified publisher response remains authoritative. */}
+    }
     const kage=LIVE_SOURCES.find(x=>x.id==='kage');
     // Official search results can offer exact original page links even when
     // the publisher's separate prompt tool returns no verifiable prompt.

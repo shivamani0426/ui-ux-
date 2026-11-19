@@ -24,7 +24,7 @@ test('simple chat refuses unsolicited components, respects explicit Yes/No, and 
     const first=await api(path,'POST',{message:'School dashboard inspiration please',styles:[],simpleDiscovery:true});
     assert.equal(first.status,200);
     assert.equal(first.data.messages.at(-1).flowStage,'offer-combination');
-    assert.match(first.data.messages.at(-1).content,/Would you like the best combination/);
+    assert.match(first.data.messages.at(-1).content,/Would you like matching original UI components/);
     assert.doesNotMatch(first.data.messages.at(-1).content,/Matching components and animations/);
 
     const ambiguous=await api(path,'POST',{message:'Sure',styles:[],simpleDiscovery:true});

@@ -18,7 +18,7 @@ test('yes gives exact design and official component links without invented compo
   const text=formatSourceCombination({matches:[original],componentMatches:[component]});
   assert.match(text,/kage.design\/designs\/learning-dashboard/);
   assert.match(text,/reactbits.dev\/micro\/prompt-bar/);
-  assert.match(text,/original documentation links/);
+  assert.match(text,/original design prompts/);
   assert.doesNotMatch(text,/responsive school application with clear class navigation/,'Do not repeat full original prompt after Yes');
 });
 test('reject spoofed links and do not make up sources',()=>{
@@ -27,7 +27,7 @@ test('reject spoofed links and do not make up sources',()=>{
     'http://ui.aceternity.com/components/3d-card']){
     assert.equal(trustedPublisherLink({...original,site}),null);
   }
-  assert.match(formatSourceDiscovery({matches:[]}),/No verified original design/);
+  assert.match(formatSourceDiscovery({matches:[]}),/No matching original application-design page/);
 });
 test('consent is explicit; no ambiguous assent',()=>{
   assert.equal(isAffirmative('yes'),true);
