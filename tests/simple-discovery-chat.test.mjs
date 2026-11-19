@@ -60,3 +60,22 @@ test('multiple long original prompts never silently overrun the chat renderer',(
   assert.ok(result.length<16000);
   assert.match(result,/too long for this chat response/);
 });
+
+test('after consent, absent original designs do not produce an empty section or repeated list numbers',()=>{
+  const onlyComponents=formatSourceCombination({
+    matches:[],componentMatches:[component,{
+      provider:'Aceternity UI',name:'Sidebar',
+      site:'https://ui.aceternity.com/components/sidebar',
+      originalPrompt:null,originalPromptStatus:'not-published'
+    }]
+  },{brief:'Design an AI chatbot workspace with conversation sidebar and prompt bar'});
+  assert.match(onlyComponents,/^\*\*Matching components and animations\*\*/);
+  assert.doesNotMatch(onlyComponents,/\*\*UI\/UX designs and original prompts\*\*/);
+  assert.doesNotMatch(onlyComponents,/No verified matching original application designs/);
+  assert.match(onlyComponents,/- \*\*Prompt Bar\*\*/);
+  assert.match(onlyComponents,/- \*\*Sidebar\*\*/);
+  assert.doesNotMatch(onlyComponents,/\n1\. \*\*Sidebar/);
+  assert.match(onlyComponents,/reactbits.dev\/micro\/prompt-bar/);
+  assert.match(onlyComponents,/ui.aceternity.com\/components\/sidebar/);
+  assert.doesNotMatch(onlyComponents,/Frontline combined implementation prompt/);
+});

@@ -35,8 +35,8 @@ try{
       assert.equal(afterConsentCount,initialProjectCount,
         'Punctuation-normalized Yes! must not create an extra project');
       const combined=await page.locator('.message-markdown').nth(1).innerText();
-      assert.match(combined,/UI\/UX designs and original prompts/);
-      assert.match(combined,/No verified matching original application designs/);
+      assert.doesNotMatch(combined,/UI\/UX designs and original prompts/);
+      assert.doesNotMatch(combined,/No verified matching original application designs/);
       assert.match(combined,/Matching components and animations/);
       assert.match(combined,/No verified matching components were found/);
       assert.doesNotMatch(combined,/Original prompt: see publisher page \(too long/);
