@@ -399,7 +399,12 @@ function App(){
     setMessages(prev=>[...prev,{role:'user',content:raw,time:new Date().toISOString()}]);
     try{
       let current=project;
-      if(!current||(!advancedMode&&messages.at(-1)?.flowStage==='complete')){
+      const lastStage=messages.at(-1)?.flowStage;
+      const consentReply=/^(yes|yes please|no|no thanks|no thank you|not now|nah)$/i.test(raw);
+      // If a user enters a different problem after an offer, search the new
+      // problem in a new private project instead of reusing stale old sources.
+      if(!current||(!advancedMode&&(lastStage==='complete'||
+        (lastStage==='offer-combination'&&!consentReply)))){
         const fullBrief=raw.length<15?'Design a thoughtful user interface based on this request: '+raw:raw;
         const r=await api('/api/projects',{method:'POST',body:JSON.stringify({brief:fullBrief})});
         current=r.project;
