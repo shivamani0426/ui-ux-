@@ -10,7 +10,7 @@ import {discoverLiveSources} from './live-source-discovery.mjs';
 import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
 import {selectPublisherComponents} from './published-component-selection.mjs';
-import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative} from './simple-discovery-chat.mjs';
+import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
@@ -1224,7 +1224,7 @@ const server=http.createServer(async(req,res)=>{
             messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
             let content,flowStage='complete';
             if(no)content='Okay. You can enter a new design idea whenever you like.';
-            else if(asked&&/^(ok|okay|sure|yep|maybe)$/i.test(b.message.trim())){
+            else if(asked&&isAmbiguousConsent(b.message)){
               content='Please reply Yes or No. I will only combine designs with components after an explicit Yes.';
               flowStage='offer-combination';
             }else {
