@@ -390,7 +390,7 @@ function App(){
     setMessages(prev=>[...prev,{role:'user',content:raw,time:new Date().toISOString()}]);
     try{
       let current=project;
-      if(!current){
+      if(!current||messages.at(-1)?.flowStage==='complete'){
         const fullBrief=raw.length<15?'Design a thoughtful user interface based on this request: '+raw:raw;
         const r=await api('/api/projects',{method:'POST',body:JSON.stringify({brief:fullBrief})});
         current=r.project;
@@ -577,6 +577,10 @@ function App(){
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
               {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='publisher'?'Original publisher results':message.source==='guide'?(message.failureReason==='rate-limited'?'OpenRouter rate-limited · guided response':message.failureReason==='timeout'?'OpenRouter timeout · guided response':message.failureReason==='incomplete-output'?'Incomplete AI reply · complete guidance':'Guided recommendations · AI fallback'):message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
               {message.role==='user'?<p>{message.content}</p>:<MessageMarkdown content={message.content}/>}
+              {message.flowStage==='offer-combination'&&i===messages.length-1&&<div className="simple-source-choices">
+                <button type="button" disabled={working} onClick={()=>send('Yes')}>Yes, combine them</button>
+                <button type="button" disabled={working} onClick={()=>send('No')}>No, thanks</button>
+              </div>}
               {message.source==='guide'&&<button type="button" className="message-retry"
                 disabled={working||(message.failureReason==='rate-limited'&&!!message.retryAfterUntil&&Date.parse(message.retryAfterUntil)>retryClock)}
                 onClick={()=>{
