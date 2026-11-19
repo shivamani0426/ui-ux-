@@ -26,6 +26,10 @@ jobs:
         run: npm install --no-save --ignore-scripts playwright@1.56.1
       - name: Install browser binaries
         run: npx playwright install --with-deps chromium firefox
+      - name: Verify React Bits original catalogue on PR 54 (non-blocking live diagnostic)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 54
+        continue-on-error: true
+        run: node tests/reactbits-live-smoke.mjs
       - name: Verify frontend in real browsers
         run: NODE_ENV=test node tests/browser.e2e.mjs
       - name: Verify exact publisher prompt viewer in Chromium and Firefox
