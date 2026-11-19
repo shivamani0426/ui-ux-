@@ -35,6 +35,9 @@ jobs:
       - name: Verify exact publisher prompt viewer in Chromium and Firefox
         if: github.event_name == 'pull_request'
         run: NODE_ENV=test node tests/source-prompt-browser.e2e.mjs
+      - name: Verify React Bits original component cards in Chromium and Firefox
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 54
+        run: NODE_ENV=test node tests/reactbits-browser.e2e.mjs
       - name: Wait for exact GitHub commit on Render (no stale deploys)
         id: release_gate
         if: github.event_name == 'push'
