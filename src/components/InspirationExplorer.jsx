@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {ArrowUpRight,Bookmark,Check,ExternalLink,Globe2,Info,
+import {ArrowUpRight,Bookmark,Check,Copy,ExternalLink,Globe2,Info,
   RefreshCw,Search,ShieldCheck,Sparkles} from 'lucide-react';
 
 // M08: these are actual URLs returned by an authorized search index, NOT
