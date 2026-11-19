@@ -19,7 +19,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     page.on('pageerror',error=>errors.push('PAGEERROR '+error.stack));
     page.on('console',message=>{if(message.type()==='error')errors.push('CONSOLE '+message.text())});
     page.on('response',res=>{if(res.status()>=400)errors.push('HTTP '+res.status()+' '+res.url())});
-    await page.goto(url+'/?utm_source=chatgpt.com',{waitUntil:'domcontentloaded',timeout:60000});
+    await page.goto(url+'/?utm_source=chatgpt.com&advanced=1',{waitUntil:'domcontentloaded',timeout:60000});
     try{
       await page.locator('.fl-orb-intro').waitFor({timeout:6500});
     }catch(error){
@@ -360,7 +360,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       await page.screenshot({path:'browser-artifacts/'+name+'-intelligent-design-fusion.png',fullPage:false});
     }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,hasTouch:true});
-    await mobile.goto(url+'/',{waitUntil:'domcontentloaded',timeout:60000});
+    await mobile.goto(url+'/?advanced=1',{waitUntil:'domcontentloaded',timeout:60000});
     await mobile.locator('.fl-orb-intro').waitFor({timeout:6500});
     assert.equal(await mobile.locator('.fl-dome-f-sculpture').count(),0,'No old F on mobile');
     await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-black-orb.png',fullPage:false});
