@@ -1218,7 +1218,10 @@ const server=http.createServer(async(req,res)=>{
             messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
             let content,flowStage='complete';
             if(no)content='Okay. You can enter a new design idea whenever you like.';
-            else {
+            else if(asked&&/^(ok|okay|sure|yep|maybe)$/i.test(b.message.trim())){
+              content='Please reply Yes or No. I will only combine designs with components after an explicit Yes.';
+              flowStage='offer-combination';
+            }else {
               const sources=await makeInspirationResponse(owner,p,{includeComponents:yes});
               if(yes)content=formatSourceCombination(sources);
               else {
