@@ -148,7 +148,15 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     assert.ok(await page.locator('.message-avatar .fl-monogram').count()>=1,'AI avatar must use F mark');
     // Public release: source-first chat is the only default response. No style panels.
     await page.locator('.message-markdown').first().waitFor({timeout:remote?100000:15000});
-    await page.getByRole('button',{name:'Yes, combine them'}).waitFor({timeout:15000});
+    try{
+      await page.getByRole('button',{name:'Yes, combine them'}).waitFor({timeout:15000});
+    }catch(error){
+      const messages=await page.locator('.message-row').allInnerTexts();
+      const sourceResponse=await page.evaluate(()=>({url:location.href,
+        appText:document.body?.innerText?.slice(-1000)||''}));
+      throw new Error('Source chat consent unavailable. Messages: '+JSON.stringify(messages)+
+        '. Browser state: '+JSON.stringify(sourceResponse)+'. Console: '+errors.join(' | ')+'. '+error.message);
+    }
     assert.equal(await page.locator('.result-message').count(),0,
       'No complex recommendations/workbench should interrupt the source-first chat');
     assert.equal(await page.locator('.design-option').count(),0,
