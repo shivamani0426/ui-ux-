@@ -1,10 +1,12 @@
 // Public-facing, source-first conversation. No invented publisher prompts or URLs.
+import {validScreenrovePage} from './screenrove-publisher.mjs';
 const HOSTS={
   'Kage':new Set(['kage.design']),
   'React Bits':new Set(['reactbits.dev','www.reactbits.dev']),
   'Aceternity UI':new Set(['ui.aceternity.com'])
 };
 export function trustedPublisherLink(item){
+  if(item?.provider==='Screenrove')return item.publisherVerified===true?validScreenrovePage(item.site):null;
   const hosts=HOSTS[item?.provider];
   if(!hosts||typeof item?.site!=='string')return null;
   try{
@@ -27,6 +29,12 @@ const block=item=>{
   const site=trustedPublisherLink(item);
   if(!site)return null;
   const title=clean(item.name)||item.provider;
+  if(item.provider==='Screenrove'){
+    const notes=String(item.summary||'').replace(/[<>\[\]\r\n]/g,' ').replace(/\s+/g,' ').trim().slice(0,225);
+    return '**'+title+'** — Screenrove\n[Open original screen reference]('+site+')'+
+      (notes?'\nPublisher notes: '+notes:'')+
+      '\nObserved interface reference; not a publisher-authored design prompt.';
+  }
   const header='**'+title+'** — '+item.provider+'\n[Open original publisher page]('+site+')';
   const prompt=verifiedOriginal(item);
   const tooLong=item?.provider==='Kage'&&item.originalPromptStatus==='verified-publisher'&&
@@ -38,6 +46,8 @@ const block=item=>{
 // A publisher result explicitly titled "landing page" is not a dashboard screen.
 export function matchingPublisherDesigns(brief,matches){
   const items=(Array.isArray(matches)?matches:[]).filter(x=>trustedPublisherLink(x));
+  const screenrove=items.filter(x=>x.provider==='Screenrove'&&x.publisherVerified===true);
+  const kage=items.filter(x=>x.provider!=='Screenrove');
   const q=String(brief||'').toLowerCase();
   const wantsWorkspace=/\b(chatbot|chatgpt|dashboard|workspace|editor|management platform|student portal|web app|application|admin panel|chat interface)\b/.test(q);
   const wantsLanding=/\b(landing|homepage|home page|marketing page|hero section)\b/.test(q);
@@ -60,7 +70,7 @@ export function matchingPublisherDesigns(brief,matches){
       evidence:/\b(analytics|dashboard|metrics|reporting)\b/}
   ];
   const relevantDomains=domains.filter(d=>d.requested.test(q));
-  return items.filter(x=>{
+  const selected=kage.filter(x=>{
     const name=clean(x.name).toLowerCase();
     const verbatim=verifiedOriginal(x)||'';
     const evidence=name+' '+verbatim.toLowerCase();
@@ -73,8 +83,41 @@ export function matchingPublisherDesigns(brief,matches){
       return false;
     return true;
   });
+  return [...screenrove,...selected];
 }
 export function formatSourceDiscovery(sources,{brief=''}={}){
+  // Screenrove reports real in-app and marketing screen captures separately.
+  // No components are shown until the visitor explicitly opts in.
+  if(Array.isArray(sources?.applicationMatches)&&Array.isArray(sources?.landingMatches)){
+    const app=sources.applicationMatches.filter(x=>x.provider==='Screenrove'&&
+      x.designType==='application-ui'&&trustedPublisherLink(x)).slice(0,2);
+    const landing=sources.landingMatches.filter(x=>trustedPublisherLink(x)&&(
+      x.provider==='Screenrove'&&x.designType==='landing-page'||
+      x.provider==='Kage'&&matchingPublisherDesigns(brief,[x]).length>0
+    )).slice(0,3);
+    const sections=[];
+    const take=(label,items)=>{
+      let used=0;
+      const rows=items.map((item,i)=>{
+        const full=(i+1)+'. '+block(item);
+        if(used+full.length>11000)return (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
+          '\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
+          '\nOpen the publisher page to read its full prompt.';
+        used+=full.length+2;
+        return full;
+      });
+      if(rows.length)sections.push('**'+label+'**\n\n'+rows.join('\n\n'));
+    };
+    take('Application UI references',app);
+    take('Landing-page references',landing);
+    if(!sections.length){
+      const unavailable=sources.screenroveStatus==='unavailable'||sources?.discovery?.status==='unavailable';
+      sections.push(unavailable?'Original screen publishers are temporarily unavailable. I could not verify live application or landing-page references.':
+        'No sufficiently relevant original application or landing-page references were verified for this request. I will not invent links or prompts.');
+    }
+    return sections.join('\n\n')+
+      '\n\n**Would you like matching original UI components with publisher links as well?** Reply **Yes** or **No**.';
+  }
   const matches=matchingPublisherDesigns(brief,sources?.matches).slice(0,3);
   // The chat renderer caps messages at 16K characters. Never truncate a
   // publisher's exact prompt while still labeling it verbatim.
@@ -105,12 +148,16 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
   return text+'\n\n**Would you like the best combination of UI/UX designs and components?** Reply **Yes** or **No**.';
 }
 export function formatSourceCombination(sources,{brief=''}={}){
-  const designs=matchingPublisherDesigns(brief,sources?.matches).slice(0,3);
+  const designs=(Array.isArray(sources?.applicationMatches)&&Array.isArray(sources?.landingMatches)?
+    [...sources.applicationMatches.slice(0,2),...sources.landingMatches.slice(0,3)]:
+    matchingPublisherDesigns(brief,sources?.matches).slice(0,3))
+    .filter(x=>trustedPublisherLink(x)).slice(0,5);
   const components=(sources?.componentMatches||[]).filter(x=>trustedPublisherLink(x)).slice(0,5);
   const designRows=designs.map((item,i)=>
     (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
     '\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
     (verifiedOriginal(item)?'\nOriginal publisher prompt: already displayed above.':
+      item.provider==='Screenrove'?'\nReal screen reference (no publisher design prompt).':
       '\nOriginal publisher prompt: not available or not verified.')).join('\n\n');
   const componentRows=components.map(item=>
     '- **'+clean(item.name)+'** — '+item.provider+
@@ -137,7 +184,7 @@ export function formatSourceCombination(sources,{brief=''}={}){
     (componentRows||'No verified matching components were found in the publisher indexes.')+
     reactNote+combinationPrompt+
     (designs.length?
-      '\n\nThe original design prompts, when published, were provided in the preceding chat reply.':
+      '\n\nOriginal publisher prompts, when available, were shown in the preceding reply. Screenrove links are screen references, not original design prompts.':
       '\n\nOriginal component documentation links only; no publisher design prompt was verified.');
 }
 // Shared by server and browser: punctuation is harmless; ambiguous assent
