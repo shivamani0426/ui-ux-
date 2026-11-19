@@ -69,8 +69,17 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
     return next;
   });
   const text=chunks.join('\n\n');
-  if(!matches.length)return 'No matching original application-design page was found in the connected publisher results. I won\'t substitute unrelated landing pages or invent design prompts.'+
-    '\n\n**Would you like matching original UI components with their publisher links instead?** Reply **Yes** or **No**.';
+  if(!matches.length){
+    const status=sources?.discovery?.status;
+    const why=status==='rate-limited'?
+      'Kage original-design lookup is temporarily rate-limited. You can retry later; no source was invented.':
+      status==='unavailable'?
+      'Kage original-design publisher is currently unavailable. This is not confirmation that no matching design exists.':
+      status==='not-configured'?
+      'Live Kage lookup is not enabled in this environment. No original design was verified.':
+      'No matching original application-design page was found in the connected publisher results. I won\'t substitute unrelated landing pages or invent design prompts.';
+    return why+'\n\n**Would you like matching original UI components with their publisher links instead?** Reply **Yes** or **No**.';
+  }
   return text+'\n\n**Would you like the best combination of UI/UX designs and components?** Reply **Yes** or **No**.';
 }
 export function formatSourceCombination(sources,{brief=''}={}){
@@ -84,6 +93,17 @@ export function formatSourceCombination(sources,{brief=''}={}){
   const componentRows=components.map((item,i)=>
     (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
     '\n[Open original component page]('+trustedPublisherLink(item)+')').join('\n\n');
+  const overview=String(brief||'').replace(/[\\r\\n<>\\[\\]`]/g,' ').replace(/\\s+/g,' ').trim().slice(0,310);
+  const designSummary=designs.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
+  const componentSummary=components.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
+  // Generated connective instructions are explicitly Frontline-authored.
+  // Never label this text as an original publisher prompt.
+  const combinationPrompt=designs.length&&components.length?
+    '\\n\\n**Frontline combined implementation prompt (Frontline-authored, NOT an original publisher prompt)**\\n\\n'+
+    'Design a cohesive interface for: '+(overview||'the application described above')+
+    '. Base the visual direction on these linked original design references: '+designSummary+
+    '. Integrate relevant functional elements using these linked original component references: '+componentSummary+
+    '. Preserve accessible navigation, responsive layouts and clear interaction states. The exact publisher links above identify the selected sources; do not attribute this combined text to a publisher.':'';
   const reactStatus=(sources?.componentDiscovery?.providers||[])
     .find(x=>x.provider==='React Bits')?.status;
   const reactNote=!components.some(x=>x.provider==='React Bits')&&reactStatus==='unavailable'?
@@ -92,7 +112,7 @@ export function formatSourceCombination(sources,{brief=''}={}){
     (designRows||'No verified matching original application designs were found.')+
     '\n\n**Matching components and animations**\n\n'+
     (componentRows||'No verified matching components were found in the publisher indexes.')+
-    reactNote+
+    reactNote+combinationPrompt+
     (designs.length?
       '\n\nThe original design prompts, when published, were provided in the preceding chat reply.':
       '\n\nThese are original component documentation links. No matching publisher design prompt was found.');
