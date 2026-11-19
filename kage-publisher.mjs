@@ -84,7 +84,8 @@ export function toolArguments(tool,mode,query){
   return mode==='search'?buildArgs(tool,[
     [['query','q','search','text','brief','description','prompt'],query],
     [['limit','count','max_results','maxResults','top_k'],3]
-  ]):buildArgs(tool,[[['slug','design_slug','designSlug','id','name'],query]]);
+  ]):buildArgs(tool,[[['slug','design_slug','designSlug','id','name'],query],
+    [['include_image'],false]]);
 }
 function parseToolContent(response){
   if(!response||response.isError)return null;
