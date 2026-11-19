@@ -25,6 +25,8 @@ test('Only official Kage slugs and trusted publisher URLs are eligible',()=>{
     'https://kage.design/designs/tracker?utm=bad']){
     assert.equal(canonicalIndexedUrl(site,provider),null,site);
   }
+  assert.equal(canonicalIndexedUrl('https://kage.design/designs/tracker?utm=bad',provider),
+    'https://kage.design/designs/tracker');
   assert.equal(sourceUrlForKage({slug:'student-dashboard-original'}),
     'https://kage.design/designs/student-dashboard-original');
   assert.equal(sourceUrlForKage({url:'https://kage.design.attacker.test/designs/fake',slug:'bad/slug'}),null);
