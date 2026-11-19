@@ -112,8 +112,8 @@ export function formatSourceCombination(sources,{brief=''}={}){
     '\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
     (verifiedOriginal(item)?'\nOriginal publisher prompt: already displayed above.':
       '\nOriginal publisher prompt: not available or not verified.')).join('\n\n');
-  const componentRows=components.map((item,i)=>
-    (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
+  const componentRows=components.map(item=>
+    '- **'+clean(item.name)+'** — '+item.provider+
     '\n[Open original component page]('+trustedPublisherLink(item)+')').join('\n\n');
   const overview=String(brief||'').replace(/[\r\n<>\[\]`]/g,' ').replace(/\s+/g,' ').trim().slice(0,310);
   const designSummary=designs.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
@@ -130,14 +130,15 @@ export function formatSourceCombination(sources,{brief=''}={}){
     .find(x=>x.provider==='React Bits')?.status;
   const reactNote=!components.some(x=>x.provider==='React Bits')&&reactStatus==='unavailable'?
     '\nReact Bits publisher index is temporarily unavailable; no component links were invented.':'';
-  return '**UI/UX designs and original prompts**\n\n'+
-    (designRows||'No verified matching original application designs were found.')+
-    '\n\n**Matching components and animations**\n\n'+
+  // The first assistant reply already explained an empty design search.
+  // After explicit Yes, show just the useful original component sources.
+  const designSection=designs.length?'**UI/UX designs and original prompts**\n\n'+designRows+'\n\n':'';
+  return designSection+'**Matching components and animations**\n\n'+
     (componentRows||'No verified matching components were found in the publisher indexes.')+
     reactNote+combinationPrompt+
     (designs.length?
       '\n\nThe original design prompts, when published, were provided in the preceding chat reply.':
-      '\n\nThese are original component documentation links. No matching publisher design prompt was found.');
+      '\n\nOriginal component documentation links only; no publisher design prompt was verified.');
 }
 // Shared by server and browser: punctuation is harmless; ambiguous assent
 // still never authorizes fetching or combining publisher components.
