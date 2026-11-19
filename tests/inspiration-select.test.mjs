@@ -1,3 +1,4 @@
+import {installKageMock,originalPrompt} from './kage-mcp-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {rankInspirations,makeSelectionPrompt} from '../inspiration-engine.mjs';
@@ -39,21 +40,7 @@ test('Selection prompt describes original design deliverables, not cloned websit
   assert.throws(()=>makeSelectionPrompt({brief:'Any project'},[]),/Select at least one/);
 });
 test('Select API saves publisher-indexed links, refuses synthetic prompts, and isolates guests',async()=>{
-  const originalFetch=globalThis.fetch;
-  const previousKey=process.env.FRONTLINE_BRAVE_SEARCH_API_KEY;
-  process.env.FRONTLINE_BRAVE_SEARCH_API_KEY='brave_TEST_ONLY_012345678901234567890';
-  globalThis.fetch=(url,options)=>{
-    if(String(url).startsWith('https://api.search.brave.com/res/v1/web/search')){
-      const terms=new URL(url).searchParams.get('q');
-      const host=terms.match(/^site:([^ ]+)/)?.[1];
-      const site=host==='tympanus.net'?'https://tympanus.net/codrops/hero':
-        'https://'+host+'/components/dashboard';
-      return Promise.resolve(new Response(JSON.stringify({web:{results:[
-        {url:site,title:'Student dashboard components at '+host}
-      ]}}),{status:200}));
-    }
-    return originalFetch(url,options);
-  };
+  const restoreMock=installKageMock();
 
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base='http://127.0.0.1:'+server.address().port;
@@ -65,9 +52,10 @@ test('Select API saves publisher-indexed links, refuses synthetic prompts, and i
     const path='/api/projects/'+id+'/inspirations';
     const a=await alice(path);
     assert.equal(a.status,200);
-    assert.equal(a.data.librarySize,14);
+    assert.equal(a.data.librarySize,1);
     assert.equal(a.data.sources.length,14);
-    assert.ok(a.data.matches.every(item=>item.originalPromptStatus==='not-verified'));
+    assert.ok(a.data.matches.every(item=>item.originalPromptStatus==='verified-publisher'));
+    assert.equal(a.data.matches[0].originalPrompt,originalPrompt);
     assert.ok(a.data.matches.every(item=>item.id.startsWith('live_')));
     assert.ok(a.data.matches.length>=10);
     assert.equal(a.data.selected.length,0);
@@ -100,9 +88,7 @@ test('Select API saves publisher-indexed links, refuses synthetic prompts, and i
     const deleted=await alice(path);
     assert.equal(deleted.status,404);
   }finally{
-    globalThis.fetch=originalFetch;
-    if(previousKey===undefined)delete process.env.FRONTLINE_BRAVE_SEARCH_API_KEY;
-    else process.env.FRONTLINE_BRAVE_SEARCH_API_KEY=previousKey;
+    restoreMock();
     await new Promise(resolve=>server.close(resolve));
   }
 });
