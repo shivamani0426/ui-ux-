@@ -29,6 +29,8 @@ test('Only official Kage slugs and trusted publisher URLs are eligible',()=>{
   assert.equal(sourceUrlForKage({slug:'student-dashboard-original'}),
     'https://kage.design/designs/student-dashboard-original');
   assert.equal(sourceUrlForKage({url:'https://kage.design.attacker.test/designs/fake',slug:'bad/slug'}),null);
+  assert.equal(sourceUrlForKage({url:'https://kage.design.attacker.test/designs/fake',slug:'valid-slug'}),null,
+    'Conflicting hostile URL cannot be repaired into a fake source link');
   const fake=indexedReference({url:'https://kage.design/designs/valid',
     title:'Authentic original',prompt:'FORGED AI PROMPT'},provider);
   assert.equal(fake.originalPrompt,null);
