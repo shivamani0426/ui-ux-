@@ -176,8 +176,12 @@ async function makeInspirationResponse(owner,project){
   }).map(item=>{
     const source=index.get(item.id);
     return {...item,provider:source.provider||'',sourceKind:source.sourceKind||'',
-      originalPromptStatus:'not-verified',originalPromptUrl:null,
-      provenance:'Indexed URL from original publisher; no publisher prompt has been licensed or verified.'};
+      originalPrompt:source.originalPromptStatus==='verified-publisher'?source.originalPrompt:null,
+      originalPromptStatus:source.originalPromptStatus||'not-verified',
+      originalPromptHash:source.originalPromptHash||null,
+      originalPromptOrigin:source.originalPromptOrigin||null,
+      originalPromptUrl:source.originalPromptStatus==='verified-publisher'?source.site:null,
+      provenance:source.provenance||'Publisher link only; no original prompt was returned.'};
   });
   return {projectId:project.id,matches,selected:picks.filter(id=>index.has(id)),
     librarySize:discovery.matches.length,rankingVersion:3,
