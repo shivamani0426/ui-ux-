@@ -398,7 +398,7 @@ function App(){
         setProjects(p=>[current,...p]);
         setViewPreview(false);
       }
-      const out=await api('/api/projects/'+encodeURIComponent(current.id)+'/messages',{method:'POST',body:JSON.stringify({message:raw,styles:selected})});
+      const out=await api('/api/projects/'+encodeURIComponent(current.id)+'/messages',{method:'POST',body:JSON.stringify({message:raw,styles:selected,simpleDiscovery:true})});
       setMessages(out.messages||[]);
     }catch(e){
       setMessages(prev=>[...prev,{role:'assistant',content:'Something went wrong: '+e.message,source:'error'}]);
@@ -563,19 +563,19 @@ function App(){
             <span className="floating-symbol"><FrontlineMark size={53}/></span>
             <span className="studio-eyebrow">THE FRONTLINE DESIGN ATELIER</span>
             <h1 className="studio-title">Design beyond <em>the ordinary.</em></h1>
-            <p>Every extraordinary interface begins with a thought. Tell me what you imagine, and we’ll find its visual direction together.</p>
+            <p>Describe what you want to build. Get original design prompts and links. Combine with components only if you choose.</p>
             <div className="studio-starters" aria-label="Try a design brief">
               {starterNotes.map((note,i)=><button type="button" key={note} onClick={()=>sendPreset(note)}>
                 <Sparkles size={13} aria-hidden="true"/>
                 {['Learning dashboard','Cinematic portfolio','Health experience'][i]}
               </button>)}
             </div>
-            <span>Select. Generate. Fuse. Your vision leads the way.</span>
+            <span>Real designs. Original prompts. Direct publisher links.</span>
           </div>}
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
             {message.role!=='user'&&<div className="message-avatar"><FrontlineMark size={25}/></div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
-              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='guide'?(message.failureReason==='rate-limited'?'OpenRouter rate-limited · guided response':message.failureReason==='timeout'?'OpenRouter timeout · guided response':message.failureReason==='incomplete-output'?'Incomplete AI reply · complete guidance':'Guided recommendations · AI fallback'):message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
+              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='publisher'?'Original publisher results':message.source==='guide'?(message.failureReason==='rate-limited'?'OpenRouter rate-limited · guided response':message.failureReason==='timeout'?'OpenRouter timeout · guided response':message.failureReason==='incomplete-output'?'Incomplete AI reply · complete guidance':'Guided recommendations · AI fallback'):message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
               {message.role==='user'?<p>{message.content}</p>:<MessageMarkdown content={message.content}/>}
               {message.source==='guide'&&<button type="button" className="message-retry"
                 disabled={working||(message.failureReason==='rate-limited'&&!!message.retryAfterUntil&&Date.parse(message.retryAfterUntil)>retryClock)}
@@ -590,7 +590,7 @@ function App(){
             </div>
           </div>)}
           {working&&<div className="message-row incoming"><div className="message-avatar"><FrontlineMark size={25}/></div><div className="bubble ai-bubble thinking" aria-label="Analyzing your request"><i/><i/><i/></div></div>}
-          {project&&<section className="result-message">
+          {false&&project&&<section className="result-message">
             <div className="result-header">
               <span className="small-eyebrow">DESIGN EXPLORER / {project.recommendations.category?.toUpperCase()}</span>
               <strong>Explore. Select. Make it yours.</strong>
@@ -661,7 +661,7 @@ function App(){
             <div className="composer-toolbar">
               <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?(config.aiPrimary==='openrouter'?'OpenRouter configured':'AI configured'):'Design guidance ready'}</span>
               <div className="composer-buttons">
-                <button type="button" className="tool-button" title="Explore tools" onClick={()=>showMenu('tools')} aria-label="Open design tools"><Plus size={19}/></button>
+                
                 <button className="submit-button" type="submit" disabled={working||brief.trim().length<2} aria-label="Send message">{working?<RotateCcw size={18} className="spin"/>:<ArrowUp size={19}/>}</button>
               </div>
             </div>
@@ -689,9 +689,9 @@ function App(){
           <p className="menu-eyebrow">DESIGN WORKSPACE</p>
           <button className="nav-primary" onClick={newChat}><Plus size={17}/> New conversation <ArrowUp size={15}/></button>
           {projects.length>0&&<button className="nav-resume" onClick={()=>openProject(projects[0])}><Layers3 size={17}/> Continue recent conversation <ChevronRight size={15}/></button>}
-          <button onClick={()=>setPanel('tools')}><Sparkles size={17}/> Select / Generate / Fusion <ChevronRight size={15}/></button>
+          
           <button onClick={()=>{setPanel('projects');refreshWorkspace();}}><Layers3 size={17}/> My projects & conversations <ChevronRight size={15}/></button>
-          <button onClick={()=>setPanel('references')}><Search size={17}/> UI/UX inspiration library <ChevronRight size={15}/></button>
+          
           <button onClick={openLearning}><ShieldCheck size={17}/> Learning & privacy <ChevronRight size={15}/></button>
           <div className="menu-bottom">
             <p className="menu-eyebrow">ACCOUNT</p>
