@@ -859,8 +859,21 @@ async function serveFile(req,res){
   }catch(e){if(e.code==='ENOENT')return json(res,404,{error:'Asset unavailable'});throw e;}
 }
 
-const RATE_WINDOW=60_000,MAX_CALLS=75;const rateMap=new Map();
-function rateLimited(id){const now=Date.now();const rec=rateMap.get(id)||{start:now,count:0};if(now-rec.start>RATE_WINDOW){rec.start=now;rec.count=0;}rec.count++;rateMap.set(id,rec);return rec.count>MAX_CALLS;}
+const RATE_WINDOW=60_000,MAX_CALLS=75,MAX_RATE_IDENTITIES=5000;
+const rateMap=new Map();let rateSweep=0;
+function rateLimited(id){
+  const now=Date.now();
+  // Expire stale identities periodically and bound memory for rotating guests.
+  if(++rateSweep%64===0||rateMap.size>=MAX_RATE_IDENTITIES){
+    for(const [key,value] of rateMap){
+      if(now-value.start>RATE_WINDOW||now<value.start)rateMap.delete(key);
+    }
+    while(rateMap.size>=MAX_RATE_IDENTITIES)rateMap.delete(rateMap.keys().next().value);
+  }
+  const rec=rateMap.get(id)||{start:now,count:0};
+  if(now-rec.start>RATE_WINDOW||now<rec.start){rec.start=now;rec.count=0;}
+  rec.count++;rateMap.set(id,rec);return rec.count>MAX_CALLS;
+}
 // Render supplies the deployed Git commit SHA automatically. Expose only a
 // short public revision so release checks can detect a stale deployment.
 const deployedRevision=()=>{
