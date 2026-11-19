@@ -23,9 +23,17 @@ try{
       assert.match(await page.locator('.message-markdown').first().innerText(),
         /Would you like matching original UI components/);
       assert.ok(!pageErrors.length,name+': '+pageErrors.join(' | '));
-      // Never reveal components or invented prompts until explicit user approval.
-      await page.getByRole('button',{name:'Yes, show components'}).click();
+      // A typed "Yes!" is clear consent. It must not create an unrelated
+      // project just because the visitor added punctuation.
+      const initialProjectCount=await page.evaluate(async()=>(
+        await (await fetch('/api/projects')).json()).projects.length);
+      await page.locator('.composer textarea').fill('Yes!');
+      await page.locator('.composer textarea').press('Enter');
       await page.locator('.message-markdown').nth(1).waitFor({timeout:15000});
+      const afterConsentCount=await page.evaluate(async()=>(
+        await (await fetch('/api/projects')).json()).projects.length);
+      assert.equal(afterConsentCount,initialProjectCount,
+        'Punctuation-normalized Yes! must not create an extra project');
       const combined=await page.locator('.message-markdown').nth(1).innerText();
       assert.match(combined,/UI\/UX designs and original prompts/);
       assert.match(combined,/No verified matching original application designs/);

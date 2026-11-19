@@ -536,3 +536,14 @@ input,textarea{accent-color:var(--lav)}
 @media(prefers-reduced-motion:reduce){
   .app.in-chat .conversation{transition:none}
 }
+
+/* Public chat mobile legibility: keep touch targets usable without
+   removing existing motion or introducing extra interface elements. */
+@media (max-width:750px){
+  .app.in-chat .studio-starters button{font-size:13px;min-height:44px}
+  .app.in-chat .submit-button,.app.in-chat .tool-button{
+    width:44px;height:44px;min-width:44px;min-height:44px
+  }
+  .app.in-chat .composer-status{font-size:12px}
+  .app.in-chat .composer-disclaimer{font-size:11px;line-height:1.5}
+}

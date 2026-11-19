@@ -10,7 +10,7 @@ import {discoverLiveSources} from './live-source-discovery.mjs';
 import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
 import {selectPublisherComponents} from './published-component-selection.mjs';
-import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative} from './simple-discovery-chat.mjs';
+import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
@@ -174,7 +174,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     ?Promise.resolve({status:'test-disabled',matches:[]})
     :findAceternityOriginalComponents(project.brief,{limit:forSimpleChat?24:4});
   const [discovery,components,aceternity,raw,picks,personalTags]=await Promise.all([
-    discoverLiveSources(project.brief),componentsRequest,aceternityRequest,
+    discoverLiveSources(project.brief,{requester:owner}),componentsRequest,aceternityRequest,
     profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
   // Do not store dozens of unrelated publisher candidates just to show
@@ -215,6 +215,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
     rankingVersion:5,
     discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
+      retryAfterSeconds:discovery.retryAfterSeconds||0,
       providers:discovery.providerStatus||[]},
     componentDiscovery:{status:components.status,note:components.note||'',
       providers:[{provider:'React Bits',status:components.status,count:components.matches.length},
@@ -858,8 +859,21 @@ async function serveFile(req,res){
   }catch(e){if(e.code==='ENOENT')return json(res,404,{error:'Asset unavailable'});throw e;}
 }
 
-const RATE_WINDOW=60_000,MAX_CALLS=75;const rateMap=new Map();
-function rateLimited(id){const now=Date.now();const rec=rateMap.get(id)||{start:now,count:0};if(now-rec.start>RATE_WINDOW){rec.start=now;rec.count=0;}rec.count++;rateMap.set(id,rec);return rec.count>MAX_CALLS;}
+const RATE_WINDOW=60_000,MAX_CALLS=75,MAX_RATE_IDENTITIES=5000;
+const rateMap=new Map();let rateSweep=0;
+function rateLimited(id){
+  const now=Date.now();
+  // Expire stale identities periodically and bound memory for rotating guests.
+  if(++rateSweep%64===0||rateMap.size>=MAX_RATE_IDENTITIES){
+    for(const [key,value] of rateMap){
+      if(now-value.start>RATE_WINDOW||now<value.start)rateMap.delete(key);
+    }
+    while(rateMap.size>=MAX_RATE_IDENTITIES)rateMap.delete(rateMap.keys().next().value);
+  }
+  const rec=rateMap.get(id)||{start:now,count:0};
+  if(now-rec.start>RATE_WINDOW||now<rec.start){rec.start=now;rec.count=0;}
+  rec.count++;rateMap.set(id,rec);return rec.count>MAX_CALLS;
+}
 // Render supplies the deployed Git commit SHA automatically. Expose only a
 // short public revision so release checks can detect a stale deployment.
 const deployedRevision=()=>{
@@ -1223,7 +1237,7 @@ const server=http.createServer(async(req,res)=>{
             messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
             let content,flowStage='complete';
             if(no)content='Okay. You can enter a new design idea whenever you like.';
-            else if(asked&&/^(ok|okay|sure|yep|maybe)$/i.test(b.message.trim())){
+            else if(asked&&isAmbiguousConsent(b.message)){
               content='Please reply Yes or No. I will only combine designs with components after an explicit Yes.';
               flowStage='offer-combination';
             }else {
