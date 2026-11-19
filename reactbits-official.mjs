@@ -10,7 +10,9 @@ const STOP=new Set(('create build make website application app ui ux react desig
 const cache={expires:0,entries:[]};
 let pending=null;
 const clean=v=>String(v||'').replace(/[\u0000-\u001f\u007f<>]/g,' ').trim();
-const tokens=s=>[...new Set((clean(s).toLowerCase().match(/[a-z]{3,30}/g)||[]).filter(t=>!STOP.has(t)))];
+const singular=t=>({cards:'card',responses:'response',messages:'message',buttons:'button',menus:'menu',transitions:'transition'}[t]||t);
+const tokens=s=>[...new Set((clean(s).toLowerCase().match(/[a-z]{3,30}/g)||[])
+  .filter(t=>!STOP.has(t)).map(singular))];
 const allowedUrl=v=>{
   try{
     const u=new URL(v);
@@ -60,7 +62,7 @@ export function parseReactBitsPublisherSitemap(xml){
   return [...entries.values()];
 }
 export function rankReactBitsOriginalComponents(brief,entries,{limit=3}={}){
-  const query=tokens(brief).slice(0,12);
+  const query=tokens(brief).slice(0,28);
   if(!query.length)return [];
   return entries.map(item=>{
     if(!allowedUrl(item?.site)||typeof item.name!=='string')return null;
@@ -69,7 +71,7 @@ export function rankReactBitsOriginalComponents(brief,entries,{limit=3}={}){
     for(const word of query){if(title.has(word))score+=5;if(description.has(word))score+=2;}
     return score?{...item,score}:null;
   }).filter(Boolean).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name))
-    .slice(0,Math.max(1,Math.min(6,limit))).map(item=>{
+    .slice(0,Math.max(1,Math.min(26,limit))).map(item=>{
       const id='live_'+crypto.createHash('sha256').update(item.site).digest('hex').slice(0,24);
       return {id,name:item.name,site:item.site,provider:'React Bits',
         sourceId:'reactbits',sourceKind:'animation',category:'Original component / animation',

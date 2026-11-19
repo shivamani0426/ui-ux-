@@ -18,7 +18,8 @@ test('yes gives exact design and official component links without invented compo
   const text=formatSourceCombination({matches:[original],componentMatches:[component]});
   assert.match(text,/kage.design\/designs\/learning-dashboard/);
   assert.match(text,/reactbits.dev\/micro\/prompt-bar/);
-  assert.match(text,/not available or not verified/);
+  assert.match(text,/original documentation links/);
+  assert.doesNotMatch(text,/responsive school application with clear class navigation/,'Do not repeat full original prompt after Yes');
 });
 test('reject spoofed links and do not make up sources',()=>{
   for(const site of ['https://kage.design.evil.com/designs/a',
