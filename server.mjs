@@ -161,14 +161,14 @@ async function savedSourceRows(owner,projectId){
     ORDER BY r.created_at ASC LIMIT 8`,[owner,projectId]);
   return result.rows;
 }
-async function makeInspirationResponse(owner,project){
+async function makeInspirationResponse(owner,project,{includeComponents=true}={}){
   // Kage design prompts and React Bits component references have different
   // rights and contracts. Never label a component description as a prompt.
-  const componentsRequest=process.env.NODE_ENV==='test'&&
+  const componentsRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
     process.env.FRONTLINE_REACTBITS_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
     :findReactBitsOriginalComponents(project.brief);
-  const aceternityRequest=process.env.NODE_ENV==='test'&&
+  const aceternityRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
     process.env.FRONTLINE_ACETERNITY_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
     :findAceternityOriginalComponents(project.brief);
@@ -1219,7 +1219,7 @@ const server=http.createServer(async(req,res)=>{
             let content,flowStage='complete';
             if(no)content='Okay. You can enter a new design idea whenever you like.';
             else {
-              const sources=await makeInspirationResponse(owner,p);
+              const sources=await makeInspirationResponse(owner,p,{includeComponents:yes});
               if(yes)content=formatSourceCombination(sources);
               else {
                 content=formatSourceDiscovery(sources);
