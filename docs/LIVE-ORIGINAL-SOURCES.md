@@ -1,6 +1,6 @@
 # M08 — Genuine original-source links and publisher prompts
 
-Status: **Kage official MCP end-to-end tested live**, other 13 website
+Status: **Kage official MCP end-to-end tested live**, other 12 website
 categories link-only until a permitted, compatible publisher integration
 exists. Avoid implying all 14 sites publish prompts; many only provide
 visual inspiration, components or UX research.
@@ -15,9 +15,12 @@ Lapa Ninja, Page Flows.
 
 All 14 have direct ORIGINAL website links, not disguised cloned pages or
 invented entries. Only genuine publisher-returned individual pages appear
-as AI matches. Currently the official Kage MCP returns genuine matched
-page URLs and exact prompts. The remaining 13 are original website
-directories, not fabricated recommendation cards. 21st.dev has a keyed
+as AI matches. Currently the official Kage MCP returns genuine matched design URLs and
+exact prompts. React Bits is independently linked through its official
+https://reactbits.dev/llms.txt index: actual animation/component URLs and
+descriptions only, no publisher prompts or republished component source code.
+The remaining 12 websites are original publisher directories, not
+fabricated recommendation cards. 21st.dev has a keyed
 MCP endpoint, but its publisher API is NOT yet connected or authorized for
 republication in Frontline; do not imply otherwise.
 
@@ -62,8 +65,11 @@ independent copyright or design-quality certificate.
 Kage's own original prompt is displayed under a clearly labeled
 expandable detail with an **exact copy** button. It is not mixed into
 a generic Frontline original prompt and not silently rewritten.
-Other sites show their ORIGINAL URL and a truthful no-verified-prompt
-notice until the publisher permits an authorized retrieval adapter.
+React Bits component cards link directly to original component pages and
+explicitly state that no original prompt is published in its index.
+React Bits uses MIT + Commons Clause; Frontline does not redistribute
+component code. Other sites show their original URL until an authorized
+source-specific retrieval method is available.
 
 The previous Select endpoint POST /api/projects/:id/inspirations/prompt
 returns 409 with original source links instead of fabricating a new
@@ -85,3 +91,23 @@ produce Frontline-original design prompts, labeled as such.
    not before. Keep user histories safe.
 5. Each future site-specific adapter must demonstrate an actual official
    published prompt and reproduction rights, or remain link-only.
+
+## React Bits publisher integration
+
+React Bits official index: https://reactbits.dev/llms.txt.
+Frontline requests this public page server-side, parses exact publisher page URLs,
+and ranks component names/descriptions against sanitized brief keywords.
+Only verified React Bits URLs under /components, /animations, /backgrounds,
+and /text-animations qualify. No cloned illustrations or prompt text are invented.
+The cached catalogue expires after 12 minutes; an unavailable or malformed
+publisher response returns zero fabricated matches. Source links are saved
+per user to the existing design workspace. A published component description
+is not described as a publisher-written design prompt.
+
+React Bits license: https://github.com/DavidHDev/react-bits/blob/main/LICENSE.md
+(MIT + Commons Clause: do not sell, sublicense or redistribute components
+as a library or bundle). Opening the publisher page keeps its own installation
+instructions and dependencies visible to the end user.
+
+Release verification: test the live publisher catalogue, URL validation,
+owner-scoped save/remove, no fake prompt status and Chrome/Firefox UI cards.
