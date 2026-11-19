@@ -61,10 +61,10 @@ export function indexedReference(candidate,provider){
     category:provider.kind==='animation'?'UI components & motion':'Design inspiration',
     provider:provider.name,sourceId:provider.id,sourceKind:provider.kind,
     tags,styles:styleTags(title),summary:'',rank:null,score:null,
-    provenance:'Found through a third-party search index. Open the original source to confirm current details.',
+    provenance:'Candidate original-source link; requires direct publisher verification.',
     // No source-authorized prompt API connected. NEVER synthesize prompt text.
     originalPrompt:null,originalPromptUrl:null,originalPromptStatus:'not-verified',
-    indexVerified:true
+    publisherVerified:false
   };
 }
 // Only publisher-native MCP access is used. Generic search-engine results
@@ -107,6 +107,7 @@ export async function discoverLiveSources(brief,{
       return source?{
         ...source,
         provenance:'Official Kage MCP search result with original design URL.',
+        publisherVerified:true,
         originalPrompt:match.originalPromptStatus==='verified-publisher'?match.originalPrompt:null,
         originalPromptHash:match.originalPromptHash,
         originalPromptStatus:match.originalPromptStatus,
