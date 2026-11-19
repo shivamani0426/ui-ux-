@@ -100,7 +100,9 @@ export async function discoverLiveSources(brief,{
     try{raw=await findKageOriginals(query,{transport,limit});available=true;}
     catch{raw={status:'unavailable',matches:[]};}
     const kage=LIVE_SOURCES.find(x=>x.id==='kage');
-    const references=(raw.matches||[]).map(match=>{
+    const references=(raw.matches||[]).filter(match=>
+      match.originalPromptStatus==='verified-publisher'&&
+      typeof match.originalPrompt==='string'&&match.originalPrompt.length>=70).map(match=>{
       const source=indexedReference(matchToCandidate(match),kage);
       return source?{
         ...source,
