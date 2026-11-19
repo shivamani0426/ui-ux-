@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {findKageOriginals} from './kage-publisher.mjs';
+import {claimPublisherSearch,clearPublisherSearchBudgetForTests} from './publisher-search-budget.mjs';
 
 // M08 Live discovery: use an authorized search-index API; NEVER invent results,
 // crawl a restricted gallery, infer that a prompt exists, or copy source code.
@@ -86,11 +87,11 @@ function secondaryWorkspaceQuery(brief,results){
   if(/\b(student|school)\b/.test(q))return 'student learning dashboard application';
   return 'application dashboard workspace interface';
 }
-const cache=new Map(),pending=new Map(),requests=[];
-const TTL=4*60*1000,MAX_RUNS=12;
-export function clearDiscoveryCacheForTests(){cache.clear();pending.clear();requests.length=0;}
+const cache=new Map(),pending=new Map();
+const TTL=4*60*1000;
+export function clearDiscoveryCacheForTests(){cache.clear();pending.clear();clearPublisherSearchBudgetForTests();}
 export async function discoverLiveSources(brief,{
-  transport=fetch,now=()=>Date.now(),providers=LIVE_SOURCES,limit=3}={}){
+  transport=fetch,now=()=>Date.now(),providers=LIVE_SOURCES,limit=3,requester='guest'}={}){
   const query=discoveryTerms(brief);
   const directories=providers.map(({id,name,host,kind})=>({
     id,name,website:'https://'+host+'/',kind,
@@ -105,12 +106,12 @@ export async function discoverLiveSources(brief,{
   const cached=cache.get(key);
   if(cached&&cached.expires>now())return cached.data;
   if(pending.has(key))return pending.get(key);
-  const current=now();
-  while(requests.length&&requests[0]<current-3600000)requests.shift();
-  if(requests.length>=MAX_RUNS)
+  const budget=claimPublisherSearch(requester,{now:now()});
+  if(!budget.allowed)
     return {status:'rate-limited',query,matches:[],sources:directories,
-      note:'Publisher lookup budget reached; open original sites or retry later.'};
-  requests.push(current);
+      retryAfterSeconds:budget.retryAfterSeconds,
+      providerStatus:directories.map(d=>({id:d.id,status:d.id==='kage'?'rate-limited':'link-only',count:0})),
+      note:'Official Kage publisher lookup budget reached for this visitor or service. Retry later; no designs or prompts are invented.'};
   const work=(async()=>{
     let raw,available=false;
     try{raw=await findKageOriginals(query,{transport,limit});available=true;}
