@@ -1,0 +1,19 @@
+name: Verify original publisher prompts (diagnostic)
+on:
+  push:
+    branches:
+      - feat/live-source-discovery-original-prompts-only
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-kage-original:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify live Kage MCP source URL and unmodified original prompt
+        run: node tests/kage-live-smoke.mjs
