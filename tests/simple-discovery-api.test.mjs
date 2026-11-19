@@ -27,13 +27,18 @@ test('simple chat refuses unsolicited components, respects explicit Yes/No, and 
     assert.match(first.data.messages.at(-1).content,/Would you like the best combination/);
     assert.doesNotMatch(first.data.messages.at(-1).content,/Matching components and animations/);
 
+    const ambiguous=await api(path,'POST',{message:'Sure',styles:[],simpleDiscovery:true});
+    assert.equal(ambiguous.status,200);
+    assert.equal(ambiguous.data.messages.at(-1).flowStage,'offer-combination');
+    assert.match(ambiguous.data.messages.at(-1).content,/Please reply Yes or No/);
+    assert.doesNotMatch(ambiguous.data.messages.at(-1).content,/Matching components and animations/);
     const declined=await api(path,'POST',{message:'No thanks',styles:[],simpleDiscovery:true});
     assert.equal(declined.status,200);
     assert.equal(declined.data.messages.at(-1).flowStage,'complete');
     assert.match(declined.data.messages.at(-1).content,/Okay/);
     const saved=await api('/api/projects/'+id);
     assert.equal(saved.status,200);
-    assert.equal(saved.data.project.messages.length,4);
+    assert.equal(saved.data.project.messages.length,6);
 
     // A detached Yes must not return components. Consent is valid only immediately
     // after the current project has offered the combination step.
