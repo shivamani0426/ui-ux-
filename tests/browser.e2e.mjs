@@ -169,7 +169,8 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await page.locator('.message-markdown').nth(1).waitFor({timeout:15000});
     await page.waitForFunction(()=>document.querySelectorAll('.message-markdown').length>=2);
     const combined=await page.locator('.message-markdown').last().innerText();
-    assert.match(combined,/No verified publisher|UI\/UX designs and original prompts/i);
+    assert.match(combined,/Matching components and animations/i);
+    assert.doesNotMatch(combined,/UI\/UX designs and original prompts/i);
     assert.equal(await page.getByRole('button',{name:'Yes, show components'}).count(),0,
       'Consent prompt must disappear once the user answers');
     await page.screenshot({path:'browser-artifacts/'+name+'-simple-source-chat.png',fullPage:false});
