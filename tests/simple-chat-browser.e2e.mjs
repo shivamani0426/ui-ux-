@@ -18,13 +18,13 @@ try{
       await page.locator('.composer textarea').fill(
         'Build a school dashboard for students and teachers with attendance and homework');
       await page.locator('.composer textarea').press('Enter');
-      await page.getByRole('button',{name:'Yes, combine them'}).waitFor({timeout:15000});
+      await page.getByRole('button',{name:'Yes, show components'}).waitFor({timeout:15000});
       assert.equal(await page.locator('.result-message').count(),0);
       assert.match(await page.locator('.message-markdown').first().innerText(),
-        /Would you like the best combination of UI\/UX designs and components/);
+        /Would you like matching original UI components/);
       assert.ok(!pageErrors.length,name+': '+pageErrors.join(' | '));
       // Never reveal components or invented prompts until explicit user approval.
-      await page.getByRole('button',{name:'Yes, combine them'}).click();
+      await page.getByRole('button',{name:'Yes, show components'}).click();
       await page.locator('.message-markdown').nth(1).waitFor({timeout:15000});
       const combined=await page.locator('.message-markdown').nth(1).innerText();
       assert.match(combined,/UI\/UX designs and original prompts/);
@@ -32,7 +32,7 @@ try{
       assert.match(combined,/Matching components and animations/);
       assert.match(combined,/No verified matching components were found/);
       assert.doesNotMatch(combined,/Original prompt: see publisher page \(too long/);
-      assert.equal(await page.getByRole('button',{name:'Yes, combine them'}).count(),0);
+      assert.equal(await page.getByRole('button',{name:'Yes, show components'}).count(),0);
       await page.locator('.composer textarea').fill(
         'Create a separate school attendance portal with student and teacher accounts');
       await page.locator('.composer textarea').press('Enter');
