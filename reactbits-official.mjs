@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {publisherComponentIntentBoost} from './publisher-component-intent.mjs';
 
 // Publisher-maintained machine-readable catalogue. No scraped galleries,
 // copied component code or hard-coded result pages.
@@ -69,6 +70,7 @@ export function rankReactBitsOriginalComponents(brief,entries,{limit=3}={}){
     const title=new Set(tokens(item.name)),description=new Set(tokens(item.description));
     let score=0;
     for(const word of query){if(title.has(word))score+=5;if(description.has(word))score+=2;}
+    score+=publisherComponentIntentBoost(brief,item.name);
     return score?{...item,score}:null;
   }).filter(Boolean).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name))
     .slice(0,Math.max(1,Math.min(26,limit))).map(item=>{
