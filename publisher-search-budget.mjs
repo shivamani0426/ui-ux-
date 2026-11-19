@@ -21,9 +21,8 @@ export function claimPublisherSearch(visitor,{now=Date.now()}={}){
   const current=buckets.get(key)||{start:now,count:0};
   const denied=current.count>=PER_VISITOR||globalBucket.count>=GLOBAL;
   if(denied){
-    const until=Math.max(1,Math.ceil((
-      current.count>=PER_VISITOR?current.start+WINDOW_MS:globalBucket.start+WINDOW_MS
-    -now)/1000));
+    const resetAt=(current.count>=PER_VISITOR?current.start:globalBucket.start)+WINDOW_MS;
+    const until=Math.max(1,Math.ceil((resetAt-now)/1000));
     return {allowed:false,retryAfterSeconds:until,scope:
       current.count>=PER_VISITOR?'visitor':'publisher'};
   }
