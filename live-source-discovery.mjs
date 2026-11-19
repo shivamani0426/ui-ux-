@@ -78,7 +78,7 @@ export async function discoverLiveSources(brief,{
   const query=discoveryTerms(brief);
   const directories=providers.map(({id,name,host,kind})=>({
     id,name,website:'https://'+host+'/',kind,
-    mode:id==='kage'?'official-mcp':id==='reactbits'?'official-publisher-index':'original-link-only'
+    mode:id==='kage'?'official-mcp':id==='reactbits'?'official-publisher-index':id==='aceternity'?'official-json-component-api':'original-link-only'
   }));
   // Deterministic browser tests must not contact external services.
   if(process.env.NODE_ENV==='test'&&process.env.FRONTLINE_KAGE_TEST_MOCK!=='1'&&transport===fetch)
