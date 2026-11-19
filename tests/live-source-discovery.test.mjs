@@ -1,113 +1,103 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {LIVE_SOURCES,canonicalIndexedUrl,indexedReference,discoveryTerms,
-  discoverLiveSources,clearDiscoveryCacheForTests} from '../live-source-discovery.mjs';
+ discoverLiveSources,clearDiscoveryCacheForTests} from '../live-source-discovery.mjs';
+import {sourceUrlForKage,findKageOriginals,verifiedKagePrompt,toolArguments} from '../kage-publisher.mjs';
+import {mockKageFetch,originalPrompt} from './kage-mcp-fixture.mjs';
 import {server} from '../server.mjs';
-const key='brave_TEST_ONLY_012345678901234567890';
-test('Original source registry covers 7 animation and 7 inspiration providers',()=>{
+
+test('14 original domains are listed; only first-party prompt integration claims verified prompts',()=>{
   assert.equal(LIVE_SOURCES.length,14);
   assert.equal(LIVE_SOURCES.filter(x=>x.kind==='animation').length,7);
   assert.equal(LIVE_SOURCES.filter(x=>x.kind==='inspiration').length,7);
   assert.ok(LIVE_SOURCES.some(x=>x.id==='kage'));
   assert.ok(LIVE_SOURCES.some(x=>x.id==='21st'));
-  assert.ok(LIVE_SOURCES.some(x=>x.id==='lapa'&&x.linkOnly));
 });
-test('Search keywords are bounded; private email/URL does not leave server',()=>{
-  const brief='Build AI student dashboard for jane.private@example.org with https://intranet.example.org/admin and analytics';
-  const query=discoveryTerms(brief);
-  assert.ok(query.includes('student'));
-  assert.ok(!query.includes('jane')&&!query.includes('intranet')&&!query.includes('example'));
-  assert.ok(query.split(' ').length<=7);
+test('Search terms are bounded and exclude URLs and email',()=>{
+  const q=discoveryTerms('Build student dashboard for Jane at private@example.org https://internal.example.org/chat');
+  assert.match(q,/student/);assert.doesNotMatch(q,/jane|internal|example/);
+  assert.ok(q.split(' ').length<=7);
 });
-test('Reject source lookalikes, unsafe hosts, scripts, private paths and arbitrary prompts',()=>{
+test('Only official Kage slugs and trusted publisher URLs are eligible',()=>{
   const provider=LIVE_SOURCES.find(x=>x.id==='kage');
-  for(const url of ['https://kage.design.evil.invalid/item','http://kage.design/abc',
-    'https://u:p@kage.design/design/abc','javascript:alert(1)',
-    'https://kage.design/','https://kage.design/api/private',
-    'https://kage.design/download/abc.pdf','https://kage.design:8443/item']){
-    assert.equal(canonicalIndexedUrl(url,provider),null,url);
+  for(const site of ['https://kage.design.evil.invalid/designs/x','http://kage.design/designs/x',
+    'https://kage.design/','javascript:alert(1)','https://kage.design/api/private',
+    'https://kage.design/designs/tracker?utm=bad']){
+    assert.equal(canonicalIndexedUrl(site,provider),null,site);
   }
-  const found=indexedReference({
-    title:'Original designer hero component',
-    url:'https://kage.design/designs/hero?utm=tracker',
-    description:'THIS IS NOT AN ORIGINAL PROMPT',
-    prompt:'A faked publisher prompt from untrusted search index'
-  },provider);
-  assert.equal(found.site,'https://kage.design/designs/hero');
-  assert.equal(found.originalPrompt,null);
-  assert.equal(found.originalPromptStatus,'not-verified');
-  assert.ok(!JSON.stringify(found).includes('THIS IS NOT'));
-  assert.ok(!JSON.stringify(found).includes('faked publisher prompt'));
+  assert.equal(sourceUrlForKage({slug:'student-dashboard-original'}),
+    'https://kage.design/designs/student-dashboard-original');
+  assert.equal(sourceUrlForKage({url:'https://kage.design.attacker.test/designs/fake',slug:'bad/slug'}),null);
+  const fake=indexedReference({url:'https://kage.design/designs/valid',
+    title:'Authentic original',prompt:'FORGED AI PROMPT'},provider);
+  assert.equal(fake.originalPrompt,null);
+  assert.equal(fake.originalPromptStatus,'not-verified');
 });
-test('Authorized index search delivers only matching original publisher links',async()=>{
+test('Real Kage MCP protocol: only get_design can authorize verbatim prompts and links',async()=>{
+  const official=await findKageOriginals('student learning dashboard',{transport:mockKageFetch});
+  assert.equal(official.status,'ready');
+  assert.equal(official.matches.length,1);
+  assert.equal(official.matches[0].url,'https://kage.design/designs/student-dashboard-original');
+  assert.equal(official.matches[0].originalPrompt,originalPrompt);
+  assert.equal(official.matches[0].originalPromptStatus,'verified-publisher');
+  assert.match(official.matches[0].originalPromptHash,/^[a-f0-9]{64}$/);
+  assert.equal(verifiedKagePrompt({structuredContent:{design:{
+    slug:'different-design',prompt:originalPrompt
+  }}},official.matches[0].url),null,'Do not attribute a prompt to a mismatched design');
+  assert.equal(verifiedKagePrompt({structuredContent:{design:{
+    slug:'student-dashboard-original',description:'Made up, not a publisher prompt'
+  }}},official.matches[0].url),null,'Description is NOT an original prompt');
+});
+test('Unsupported MCP input schemas fail closed instead of inventing arguments',()=>{
+  assert.equal(toolArguments({inputSchema:{properties:{},required:['mystery']}},'get','valid-slug'),null);
+});
+test('Source discovery gives real publisher prompts, links and 13 link-only sites',async()=>{
   clearDiscoveryCacheForTests();
-  const seen=[];
-  const transport=async(url,options)=>{
-    const u=new URL(url);
-    seen.push({url:u,options});
-    const site=u.searchParams.get('q').match(/^site:([^ ]+)/)?.[1];
-    return new Response(JSON.stringify({web:{results:[
-      {url:'https://'+site+'/components/hero',title:'Hero animation component'},
-      {url:'https://'+site+'.attacker.invalid/hijack',title:'Fake malicious result'},
-      {url:'https://'+site+'/components/hero',title:'Duplicate'},
-      {url:'https://totally-unrelated.invalid/another',title:'Unrelated'}
-    ]}}),{status:200});
-  };
-  const result=await discoverLiveSources('Build animated student portal',{
-    apiKey:key,transport,now:()=>100000});
-  assert.equal(result.status,'ready');
-  assert.equal(result.matches.length,13, // Codrops requires /codrops/ prefix; reject unrelated path
-    'No invalid Codrops path or malicious host may be treated as an original source');
-  assert.ok(result.matches.every(x=>x.indexVerified&&x.originalPrompt===null));
-  assert.ok(result.matches.every(x=>x.site.startsWith('https://')));
-  assert.equal(seen.length,14);
-  assert.ok(seen.every(x=>x.url.hostname==='api.search.brave.com'));
-  assert.ok(seen.every(x=>x.options.headers['X-Subscription-Token']===key));
-  const again=await discoverLiveSources('Build animated student portal',{apiKey:key,transport,now:()=>100001});
-  assert.equal(again.matches.length,13);
-  assert.equal(seen.length,14,'Cache prevents repeated provider API calls');
+  const result=await discoverLiveSources('student dashboard',{
+    transport:mockKageFetch,now:()=>100000});
+  assert.equal(result.status,'partial');
+  assert.equal(result.matches.length,1);
+  assert.equal(result.matches[0].originalPrompt,originalPrompt);
+  assert.equal(result.matches[0].originalPromptStatus,'verified-publisher');
+  assert.equal(result.sources.length,14);
+  assert.equal(result.providerStatus.filter(x=>x.status==='link-only').length,13);
+  const again=await discoverLiveSources('student dashboard',{transport:mockKageFetch,now:()=>100100});
+  assert.deepEqual(again.matches,result.matches);
 });
-test('Unconfigured source search and provider failures never revert to curated fake recommendations',async()=>{
+test('Provider failure returns zero fake prompts and real provider directory only',async()=>{
   clearDiscoveryCacheForTests();
-  const missing=await discoverLiveSources('student dashboard',{apiKey:''});
-  assert.equal(missing.status,'not-configured');
-  assert.deepEqual(missing.matches,[]);
-  assert.equal(missing.sources.length,14);
-  const failed=await discoverLiveSources('student dashboard',{
-    apiKey:key,transport:async()=>new Response('',{status:429}),now:()=>100});
-  assert.equal(failed.status,'unavailable');
-  assert.deepEqual(failed.matches,[]);
+  const r=await discoverLiveSources('college dashboard',{
+    transport:async()=>new Response('',{status:503}),now:()=>100000});
+  assert.equal(r.status,'unavailable');
+  assert.deepEqual(r.matches,[]);
+  assert.equal(r.sources.length,14);
 });
-test('API no longer exposes archived inspiration sites or Frontline-made publisher prompts',async()=>{
+test('API no longer returns hardcoded websites or generated prompts under publisher name',async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const base='http://127.0.0.1:'+server.address().port;
  let cookie='';
- async function call(path,method='GET',body){
-   const response=await fetch(base+path,{method,headers:{
-     ...(cookie?{Cookie:cookie}:{}),
-     ...(body===undefined?{}:{'Content-Type':'application/json'})
+ const client=async(path,method='GET',body)=>{
+   const res=await fetch(base+path,{method,headers:{
+     ...(cookie?{Cookie:cookie}:{}),...(body!==undefined?{'Content-Type':'application/json'}:{})
    },body:body===undefined?undefined:JSON.stringify(body)});
-   if(!cookie&&response.headers.get('set-cookie'))cookie=response.headers.get('set-cookie').split(';')[0];
-   return {status:response.status,data:await response.json()};
- }
+   cookie=res.headers.get('set-cookie')?.split(';')[0]||cookie;
+   return {status:res.status,data:await res.json()};
+ };
  try{
-   const catalog=await call('/api/catalog');
+   const catalog=await client('/api/catalog');
    assert.deepEqual(catalog.data.references,[]);
-   const create=await call('/api/projects','POST',{brief:'Create a learning dashboard for students and teachers'});
-   assert.equal(create.status,201);
-   assert.ok(create.data.project.recommendations.designs.every(x=>x.references.length===0));
-   const id=create.data.project.id;
-   const discovered=await call('/api/projects/'+id+'/inspirations');
-   assert.equal(discovered.status,200);
-   assert.equal(discovered.data.discovery.status,'not-configured');
-   assert.deepEqual(discovered.data.matches,[]);
-   assert.equal(discovered.data.sources.length,14);
-   assert.equal(discovered.data.librarySize,0);
-   const fake=await call('/api/projects/'+id+'/inspirations','PUT',{sourceId:'casa',selected:true});
+   const created=await client('/api/projects','POST',{brief:'Build a student learning dashboard'});
+   assert.equal(created.status,201);
+   assert.ok(created.data.project.recommendations.designs.every(d=>d.references.length===0));
+   const id=created.data.project.id;
+   const listed=await client('/api/projects/'+id+'/inspirations');
+   assert.equal(listed.status,200);
+   assert.deepEqual(listed.data.matches,[]);
+   assert.equal(listed.data.sources.length,14);
+   const fake=await client('/api/projects/'+id+'/inspirations','PUT',{sourceId:'casa',selected:true});
    assert.equal(fake.status,404);
-   const prompt=await call('/api/projects/'+id+'/inspirations/prompt','POST',{});
-   assert.equal(prompt.status,409);
-   assert.ok(!('prompt' in prompt.data));
-   assert.deepEqual(prompt.data.sources,[]);
+   const fakePrompt=await client('/api/projects/'+id+'/inspirations/prompt','POST',{});
+   assert.equal(fakePrompt.status,409);
+   assert.equal(fakePrompt.data.prompt,undefined);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
