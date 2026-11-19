@@ -62,18 +62,18 @@ export function parseReactBitsPublisherSitemap(xml){
   }
   return [...entries.values()];
 }
-export function rankReactBitsOriginalComponents(brief,entries,{limit=3}={}){
+export function rankReactBitsOriginalComponents(brief,entries,{limit=3,includeAll=false}={}){
   const query=tokens(brief).slice(0,28);
-  if(!query.length)return [];
+  if(!query.length&&!includeAll)return [];
   return entries.map(item=>{
     if(!allowedUrl(item?.site)||typeof item.name!=='string')return null;
     const title=new Set(tokens(item.name)),description=new Set(tokens(item.description));
     let score=0;
     for(const word of query){if(title.has(word))score+=5;if(description.has(word))score+=2;}
     score+=publisherComponentIntentBoost(brief,item.name);
-    return score?{...item,score}:null;
+    return score||includeAll?{...item,score}:null;
   }).filter(Boolean).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name))
-    .slice(0,Math.max(1,Math.min(26,limit))).map(item=>{
+    .slice(0,Math.max(1,Math.min(includeAll?300:26,limit))).map(item=>{
       const id='live_'+crypto.createHash('sha256').update(item.site).digest('hex').slice(0,24);
       return {id,name:item.name,site:item.site,provider:'React Bits',
         sourceId:'reactbits',sourceKind:'animation',category:'Original component / animation',
@@ -85,7 +85,7 @@ export function rankReactBitsOriginalComponents(brief,entries,{limit=3}={}){
     });
 }
 export async function findReactBitsOriginalComponents(brief,{
-  transport=fetch,now=()=>Date.now(),limit=3}={}){
+  transport=fetch,now=()=>Date.now(),limit=3,includeAll=false}={}){
   if(cache.expires<=now()){
     if(!pending)pending=(async()=>{
       const res=await transport(DOCS,{method:'GET',headers:{Accept:'application/xml, text/xml'},
@@ -105,7 +105,7 @@ export async function findReactBitsOriginalComponents(brief,{
       return {status:'unavailable',matches:[],note:'React Bits original index unavailable'};
     }
   }
-  const matches=rankReactBitsOriginalComponents(brief,cache.entries,{limit});
+  const matches=rankReactBitsOriginalComponents(brief,cache.entries,{limit,includeAll});
   return {status:matches.length?'ready':'no-matches',matches,
     note:'Names and page links came from the publisher index; no original prompts were claimed.'};
 }
