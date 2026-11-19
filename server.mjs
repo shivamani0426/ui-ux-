@@ -10,6 +10,7 @@ import {discoverLiveSources} from './live-source-discovery.mjs';
 import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
 import {selectPublisherComponents} from './published-component-selection.mjs';
+import {matchPublishedComponents} from './publisher-semantic-matcher.mjs';
 import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
@@ -168,19 +169,25 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
   const componentsRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
     process.env.FRONTLINE_REACTBITS_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
-    :findReactBitsOriginalComponents(project.brief,{limit:forSimpleChat?24:3});
+    :findReactBitsOriginalComponents(project.brief,forSimpleChat?{limit:250,includeAll:true}:{limit:3});
   const aceternityRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
     process.env.FRONTLINE_ACETERNITY_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
-    :findAceternityOriginalComponents(project.brief,{limit:forSimpleChat?24:4});
+    :findAceternityOriginalComponents(project.brief,forSimpleChat?{limit:250,includeAll:true}:{limit:4});
   const [discovery,components,aceternity,raw,picks,personalTags]=await Promise.all([
     discoverLiveSources(project.brief,{requester:owner}),componentsRequest,aceternityRequest,
     profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
-  // Do not store dozens of unrelated publisher candidates just to show
-  // five precise components after consent.
-  const shortlisted=forSimpleChat?
-    selectPublisherComponents(project.brief,components.matches,aceternity.matches):null;
+  // Semantic matching happens on the ENTIRE first-party catalogue after Yes.
+  // Never prefilter unknown problems through chatbot-specific keyword rules.
+  // The model only chooses candidate indices; publisher URLs are server-owned.
+  const semantic=forSimpleChat&&includeComponents?
+    await matchPublishedComponents(project.brief,components.matches,aceternity.matches,{
+      model:({brief,sourceCatalog})=>designAiReply({
+        brief,sourceCatalog,task:'component-match',messages:[],styles:[]
+      })
+    }):null;
+  const shortlisted=forSimpleChat?(semantic?.matches||[]):null;
   const current=[...discovery.matches,...(shortlisted||[...components.matches,...aceternity.matches])];
   if(current.length)await storeDiscoveredReferences(current);
   const saved=await savedSourceRows(owner,project.id);
@@ -218,6 +225,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       retryAfterSeconds:discovery.retryAfterSeconds||0,
       providers:discovery.providerStatus||[]},
     componentDiscovery:{status:components.status,note:components.note||'',
+      matchingStatus:semantic?.status||'not-requested',
       providers:[{provider:'React Bits',status:components.status,count:components.matches.length},
         {provider:'Aceternity UI',status:aceternity.status,count:aceternity.matches.length}]},
     sources:discovery.sources,
