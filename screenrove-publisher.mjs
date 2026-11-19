@@ -15,7 +15,8 @@ export function validScreenrovePage(value){
   try{
     const u=new URL(value);
     if(u.protocol!=='https:'||u.hostname!=='screenrove.com'||u.port||u.username||
-       u.password||u.hash||u.pathname==='/'||!/^\/[a-z0-9/-]+\/?$/.test(u.pathname))return null;
+       u.password||u.hash||u.pathname==='/'||!/^\/[a-z0-9/-]+\/?$/.test(u.pathname)||
+       /^\/(api|mcp|admin|login|account|privacy|agents)(\/|$)/.test(u.pathname))return null;
     // Preserve provider-issued deep-link IDs, but never accept arbitrary query params.
     if([...u.searchParams.keys()].some(k=>!['open','view','tag','page'].includes(k)))return null;
     if([...u.searchParams.values()].some(v=>v.length>90||!/^[a-z0-9,~:_-]+$/i.test(v)))return null;
