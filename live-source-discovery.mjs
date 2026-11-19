@@ -25,7 +25,9 @@ const restrictedPath=/^\/(?:login|signup|sign-up|register|admin|account|auth|che
 const safeText=(v,max=160)=>String(v||'').replace(/<[^>]*>/g,' ').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max);
 export function discoveryTerms(brief){
   const clean=String(brief||'').slice(0,2000).replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi,' ')
-    .replace(/https?:\/\/\S+/gi,' ').toLowerCase();
+    .replace(/https?:\/\/\S+/gi,' ')
+    .replace(/\bfor\s+[a-z]{2,25}\s+at\b/gi,' ')
+    .toLowerCase();
   const tokens=clean.match(/[a-z]{3,20}/g)||[];
   return [...new Set(tokens.filter(t=>!STOP.has(t)))].slice(0,7).join(' ')||'interface component';
 }
