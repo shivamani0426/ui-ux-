@@ -50,6 +50,9 @@ test('Real Kage MCP protocol: only get_design can authorize verbatim prompts and
   assert.equal(verifiedKagePrompt({structuredContent:{design:{
     slug:'student-dashboard-original',description:'Made up, not a publisher prompt'
   }}},official.matches[0].url),null,'Description is NOT an original prompt');
+  assert.equal(verifiedKagePrompt({structuredContent:{design:{
+    prompt:originalPrompt
+  }}},official.matches[0].url),null,'An unidentified publisher prompt must not inherit a search result URL');
 });
 test('Unsupported MCP input schemas fail closed instead of inventing arguments',()=>{
   assert.equal(toolArguments({inputSchema:{properties:{},required:['mystery']}},'get','valid-slug'),null);
