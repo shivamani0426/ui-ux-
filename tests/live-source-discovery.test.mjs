@@ -65,6 +65,26 @@ test('Source discovery gives real publisher prompts, links and 13 link-only site
   const again=await discoverLiveSources('student dashboard',{transport:mockKageFetch,now:()=>100100});
   assert.deepEqual(again.matches,result.matches);
 });
+test('Search result without verified get_design prompt is NOT a recommended match',async()=>{
+  clearDiscoveryCacheForTests();
+  const withoutPrompt=async(url,options)=>{
+    const request=JSON.parse(options.body);
+    if(request.method==='tools/call'&&request.params.name==='get_design'){
+      return new Response(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{
+        structuredContent:{design:{slug:'student-dashboard-original',
+          name:'Student dashboard original from Kage',
+          description:'An attractive design, but no published prompt is present.'}}
+      }}),{status:200,headers:{'Content-Type':'application/json'}});
+    }
+    return mockKageFetch(url,options);
+  };
+  const response=await discoverLiveSources('student learning dashboard',{
+    transport:withoutPrompt,now:()=>100000});
+  assert.equal(response.status,'no-matches');
+  assert.deepEqual(response.matches,[]);
+  assert.equal(response.sources.length,14);
+});
+
 test('Provider failure returns zero fake prompts and real provider directory only',async()=>{
   clearDiscoveryCacheForTests();
   const r=await discoverLiveSources('college dashboard',{
