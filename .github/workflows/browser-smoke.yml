@@ -32,6 +32,8 @@ jobs:
         run: node tests/reactbits-live-smoke.mjs
       - name: Verify frontend in real browsers
         run: NODE_ENV=test node tests/browser.e2e.mjs
+      - name: Verify simple public source-first chat and consent in Chromium and Firefox
+        run: NODE_ENV=test node tests/simple-chat-browser.e2e.mjs
       - name: Verify exact publisher prompt viewer in Chromium and Firefox
         if: github.event_name == 'pull_request'
         run: NODE_ENV=test node tests/source-prompt-browser.e2e.mjs
