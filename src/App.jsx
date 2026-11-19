@@ -400,7 +400,7 @@ function App(){
     try{
       let current=project;
       const lastStage=messages.at(-1)?.flowStage;
-      const consentReply=/^(yes|yes please|no|no thanks|no thank you|not now|nah)$/i.test(raw);
+      const consentReply=/^(yes|yes please|no|no thanks|no thank you|not now|nah|ok|okay|sure|yep|maybe)$/i.test(raw);
       // If a user enters a different problem after an offer, search the new
       // problem in a new private project instead of reusing stale old sources.
       if(!current||(!advancedMode&&(lastStage==='complete'||
