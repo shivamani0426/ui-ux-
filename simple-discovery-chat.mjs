@@ -20,7 +20,7 @@ export function trustedPublisherLink(item){
 const clean=v=>String(v||'').replace(/[\[\]<>\r\n]/g,' ').trim().slice(0,100);
 function verifiedOriginal(item){
   return item?.provider==='Kage'&&item.originalPromptStatus==='verified-publisher'&&
-    typeof item.originalPrompt==='string'&&item.originalPrompt.trim().length>=70?
+    typeof item.originalPrompt==='string'&&item.originalPrompt.trim().length>=70&&item.originalPrompt.length<=3000?
     item.originalPrompt:null;
 }
 const block=item=>{
@@ -29,8 +29,10 @@ const block=item=>{
   const title=clean(item.name)||item.provider;
   const header='**'+title+'** — '+item.provider+'\n[Open original publisher page]('+site+')';
   const prompt=verifiedOriginal(item);
+  const tooLong=item?.provider==='Kage'&&item.originalPromptStatus==='verified-publisher'&&
+    typeof item.originalPrompt==='string'&&item.originalPrompt.length>3000;
   return header+(prompt?'\nOriginal publisher prompt (verbatim):\n````text\n'+prompt+'\n````':
-    '\nOriginal publisher prompt: not available or not verified.');
+    (tooLong?'\nOriginal prompt is available but too long to display faithfully here. Open the original publisher page.':'\nOriginal publisher prompt: not available or not verified.'));
 };
 export function formatSourceDiscovery(sources){
   const matches=(sources?.matches||[]).filter(x=>trustedPublisherLink(x)).slice(0,4);
