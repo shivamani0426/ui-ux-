@@ -47,9 +47,9 @@ export function parseAceternityOfficialCatalogue(doc){
   if(accepted.size<15)throw Error('Aceternity official component entries failed source validation');
   return [...accepted.values()];
 }
-export function rankAceternityOriginals(brief,items,{limit=4}={}){
+export function rankAceternityOriginals(brief,items,{limit=4,includeAll=false}={}){
   const query=words(String(brief||'').slice(0,1400)).slice(0,28);
-  if(!query.length)return [];
+  if(!query.length&&!includeAll)return [];
   return items.map(item=>{
     if(!validateAceternityComponentUrl(item.site,item.slug))return null;
     const title=words(item.name+' '+item.slug);
@@ -63,10 +63,10 @@ export function rankAceternityOriginals(brief,items,{limit=4}={}){
       if(c.has(word))score+=1;
     }
     score+=publisherComponentIntentBoost(brief,item.name);
-    return score?{...item,relevanceScore:score}:null;
+    return score||includeAll?{...item,relevanceScore:score}:null;
   }).filter(Boolean).sort((a,b)=>b.relevanceScore-a.relevanceScore||
     a.site.localeCompare(b.site))
-    .slice(0,Math.max(1,Math.min(26,limit))).map(item=>({
+    .slice(0,Math.max(1,Math.min(includeAll?300:26,limit))).map(item=>({
       id:'live_'+crypto.createHash('sha256').update(item.site).digest('hex').slice(0,24),
       name:item.name,site:item.site,provider:'Aceternity UI',
       sourceId:'aceternity',sourceKind:'animation',
@@ -80,7 +80,7 @@ export function rankAceternityOriginals(brief,items,{limit=4}={}){
     }));
 }
 export async function findAceternityOriginalComponents(brief,{
-  transport=fetch,now=()=>Date.now(),limit=4}={}){
+  transport=fetch,now=()=>Date.now(),limit=4,includeAll=false}={}){
   if(cache.expires<=now()){
     if(!inFlight)inFlight=(async()=>{
       const response=await transport(ENDPOINT,{
@@ -105,7 +105,7 @@ export async function findAceternityOriginalComponents(brief,{
         note:'Official Aceternity component index could not be verified; no suggestions invented.'};
     }
   }
-  const matches=rankAceternityOriginals(brief,cache.items,{limit});
+  const matches=rankAceternityOriginals(brief,cache.items,{limit,includeAll});
   return {status:matches.length?'ready':'no-matches',matches,
     note:'Only original Aceternity JSON catalogue component pages were used; no source prompt was supplied.'};
 }
