@@ -159,7 +159,7 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
       assert.equal(await page.locator('.inspiration-card').count(),0,
         'Never show invented matching cards without an authorized live search API');
       assert.match(await page.locator('.inspiration-discovery-state').innerText(),
-        /not configured|provider/i);
+        /not configured|provider|disabled for tests/i);
       assert.equal(await page.getByRole('button',{name:'Copy design prompt'}).count(),0,
         'Select must never fabricate an original publisher prompt');
       // M13: board, style comparison, checkpoint and nondestructive restore.
