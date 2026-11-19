@@ -7,11 +7,11 @@ const WINDOW_MS=60*60*1000;
 const PER_VISITOR=30;
 const GLOBAL=240; // Backstop for publisher protection, not 12 shared requests.
 const buckets=new Map();
-let globalBucket={start:0,count:0};
+let globalBucket={start:null,count:0};
 const hash=visitor=>crypto.createHash('sha256')
   .update(String(visitor||'guest').slice(0,200)).digest('hex').slice(0,24);
 export function claimPublisherSearch(visitor,{now=Date.now()}={}){
-  if(now-globalBucket.start>=WINDOW_MS||now<globalBucket.start)
+  if(globalBucket.start===null||now-globalBucket.start>=WINDOW_MS||now<globalBucket.start)
     globalBucket={start:now,count:0};
   // Only retain active visitor windows. Never persist raw visitor identifiers.
   for(const [key,value] of buckets){
@@ -30,5 +30,5 @@ export function claimPublisherSearch(visitor,{now=Date.now()}={}){
   return {allowed:true};
 }
 export function clearPublisherSearchBudgetForTests(){
-  buckets.clear();globalBucket={start:0,count:0};
+  buckets.clear();globalBucket={start:null,count:0};
 }
