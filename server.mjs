@@ -239,7 +239,8 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     ...matches.filter(x=>x.provider==='Kage')
   ].slice(0,4);
   return {projectId:project.id,matches,
-    applicationMatches,landingMatches,screenroveStatus:screenrove.status,
+    ...(forSimpleChat&&screenrove.status!=='test-disabled'
+      ?{applicationMatches,landingMatches,screenroveStatus:screenrove.status}:{}),
     componentMatches:shortlisted||animationRefs,
     selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
     rankingVersion:5,
