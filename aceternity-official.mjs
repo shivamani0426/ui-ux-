@@ -11,8 +11,9 @@ const cache={expires:0,items:[]};
 let inFlight=null;
 const clean=(v,max=240)=>typeof v==='string'?
   v.replace(/[\u0000-\u001f\u007f<>]/g,' ').replace(/\s+/g,' ').trim().slice(0,max):'';
+const singular=t=>({cards:'card',responses:'response',messages:'message',buttons:'button',menus:'menu',transitions:'transition'}[t]||t);
 const words=v=>[...new Set((clean(v,3000).toLowerCase().match(/[a-z0-9]{3,30}/g)||[])
-  .filter(w=>!STOP.has(w)))];
+  .filter(w=>!STOP.has(w)).map(singular))];
 export function validateAceternityComponentUrl(value,slug){
   if(typeof slug!=='string'||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))return null;
   if(typeof value!=='string')return null;
@@ -46,7 +47,7 @@ export function parseAceternityOfficialCatalogue(doc){
   return [...accepted.values()];
 }
 export function rankAceternityOriginals(brief,items,{limit=4}={}){
-  const query=words(String(brief||'').slice(0,1400)).slice(0,16);
+  const query=words(String(brief||'').slice(0,1400)).slice(0,28);
   if(!query.length)return [];
   return items.map(item=>{
     if(!validateAceternityComponentUrl(item.site,item.slug))return null;
@@ -63,7 +64,7 @@ export function rankAceternityOriginals(brief,items,{limit=4}={}){
     return score?{...item,relevanceScore:score}:null;
   }).filter(Boolean).sort((a,b)=>b.relevanceScore-a.relevanceScore||
     a.site.localeCompare(b.site))
-    .slice(0,Math.max(1,Math.min(8,limit))).map(item=>({
+    .slice(0,Math.max(1,Math.min(26,limit))).map(item=>({
       id:'live_'+crypto.createHash('sha256').update(item.site).digest('hex').slice(0,24),
       name:item.name,site:item.site,provider:'Aceternity UI',
       sourceId:'aceternity',sourceKind:'animation',
