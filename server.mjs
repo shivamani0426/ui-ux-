@@ -174,7 +174,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     ?Promise.resolve({status:'test-disabled',matches:[]})
     :findAceternityOriginalComponents(project.brief,{limit:forSimpleChat?24:4});
   const [discovery,components,aceternity,raw,picks,personalTags]=await Promise.all([
-    discoverLiveSources(project.brief),componentsRequest,aceternityRequest,
+    discoverLiveSources(project.brief,{requester:owner}),componentsRequest,aceternityRequest,
     profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
   // Do not store dozens of unrelated publisher candidates just to show
@@ -215,6 +215,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
     rankingVersion:5,
     discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
+      retryAfterSeconds:discovery.retryAfterSeconds||0,
       providers:discovery.providerStatus||[]},
     componentDiscovery:{status:components.status,note:components.note||'',
       providers:[{provider:'React Bits',status:components.status,count:components.matches.length},
