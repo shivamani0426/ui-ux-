@@ -34,3 +34,28 @@ test('consent is explicit; no ambiguous assent',()=>{
   assert.equal(isAffirmative('design a school'),false);
   assert.equal(isNegative('no thanks'),true);
 });
+
+test('ambiguous replies cannot consent to fetching components',()=>{
+  for(const message of ['sure','ok','okay','yep','combine them','Yes, and add some unrelated features']){
+    assert.equal(isAffirmative(message),false,message);
+  }
+});
+test('long publisher prompts remain exact or are clearly deferred to original page',()=>{
+  const longText='Course and attendance dashboard with accessible navigation. '.repeat(100);
+  const exact={...original,originalPrompt:longText};
+  const first=formatSourceDiscovery({matches:[exact]});
+  assert.ok(first.includes(longText),'Do not alter a supported verbatim publisher prompt');
+  const tooLong={...original,originalPrompt:'X'.repeat(11000)};
+  const response=formatSourceDiscovery({matches:[tooLong]});
+  assert.doesNotMatch(response,/Original publisher prompt \(verbatim\)/);
+  assert.match(response,/too long to display faithfully/);
+  assert.match(response,/kage.design\/designs\/learning-dashboard/);
+  assert.ok(response.length<16000,'Never exceed the renderer cap');
+});
+test('multiple long original prompts never silently overrun the chat renderer',()=>{
+  const x={...original,originalPrompt:'Long original '.repeat(550)};
+  const matches=[x,{...x,site:'https://kage.design/designs/another-learning-dashboard',name:'Another Dashboard'}];
+  const result=formatSourceDiscovery({matches});
+  assert.ok(result.length<16000);
+  assert.match(result,/too long for this chat response/);
+});
