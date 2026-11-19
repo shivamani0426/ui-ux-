@@ -49,6 +49,7 @@ test('simple chat refuses unsolicited components, respects explicit Yes/No, and 
     const combined=await api(path,'POST',{message:'Yes',styles:[],simpleDiscovery:true});
     assert.equal(combined.status,200);
     assert.equal(combined.data.messages.at(-1).flowStage,'complete');
-    assert.match(combined.data.messages.at(-1).content,/No verified publisher designs or components|UI\/UX designs and original prompts/);
+    assert.match(combined.data.messages.at(-1).content,/Matching components and animations/);
+    assert.doesNotMatch(combined.data.messages.at(-1).content,/UI\/UX designs and original prompts/);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
