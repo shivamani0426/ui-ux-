@@ -149,7 +149,9 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
 }
 export function formatSourceCombination(sources,{brief=''}={}){
   const designs=(Array.isArray(sources?.applicationMatches)&&Array.isArray(sources?.landingMatches)?
-    [...sources.applicationMatches.slice(0,2),...sources.landingMatches.slice(0,3)]:
+    [...sources.applicationMatches.slice(0,2),...sources.landingMatches.filter(x=>
+      x.provider==='Screenrove'&&x.designType==='landing-page'||
+      x.provider==='Kage'&&matchingPublisherDesigns(brief,[x]).length>0).slice(0,3)]:
     matchingPublisherDesigns(brief,sources?.matches).slice(0,3))
     .filter(x=>trustedPublisherLink(x)).slice(0,5);
   const components=(sources?.componentMatches||[]).filter(x=>trustedPublisherLink(x)).slice(0,5);
