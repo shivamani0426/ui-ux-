@@ -18,12 +18,19 @@ jobs:
         run: npm install --omit=dev
       - name: Verify reproducible 07D learning-quality fixtures
         run: npm run evaluate:learning
+      - name: Verify official Kage original prompt live (non-blocking diagnostic for PR #53)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 53
+        continue-on-error: true
+        run: node tests/kage-public-diagnostic.mjs
       - name: Install browser test runner
         run: npm install --no-save --ignore-scripts playwright@1.56.1
       - name: Install browser binaries
         run: npx playwright install --with-deps chromium firefox
       - name: Verify frontend in real browsers
         run: NODE_ENV=test node tests/browser.e2e.mjs
+      - name: Verify exact publisher prompt viewer in Chromium and Firefox
+        if: github.event_name == 'pull_request'
+        run: NODE_ENV=test node tests/source-prompt-browser.e2e.mjs
       - name: Wait for exact GitHub commit on Render (no stale deploys)
         id: release_gate
         if: github.event_name == 'push'

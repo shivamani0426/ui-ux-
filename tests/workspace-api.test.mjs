@@ -1,8 +1,11 @@
+import {installKageMock,originalPrompt} from './kage-mcp-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {server} from '../server.mjs';
 
 test('13: design board checkpoints are private, durable and non-destructive across refinements',async()=>{
+  const restoreMock=installKageMock();
+
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base='http://127.0.0.1:'+server.address().port;
   const client=()=>{
@@ -33,14 +36,20 @@ test('13: design board checkpoints are private, durable and non-destructive acro
     assert.ok(initial.body.comparisons.length===3);
     assert.deepEqual(initial.body.workspace.selectedStyles,['minimal','glass','creative']);
 
-    const selectedRef=await alice(root+'/inspirations','PUT',{sourceId:'casa',selected:true});
+    const discovered=await alice(root+'/inspirations');
+    assert.equal(discovered.status,200);
+    assert.equal(discovered.body.matches.length,1);
+    assert.equal(discovered.body.matches[0].originalPrompt,originalPrompt);
+    const source=discovered.body.matches[0];
+    assert.ok(source.id.startsWith('live_'));
+    const selectedRef=await alice(root+'/inspirations','PUT',{sourceId:source.id,selected:true});
     assert.equal(selectedRef.status,200);
     const withInspiration=await alice(root+'/workspace');
-    assert.ok(withInspiration.body.savedInspirations.some(ref=>ref.id==='casa'));
+    assert.ok(withInspiration.body.savedInspirations.some(ref=>ref.id===source.id));
     const boardCards=[
       {id:'page_a',type:'page',stage:'ideas',title:'Student dashboard',notes:''},
-      {id:'inspiration_a',type:'inspiration',stage:'explore',title:'Casa di Solare',
-        sourceId:'casa',notes:'Use only calm transitions'},
+      {id:'inspiration_a',type:'inspiration',stage:'explore',title:source.name,
+        sourceId:source.id,notes:'Use only calm transitions'},
     ];
     const setBoard=await alice(root+'/workspace','PUT',{
       revision:0,items:boardCards,selectedStyles:['minimal']
@@ -128,7 +137,7 @@ test('13: design board checkpoints are private, durable and non-destructive acro
     assert.equal(after.body.project.recommendations.refinement,snapshot.snapshot.refinement);
     assert.equal(after.body.project.recommendations._workspace.revision,4);
     const originalRef=await alice(root+'/inspirations');
-    assert.ok(originalRef.body.selected.includes('casa'),
+    assert.ok(originalRef.body.selected.includes(source.id),
       'Restoring a design checkpoint must not remove saved inspirations');
     const listing=await alice('/api/projects');
     assert.equal(listing.status,200);
@@ -173,6 +182,7 @@ test('13: design board checkpoints are private, durable and non-destructive acro
     ]);
     assert.deepEqual(competing.map(v=>v.status).sort((a,b)=>a-b),[200,409]);
   }finally{
+    restoreMock();
     await Promise.allSettled([alice('/api/profile','DELETE'),bob('/api/profile','DELETE')]);
     await new Promise(resolve=>server.close(resolve));
   }

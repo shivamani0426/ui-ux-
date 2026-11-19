@@ -1,24 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {STYLES,REFERENCES,recommend,exportPrompt} from '../design-engine.mjs';
+import {STYLES,recommend,exportPrompt} from '../design-engine.mjs';
 
 test('all three directions are available for every valid brief',()=>{
   const output=recommend('Build a futuristic AI security analytics dashboard',{});
   assert.equal(output.designs.length,3);
   assert.deepEqual(new Set(output.designs.map(x=>x.id)),new Set(['minimal','glass','creative']));
   assert.equal(output.designs[0].id,'glass');
-  assert.equal(output.designs[0].references.length,3);
+  assert.equal(output.designs[0].references.length,0,
+    'Generic design advice must not silently include archived website suggestions');
 });
 test('explicit feedback influences future recommendations',()=>{
   const base=recommend('Build a general digital product for teams',{});
   const learned=recommend('Build a general digital product for teams',{styleWeights:{creative:5}});
   assert.ok(learned.designs.find(d=>d.id==='creative').match>base.designs.find(d=>d.id==='creative').match);
 });
-test('reference seed identifies only verified category rankings',()=>{
-  assert.equal(REFERENCES.length,15);
-  assert.equal(REFERENCES.filter(r=>r.rank).length,12);
-  assert.deepEqual(REFERENCES.filter(r=>r.rank).map(r=>r.rank),Array.from({length:12},(_,i)=>i+1));
-  assert.ok(REFERENCES.every(r=>r.site.startsWith('https://')));
+test('production design intelligence never includes a static website inspiration catalogue',()=>{
+  const directions=recommend('Create a new website');
+  assert.ok(directions.designs.every(item=>item.references.length===0));
+  const provided=[{id:'real-source',name:'Provided source',site:'https://example.org/real',
+    category:'Dashboard',styles:['minimal'],tags:['dashboard']}];
+  const explicitlyProvided=recommend('Create a dashboard',{},provided);
+  assert.ok(explicitlyProvided.designs.some(item=>item.references.some(r=>r.id==='real-source')),
+    'Only sources explicitly supplied to the engine can appear as references.');
 });
 test('build prompt respects all three selected directions',()=>{
   const p={brief:'Creative school dashboard',recommendations:recommend('Creative school dashboard')};

@@ -5,8 +5,9 @@ import crypto from 'node:crypto';
 import {createAuthGateway} from './auth-gateway.mjs';
 import {createGitHubAppConnection} from './github-app-connect.mjs';
 import {fileURLToPath} from 'node:url';
-import {recommend,STYLES,REFERENCES,exportPrompt} from './design-engine.mjs';
-import {rankInspirations,makeSelectionPrompt} from './inspiration-engine.mjs';
+import {recommend,STYLES,exportPrompt} from './design-engine.mjs';
+import {discoverLiveSources} from './live-source-discovery.mjs';
+import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
@@ -26,6 +27,7 @@ const live=new Map();
 const guests=new Map();
 const votes=[];
 const memorySelections=new Map();
+const memoryLiveReferences=new Map();
 const finalizedModes=new Set();
 const isProd=process.env.NODE_ENV==='production';
 const cookieName=isProd?'__Host-uic_guest':'uic_guest';
@@ -78,25 +80,53 @@ async function setupDb(){
   console.log('PostgreSQL persistence is active.');
 }
 async function listReferences(){
-  if(!pg) return REFERENCES;
-  const result=await pg.query(`SELECT id,name,site,award,category,styles,tags,rank,score
-    FROM frontline.design_sources WHERE active = true ORDER BY rank ASC NULLS LAST, name ASC LIMIT 250`);
+  if(!pg)return [...memoryLiveReferences.values()];
+  const result=await pg.query(`SELECT id,name,site,award,category,styles,tags,summary,
+    rank,score,source_provider AS provider,source_kind AS "sourceKind"
+    FROM frontline.design_sources WHERE active=true AND is_live_discovered=true
+    ORDER BY source_indexed_at DESC LIMIT 250`);
   return result.rows;
+}
+// Store original URLs returned by an authorized search index for use in
+// private saved boards. Cached records are NEVER served as default suggestions.
+async function storeDiscoveredReferences(rows){
+  if(!Array.isArray(rows)||!rows.length)return;
+  if(!pg){for(const row of rows)memoryLiveReferences.set(row.id,row);return;}
+  const safe=rows.map(r=>({
+    id:r.id,name:r.name,site:r.site,category:r.category,
+    tags:r.tags||[],styles:r.styles||[],provider:r.provider||'',kind:r.sourceKind||''
+  }));
+  await pg.query(`INSERT INTO frontline.design_sources
+    (id,name,site,category,tags,styles,summary,active,is_live_discovered,source_provider,source_kind,source_indexed_at)
+    SELECT x.id,x.name,x.site,x.category,x.tags,x.styles,'',true,true,x.provider,x.kind,NOW()
+    FROM jsonb_to_recordset($1::jsonb) AS x(
+      id text,name text,site text,category text,tags text[],styles text[],
+      provider text,kind text
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      name=EXCLUDED.name,site=EXCLUDED.site,category=EXCLUDED.category,
+      tags=EXCLUDED.tags,styles=EXCLUDED.styles,active=true,
+      is_live_discovered=true,source_provider=EXCLUDED.source_provider,
+      source_kind=EXCLUDED.source_kind,source_indexed_at=NOW()`,
+    [JSON.stringify(safe)]);
 }
 async function selectionIds(owner,projectId){
   if(!pg)return [...(memorySelections.get(owner+':'+projectId)||new Set())];
-  const r=await pg.query('SELECT source_id FROM frontline.reference_selections WHERE visitor_id=$1 AND project_id=$2 AND selected=true ORDER BY created_at ASC',[owner,projectId]);
+  const r=await pg.query(`SELECT r.source_id FROM frontline.reference_selections r
+    JOIN frontline.design_sources s ON s.id=r.source_id
+    WHERE r.visitor_id=$1 AND r.project_id=$2 AND r.selected=true AND s.is_live_discovered=true
+    ORDER BY r.created_at ASC`,[owner,projectId]);
   return r.rows.map(x=>x.source_id);
 }
 async function personalInspirationTags(owner){
   if(!pg){
     const ids=new Set();
     for(const [key,values] of memorySelections){if(key.startsWith(owner+':'))for(const value of values)ids.add(value);}
-    return REFERENCES.filter(x=>ids.has(x.id)).flatMap(x=>x.tags).slice(0,60);
+    return [...memoryLiveReferences.values()].filter(x=>ids.has(x.id)).flatMap(x=>x.tags||[]).slice(0,60);
   }
   const r=await pg.query(`SELECT s.tags FROM frontline.reference_selections r
     JOIN frontline.design_sources s ON s.id=r.source_id
-    WHERE r.visitor_id=$1 AND r.selected=true ORDER BY r.created_at DESC LIMIT 60`,[owner]);
+    WHERE r.visitor_id=$1 AND r.selected=true AND s.is_live_discovered=true ORDER BY r.created_at DESC LIMIT 60`,[owner]);
   return r.rows.flatMap(x=>x.tags||[]);
 }
 async function updateInspirationSelection(owner,projectId,sourceId,selected){
@@ -116,23 +146,48 @@ async function updateInspirationSelection(owner,projectId,sourceId,selected){
 async function savedSourceRows(owner,projectId){
   const ids=await selectionIds(owner,projectId);
   if(!ids.length)return [];
-  const refs=await listReferences();
-  return ids.map(id=>refs.find(r=>r.id===id)).filter(Boolean).slice(0,8);
+  if(!pg)return ids.map(id=>memoryLiveReferences.get(id)).filter(Boolean).slice(0,8);
+  // Query the owner's selected rows directly; a global top-250 source index
+  // would silently lose old private selections as other users discover links.
+  const result=await pg.query(`SELECT s.id,s.name,s.site,s.award,s.category,
+    s.styles,s.tags,s.summary,s.rank,s.score,s.source_provider AS provider,
+    s.source_kind AS "sourceKind"
+    FROM frontline.reference_selections r JOIN frontline.design_sources s ON s.id=r.source_id
+    WHERE r.visitor_id=$1 AND r.project_id=$2 AND r.selected=true
+      AND s.is_live_discovered=true
+    ORDER BY r.created_at ASC LIMIT 8`,[owner,projectId]);
+  return result.rows;
 }
 async function makeInspirationResponse(owner,project){
-  const [refs,raw,picks,personalTags]=await Promise.all([listReferences(),profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)]);
+  const [discovery,raw,picks,personalTags]=await Promise.all([
+    discoverLiveSources(project.brief),profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
+  ]);
+  if(discovery.matches.length)await storeDiscoveredReferences(discovery.matches);
+  // Saved historical LIVE results may be retained for continuity, but are
+  // never substituted for a current search when discovery fails.
+  const saved=await savedSourceRows(owner,project.id);
+  const seen=new Set(discovery.matches.map(x=>x.id));
+  const refs=[...discovery.matches,...saved.filter(x=>!seen.has(x.id))];
+  const index=new Map(refs.map(r=>[r.id,r]));
   const prefs=effectivePreferences(raw);
-  return {
-    projectId:project.id,
-    matches:rankInspirations(project.brief,refs,{
-      styleWeights:prefs.personalization.enabled?prefs.styleWeights||{}:{},
-      favoriteTags:prefs.personalization.enabled?personalTags:[]
-    }),
-    selected:picks,
-    librarySize:refs.length,
-    rankingVersion:2,
-    ranking:'Auditable brief-first metadata, explicit exclusions and bounded private taste; no live visual scanning',
-  };
+  const matches=rankInspirations(project.brief,refs,{
+    styleWeights:prefs.personalization.enabled?prefs.styleWeights||{}:{},
+    favoriteTags:prefs.personalization.enabled?personalTags:[]
+  }).map(item=>{
+    const source=index.get(item.id);
+    return {...item,provider:source.provider||'',sourceKind:source.sourceKind||'',
+      originalPrompt:source.originalPromptStatus==='verified-publisher'?source.originalPrompt:null,
+      originalPromptStatus:source.originalPromptStatus||'not-verified',
+      originalPromptHash:source.originalPromptHash||null,
+      originalPromptOrigin:source.originalPromptOrigin||null,
+      originalPromptUrl:source.originalPromptStatus==='verified-publisher'?source.site:null,
+      provenance:source.provenance||'Publisher link only; no original prompt was returned.'};
+  });
+  return {projectId:project.id,matches,selected:picks.filter(id=>index.has(id)),
+    librarySize:discovery.matches.length,rankingVersion:3,
+    discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
+      providers:discovery.providerStatus||[]},sources:discovery.sources,
+    ranking:'Live search-index metadata only. No fake prompts, stored website leaderboard, or third-party screenshots.'};
 }
 async function profile(owner){
   if(!pg)return normalizeProfile(guests.get(owner));
@@ -874,7 +929,7 @@ const server=http.createServer(async(req,res)=>{
          return json(res,405,{error:'Method not allowed'});
        }
        if(req.method==='GET'&&req.url==='/api/config')return json(res,200,{...aiConfig(),persistent:!!pg,version:'0.4.0'});
-      if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:await listReferences(),source:'https://www.webdesignawards.io/categories/ui-ux-design'});
+      if(req.method==='GET'&&req.url==='/api/catalog')return json(res,200,{styles:STYLES,references:[],source:'live-original-source-discovery'});
       if(req.method==='GET'&&req.url==='/api/profile')return json(res,200,await profile(owner));
       if(req.method==='PUT'&&req.url==='/api/profile'){
         const data=await readBody(req);
@@ -926,7 +981,7 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='POST'&&pathname==='/api/projects'){
         const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
         const prefs=await recommendationPreferences(owner,b.brief);
-        const recommendations=recommend(b.brief,prefs,await listReferences());const id=crypto.randomUUID();
+        const recommendations=recommend(b.brief,prefs,[]);const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
         await saveProject(owner,p);return json(res,201,{project:p});
       }
@@ -939,18 +994,20 @@ const server=http.createServer(async(req,res)=>{
           const b=await readBody(req);
           if(typeof b.sourceId!=='string'||!/^[-a-zA-Z0-9_]{1,80}$/.test(b.sourceId)||typeof b.selected!=='boolean')
             return json(res,400,{error:'Choose a valid reference and selection state'});
-          const found=(await listReferences()).find(x=>x.id===b.sourceId);
-          if(!found)return json(res,404,{error:'Inspiration not found'});
+          const alreadySaved=(await selectionIds(owner,id)).includes(b.sourceId);
+          const searched=b.selected?await makeInspirationResponse(owner,p):null;
+          const found=b.selected?searched.matches.find(x=>x.id===b.sourceId):
+            (await savedSourceRows(owner,id)).find(x=>x.id===b.sourceId&&alreadySaved);
+          if(!found)return json(res,404,{error:'Source not found in this project live search.'});
           await updateInspirationSelection(owner,id,found.id,b.selected);
           return json(res,200,await makeInspirationResponse(owner,p));
         }
         if(req.method==='POST'&&action==='/prompt'){
+          await readBody(req);
+          // Never return a Frontline-created prompt under a publisher's name.
           const chosen=await savedSourceRows(owner,id);
-          if(!chosen.length)return json(res,400,{error:'Save at least one inspiration first'});
-          const prompt=makeSelectionPrompt(p,chosen);
-          if(pg)await pg.query(`INSERT INTO frontline.generated_prompts(project_id,visitor_id,prompt_type,prompt_text,styles)
-            VALUES($1,$2,'select',$3,$4)`,[id,owner,prompt,chosen.flatMap(x=>x.styles).filter((x,i,a)=>a.indexOf(x)===i)]);
-          return json(res,200,{prompt,references:chosen.map(x=>x.id)});
+          return json(res,409,{error:'Original prompts cannot be reproduced without authorized publisher access. Open original source pages instead.',
+            sources:chosen.map(x=>({name:x.name,url:x.site,originalPromptStatus:'not-verified'}))});
         }
         return json(res,405,{error:'Method not allowed'});
       }
@@ -982,18 +1039,17 @@ const server=http.createServer(async(req,res)=>{
         if(req.method==='GET'){
           const p=await getProject(owner,id);
           if(!p)return json(res,404,{error:'Project not found'});
-          const [selected,library]=await Promise.all([selectionIds(owner,id),listReferences()]);
+          const selectedSources=await savedSourceRows(owner,id);
           return json(res,200,{projectId:id,workspace:normalizeWorkspace(p.recommendations?._workspace),
             refinement:p.recommendations?.refinement||'',
             comparisons:p.recommendations?.comparison||[],
-            savedInspirations:library.filter(ref=>selected.includes(ref.id))
-              .map(ref=>({id:ref.id,name:ref.name,site:ref.site,styles:ref.styles}))});
+            savedInspirations:selectedSources.map(ref=>({id:ref.id,name:ref.name,site:ref.site,styles:ref.styles}))});
         }
         if(req.method!=='PUT')return json(res,405,{error:'Method not allowed'});
         // Only the bounded board route needs more room for 24 cards with
         // short notes. Every other write retains the original 12 KB limit.
         const body=await readBody(req,24_000);
-        const catalogue=new Set((await listReferences()).map(ref=>ref.id));
+        const catalogue=new Set((await savedSourceRows(owner,id)).map(ref=>ref.id));
         const update=validateBoardUpdate(body,{referenceIds:catalogue});
         const next=await modifyProjectWorkspace(owner,id,update.revision,
           async(project,workspace)=>({workspace:withUpdatedBoard(workspace,update)}));
@@ -1031,14 +1087,13 @@ const server=http.createServer(async(req,res)=>{
         if(!project)return json(res,404,{error:'Project not found'});
         // Prefetch static catalogue and current private preferences outside the
         // row lock. A revision conflict still rejects a stale restoration.
-        const [prefs,library]=await Promise.all([
-          recommendationPreferences(owner,project.brief,id),listReferences()]);
+        const prefs=await recommendationPreferences(owner,project.brief,id);
         const next=await modifyProjectWorkspace(owner,id,body.revision,
           async(current,workspace)=>{
             const restored=restoreCheckpoint(workspace,{
               revision:body.revision,versionId,now:new Date().toISOString()});
             return {workspace:restored.workspace,
-              recommendation:recommend(current.brief,prefs,library,
+              recommendation:recommend(current.brief,prefs,[],
                 {refinement:restored.refinement})};
           });
         if(!next)return json(res,404,{error:'Project not found'});
@@ -1058,7 +1113,7 @@ const server=http.createServer(async(req,res)=>{
         if(refinement.length>0&&refinement.length<5)
           return json(res,400,{error:'Describe your change in at least five characters, or leave it empty to reset.'});
         const prefs=await recommendationPreferences(owner,project.brief,id);
-        const next=recommend(project.brief,prefs,await listReferences(),{refinement});
+        const next=recommend(project.brief,prefs,[],{refinement});
         const stored=await updateRecommendations(owner,id,next);
         if(!stored)return json(res,404,{error:'Project not found'});
         return json(res,200,{project:{...project,recommendations:stored},decision:next.decision});
@@ -1115,7 +1170,7 @@ const server=http.createServer(async(req,res)=>{
           // Recompute only derived heuristic/evidence fields using the
           // original brief plus the saved explicit refinement. Project text,
           // private history and approved selections are never overwritten.
-          const recommendations=recommend(p.brief,prefs,await listReferences(),
+          const recommendations=recommend(p.brief,prefs,[],
             {refinement:p.recommendations?.refinement||''});
           return json(res,200,{project:{...p,recommendations:{
             ...recommendations,_workspace:p.recommendations?._workspace||{}
