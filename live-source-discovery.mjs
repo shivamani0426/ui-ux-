@@ -100,9 +100,9 @@ export async function discoverLiveSources(brief,{
     try{raw=await findKageOriginals(query,{transport,limit});available=true;}
     catch{raw={status:'unavailable',matches:[]};}
     const kage=LIVE_SOURCES.find(x=>x.id==='kage');
-    const references=(raw.matches||[]).filter(match=>
-      match.originalPromptStatus==='verified-publisher'&&
-      typeof match.originalPrompt==='string'&&match.originalPrompt.length>=70).map(match=>{
+    // Official search results can offer exact original page links even when
+    // the publisher's separate prompt tool returns no verifiable prompt.
+    const references=(raw.matches||[]).map(match=>{
       const source=indexedReference(matchToCandidate(match),kage);
       return source?{
         ...source,
@@ -120,7 +120,7 @@ export async function discoverLiveSources(brief,{
         status:d.id==='kage'?(available?raw.status:'unavailable'):'link-only',
         count:d.id==='kage'?references.length:0})),
       note:references.length?
-        'Kage prompts come from the original publisher MCP. The other sources are direct links until their own authorized prompt integrations are available.':
+        'Kage design links come from its official MCP. Prompts appear only if its get_design tool provides verified original text.':
         'No authentic publisher results were retrieved; Frontline will not invent links, titles or prompts.'};
     if(available){
       if(cache.size>=32)cache.delete(cache.keys().next().value);
