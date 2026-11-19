@@ -54,7 +54,7 @@ const affordances=[
     titles:/^(timeline|animated list)$/i},
   {need:/\b(suggest|recommend|alternatives?|choices|cards?|tips|tasks|options|catalog|products|solutions|hacks|items|projects)\b/i,
     titles:/^(bento grid|animated list|card hover effect|layout grid)$/i},
-  {need:/\b(explain|assistant|response|guide|answer|teach|insight|text|reading|article|description|instructions|feedback)\b/i,
+  {need:/\b(explain\w*|assistants?|responses?|replies|guide\w*|answer\w*|teach\w*|insights?|text|reading|articles?|descriptions?|instructions?|feedback)\b/i,
     titles:/^(text generate effect|text type|blur text)$/i},
   {need:/\b(sidebar|navigation|menu|sections|pages|tabs|collaps)\w*\b/i,
     titles:/^(sidebar|floating navbar|card nav)$/i},
@@ -70,11 +70,21 @@ export function fallbackPublisherComponents(brief,items,{limit=5}={}){
     if(!role.need.test(q))continue;
     const matches=items.filter(item=>!used.has(item.site)&&role.titles.test(item.name));
     if(!matches.length)continue;
-    const best=matches.sort((a,b)=>{
-      const x=Math.min(16,Number(a.relevanceScore)||0);
-      const y=Math.min(16,Number(b.relevanceScore)||0);
-      return y-x||a.name.localeCompare(b.name);
-    })[0];
+    const intentScore=item=>{
+      const name=item.name.toLowerCase();
+      let value=Math.min(16,Number(item.relevanceScore)||0);
+      // An explicit communication composer is better served by the verified
+      // publisher's Prompt Bar than a decorative expanding text input.
+      if(/\b(chatbot|chatgpt|conversation|messaging|message|chat workspace)\b/i.test(q)&&
+         name==='prompt bar')value+=30;
+      if(/\b(navigation|navbar|floating menu)\b/i.test(q)&&
+         name==='floating navbar')value+=15;
+      if(/\b(sidebar|collapsible)\b/i.test(q)&&name==='sidebar')value+=20;
+      if(/\b(animated|responses?|explain)\b/i.test(q)&&name==='text generate effect')value+=16;
+      if(/\b(cards?)\b/i.test(q)&&name==='card hover effect')value+=14;
+      return value;
+    };
+    const best=matches.sort((a,b)=>intentScore(b)-intentScore(a)||a.name.localeCompare(b.name))[0];
     chosen.push(best);used.add(best.site);
     if(chosen.length>=limit)return chosen;
   }
@@ -84,7 +94,8 @@ export function fallbackPublisherComponents(brief,items,{limit=5}={}){
     const title=tokens(item.name);
     const description=tokens(item.summary||item.description||'');
     const overlaps=title.filter(w=>query.has(w)).length*3+
-      description.filter(w=>query.has(w)).length;
+      description.filter(w=>query.has(w)).length+
+      (/\b(navigation)\b/i.test(q)&&/navbar/i.test(item.name)?5:0);
     return {item,overlaps};
   }).filter(({overlaps})=>overlaps>=3).sort((a,b)=>b.overlaps-a.overlaps);
   for(const {item} of lexical){
@@ -105,7 +116,10 @@ export async function matchPublishedComponents(brief,react,aceternity,{
         sourceCatalog:sourceCatalogForModel(items)
       });
       const ranked=parseSemanticSelections(typeof answer==='string'?answer:answer?.text,items,{limit:capacity});
-      if(ranked!==null)return {matches:ranked,status:ranked.length?'semantic-ranked':'no-relevant-matches'};
+      if(ranked?.length)return {matches:ranked,status:'semantic-ranked'};
+      // An empty, malformed or noncommittal model answer is not proof that
+      // no official source can help. Examine genuine functional affordances
+      // before telling the user that nothing matches.
     }catch{/* Model outages must not create imaginary publisher results. */}
   }
   const matches=fallbackPublisherComponents(brief,items,{limit:capacity});
