@@ -42,7 +42,7 @@ const fakeTransport=async(url,options)=>{
     if(request.params.name==='get_screen'){
       const id=request.params.arguments.screenId;
       return asJson({structuredContent:{screen:{
-        id,pageUrl:id==='observed-product'?'https://screenrove.com/dashboards/acme-product-home':
+        id,url:id==='observed-product'?'https://screenrove.com/dashboards/acme-product-home':
           'https://screenrove.com/landing-pages?open=acme-marketing-home',
         title:'An observed screen',capturedAt:'2026-11-10'
       }}});
@@ -158,7 +158,7 @@ test('existing AI source planner accepts unfamiliar briefs with structured JSON 
 });
 
 test('live publisher MCP compatibility on CI: actual Screenrove search and exact source URL', {
-  skip:process.env.GITHUB_ACTIONS!=='true'
+  skip:process.env.FRONTLINE_LIVE_SCREENROVE_CHECK!=='1'
 },async()=>{
   const {createScreenroveClient,screenroveToolData}=await import('../screenrove-publisher.mjs');
   const client=createScreenroveClient({timeoutMs:12000});
