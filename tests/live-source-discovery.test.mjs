@@ -21,8 +21,7 @@ test('Search terms are bounded and exclude URLs and email',()=>{
 test('Only official Kage slugs and trusted publisher URLs are eligible',()=>{
   const provider=LIVE_SOURCES.find(x=>x.id==='kage');
   for(const site of ['https://kage.design.evil.invalid/designs/x','http://kage.design/designs/x',
-    'https://kage.design/','javascript:alert(1)','https://kage.design/api/private',
-    'https://kage.design/designs/tracker?utm=bad']){
+    'https://kage.design/','javascript:alert(1)','https://kage.design/api/private']){
     assert.equal(canonicalIndexedUrl(site,provider),null,site);
   }
   assert.equal(canonicalIndexedUrl('https://kage.design/designs/tracker?utm=bad',provider),
