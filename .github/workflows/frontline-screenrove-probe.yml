@@ -1,0 +1,53 @@
+name: One-time Screenrove MCP read-only compatibility probe
+on:
+  push:
+    branches: [feat/real-ui-landing-multisource-discovery-20261119]
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Confirm official Screenrove read-only API schema
+        run: |
+          node --input-type=module <<'NODE'
+          const endpoint='https://screenrove.com/mcp';
+          let session='',n=0;
+          async function invoke(method,params={},notification=false){
+            const response=await fetch(endpoint,{method:'POST',redirect:'error',
+              signal:AbortSignal.timeout(14000),headers:{
+                'Content-Type':'application/json',
+                Accept:'application/json, text/event-stream',
+                'MCP-Protocol-Version':'2025-03-26',
+                ...(session?{'Mcp-Session-Id':session}:{})
+              },body:JSON.stringify({jsonrpc:'2.0',...(notification?{}:{id:++n}),method,params})});
+            session=response.headers.get('mcp-session-id')||session;
+            const raw=await response.text();
+            console.log('RPC',method,'status',response.status,'type',response.headers.get('content-type'),'size',raw.length);
+            if(!response.ok)throw Error('RPC status '+response.status+' '+raw.slice(0,160));
+            if(notification)return null;
+            const events=raw.trim().startsWith('{')?[raw]:raw.split(/\r?\n/).filter(x=>x.startsWith('data:')).map(x=>x.slice(5).trim());
+            const parsed=events.map(x=>{try{return JSON.parse(x)}catch{return null}}).find(x=>x?.result||x?.error);
+            if(parsed?.error)throw Error('Publisher responded with JSON-RPC error '+JSON.stringify(parsed.error).slice(0,300));
+            return parsed?.result;
+          }
+          const unbox=r=>{
+            if(r?.structuredContent)return r.structuredContent;
+            for(const c of r?.content||[]){
+              if(c.type==='text')try{return JSON.parse(c.text)}catch{return {excerpt:c.text.slice(0,500)}}
+            }
+            return r;
+          };
+          await invoke('initialize',{protocolVersion:'2025-03-26',
+            clientInfo:{name:'frontline-compatibility-probe',version:'0.1'},capabilities:{}});
+          await invoke('notifications/initialized',{},true);
+          const listed=await invoke('tools/list');
+          console.log('Available targeted tools:',listed?.tools?.filter(t=>['search_screens','get_screen'].includes(t.name)).map(t=>({name:t.name,required:t.inputSchema?.required,keys:Object.keys(t.inputSchema?.properties||{})})));
+          const found=unbox(await invoke('tools/call',{name:'search_screens',arguments:{q:'analytics dashboard',kind:'product',limit:2}}));
+          console.log('Search result keys',Object.keys(found||{}),'sample',JSON.stringify(found).slice(0,1800));
+          const id=found?.screens?.[0]?.id;
+          if(id){
+            const detail=unbox(await invoke('tools/call',{name:'get_screen',arguments:{screenId:id}}));
+            console.log('Detail keys',Object.keys(detail||{}),'public url candidates',JSON.stringify(detail).slice(0,1800));
+          }
+          NODE
