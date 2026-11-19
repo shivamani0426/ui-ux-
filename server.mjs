@@ -9,6 +9,7 @@ import {recommend,STYLES,exportPrompt} from './design-engine.mjs';
 import {discoverLiveSources} from './live-source-discovery.mjs';
 import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
+import {selectPublisherComponents} from './published-component-selection.mjs';
 import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative} from './simple-discovery-chat.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
@@ -161,17 +162,17 @@ async function savedSourceRows(owner,projectId){
     ORDER BY r.created_at ASC LIMIT 8`,[owner,projectId]);
   return result.rows;
 }
-async function makeInspirationResponse(owner,project,{includeComponents=true}={}){
+async function makeInspirationResponse(owner,project,{includeComponents=true,forSimpleChat=false}={}){
   // Kage design prompts and React Bits component references have different
   // rights and contracts. Never label a component description as a prompt.
   const componentsRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
     process.env.FRONTLINE_REACTBITS_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
-    :findReactBitsOriginalComponents(project.brief);
+    :findReactBitsOriginalComponents(project.brief,{limit:forSimpleChat?24:3});
   const aceternityRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
     process.env.FRONTLINE_ACETERNITY_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
-    :findAceternityOriginalComponents(project.brief);
+    :findAceternityOriginalComponents(project.brief,{limit:forSimpleChat?24:4});
   const [discovery,components,aceternity,raw,picks,personalTags]=await Promise.all([
     discoverLiveSources(project.brief),componentsRequest,aceternityRequest,
     profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
@@ -206,7 +207,8 @@ async function makeInspirationResponse(owner,project,{includeComponents=true}={}
       provenance:source.provenance||'Publisher link only; no original prompt was returned.'};
   });
   const ids=new Set([...designRefs,...animationRefs].map(x=>x.id));
-  return {projectId:project.id,matches,componentMatches:animationRefs,
+  return {projectId:project.id,matches,componentMatches:forSimpleChat?
+    selectPublisherComponents(project.brief,components.matches,aceternity.matches):animationRefs,
     selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
     rankingVersion:5,
     discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
@@ -1222,10 +1224,10 @@ const server=http.createServer(async(req,res)=>{
               content='Please reply Yes or No. I will only combine designs with components after an explicit Yes.';
               flowStage='offer-combination';
             }else {
-              const sources=await makeInspirationResponse(owner,p,{includeComponents:yes});
-              if(yes)content=formatSourceCombination(sources);
+              const sources=await makeInspirationResponse(owner,p,{includeComponents:yes,forSimpleChat:true});
+              if(yes)content=formatSourceCombination(sources,{brief:p.brief});
               else {
-                content=formatSourceDiscovery(sources);
+                content=formatSourceDiscovery(sources,{brief:p.brief});
                 flowStage='offer-combination';
               }
             }
