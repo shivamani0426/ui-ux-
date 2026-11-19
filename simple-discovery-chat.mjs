@@ -42,13 +42,35 @@ export function matchingPublisherDesigns(brief,matches){
   const wantsWorkspace=/\b(chatbot|chatgpt|dashboard|workspace|editor|management platform|student portal|web app|application|admin panel|chat interface)\b/.test(q);
   const wantsLanding=/\b(landing|homepage|home page|marketing page|hero section)\b/.test(q);
   if(!wantsWorkspace||wantsLanding)return items;
+  // Exact first-party URLs establish provenance, not relevance. A real
+  // "App Store Screenshots" result must not be sold as a chatbot workspace.
+  const wantsStoreAssets=/\b(app store|play store|store listing|screenshots|promotional mockups)\b/.test(q);
+  const domains=[
+    {requested:/\b(chatbot|chatgpt|chat interface|chat workspace|conversation|messaging|ai assistant)\b/,
+      evidence:/\b(chat|chatbot|chatgpt|assistant|messaging|conversation|helpdesk|support chat)\b/},
+    {requested:/\b(school|student|teacher|education|learning|classroom)\b/,
+      evidence:/\b(school|student|teacher|educational?|learning|classroom|academy)\b/},
+    {requested:/\b(patient|healthcare|hospital|clinic|medical)\b/,
+      evidence:/\b(patient|healthcare|hospital|clinic|medical)\b/},
+    {requested:/\b(finance|financial|banking|budget|expenses)\b/,
+      evidence:/\b(finance|financial|banking|budget|expenses)\b/},
+    {requested:/\b(e-commerce|ecommerce|shopping|online store|shopping cart)\b/,
+      evidence:/\b(e-commerce|ecommerce|shopping|storefront|marketplace|retail)\b/},
+    {requested:/\b(analytics|analytics dashboard)\b/,
+      evidence:/\b(analytics|dashboard|metrics|reporting)\b/}
+  ];
+  const relevantDomains=domains.filter(d=>d.requested.test(q));
   return items.filter(x=>{
     const name=clean(x.name).toLowerCase();
+    const verbatim=verifiedOriginal(x)||'';
+    const evidence=name+' '+verbatim.toLowerCase();
     if(/\b(landing|homepage|marketing page|splash page)\b/.test(name))return false;
-    // Bare brand names have no evidence of being an in-app interface.
-    if(!x.originalPrompt&&name.split(/\s+/).length<=2&&
-       !/\b(dashboard|workspace|chat|assistant|portal|interface|app|school|student|editor|support)\b/.test(name))
-       return false;
+    if(!wantsStoreAssets&&/\b(app store screenshots?|play store screenshots?|store listing|promotional screenshots?|marketing mockups?)\b/.test(name))return false;
+    // Require a real publisher title or its verified prompt to match the
+    // brief's domain. Unverified descriptions or guessed tags are not evidence.
+    if(relevantDomains.length&&!relevantDomains.some(d=>d.evidence.test(evidence)))return false;
+    if(!/\b(dashboard|workspace|chat|chatbot|chatgpt|assistant|messaging|conversation|helpdesk|portal|interface|app|school|student|teacher|editor|support|analytics|platform|admin|management)\b/.test(evidence))
+      return false;
     return true;
   });
 }
@@ -93,13 +115,13 @@ export function formatSourceCombination(sources,{brief=''}={}){
   const componentRows=components.map((item,i)=>
     (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
     '\n[Open original component page]('+trustedPublisherLink(item)+')').join('\n\n');
-  const overview=String(brief||'').replace(/[\\r\\n<>\\[\\]`]/g,' ').replace(/\s+/g,' ').trim().slice(0,310);
+  const overview=String(brief||'').replace(/[\r\n<>\[\]`]/g,' ').replace(/\s+/g,' ').trim().slice(0,310);
   const designSummary=designs.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
   const componentSummary=components.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
   // Generated connective instructions are explicitly Frontline-authored.
   // Never label this text as an original publisher prompt.
   const combinationPrompt=designs.length&&components.length?
-    '\\n\\n**Frontline combined implementation prompt (Frontline-authored, NOT an original publisher prompt)**\\n\\n'+
+    '\n\n**Frontline combined implementation prompt (Frontline-authored, NOT an original publisher prompt)**\n\n'+
     'Design a cohesive interface for: '+(overview||'the application described above')+
     '. Base the visual direction on these linked original design references: '+designSummary+
     '. Integrate relevant functional elements using these linked original component references: '+componentSummary+
