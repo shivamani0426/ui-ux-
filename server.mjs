@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {recommend,STYLES,exportPrompt} from './design-engine.mjs';
 import {discoverLiveSources} from './live-source-discovery.mjs';
 import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
+import {findAceternityOriginalComponents} from './aceternity-official.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
@@ -166,11 +167,15 @@ async function makeInspirationResponse(owner,project){
     process.env.FRONTLINE_REACTBITS_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
     :findReactBitsOriginalComponents(project.brief);
-  const [discovery,components,raw,picks,personalTags]=await Promise.all([
-    discoverLiveSources(project.brief),componentsRequest,profile(owner),
-    selectionIds(owner,project.id),personalInspirationTags(owner)
+  const aceternityRequest=process.env.NODE_ENV==='test'&&
+    process.env.FRONTLINE_ACETERNITY_TEST_MOCK!=='1'
+    ?Promise.resolve({status:'test-disabled',matches:[]})
+    :findAceternityOriginalComponents(project.brief);
+  const [discovery,components,aceternity,raw,picks,personalTags]=await Promise.all([
+    discoverLiveSources(project.brief),componentsRequest,aceternityRequest,
+    profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
-  const current=[...discovery.matches,...components.matches];
+  const current=[...discovery.matches,...components.matches,...aceternity.matches];
   if(current.length)await storeDiscoveredReferences(current);
   const saved=await savedSourceRows(owner,project.id);
   const seen=new Set(current.map(x=>x.id));
@@ -178,9 +183,10 @@ async function makeInspirationResponse(owner,project){
   // unreachable; mark old Kage prompt as unavailable, never reconstruct it.
   const past=saved.filter(x=>!seen.has(x.id));
   const designRefs=[...discovery.matches,...past.filter(x=>x.sourceKind!=='animation')];
-  const animationRefs=[...components.matches,...past.filter(x=>x.sourceKind==='animation')
+  const animationRefs=[...components.matches,...aceternity.matches,
+    ...past.filter(x=>x.sourceKind==='animation')
     .map(x=>({...x,originalPrompt:null,originalPromptStatus:'not-published',
-      provenance:'Previously selected original React Bits page, saved privately.'}))];
+      provenance:'Previously selected publisher component page, saved privately.'}))];
   const index=new Map(designRefs.map(r=>[r.id,r]));
   const prefs=effectivePreferences(raw);
   const matches=rankInspirations(project.brief,designRefs,{
@@ -199,12 +205,14 @@ async function makeInspirationResponse(owner,project){
   const ids=new Set([...designRefs,...animationRefs].map(x=>x.id));
   return {projectId:project.id,matches,componentMatches:animationRefs,
     selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
-    rankingVersion:4,
+    rankingVersion:5,
     discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
       providers:discovery.providerStatus||[]},
-    componentDiscovery:{status:components.status,note:components.note||''},
+    componentDiscovery:{status:components.status,note:components.note||'',
+      providers:[{provider:'React Bits',status:components.status,count:components.matches.length},
+        {provider:'Aceternity UI',status:aceternity.status,count:aceternity.matches.length}]},
     sources:discovery.sources,
-    ranking:'Official Kage MCP prompts and original React Bits catalogue URLs; no invented publisher prompts, copied component code, or old static website catalogue.'};
+    ranking:'Official Kage MCP original prompts, React Bits component index, and Aceternity first-party JSON component URLs. No invented publisher prompts, copied code or static website catalogue.'};
 }
 async function profile(owner){
   if(!pg)return normalizeProfile(guests.get(owner));
