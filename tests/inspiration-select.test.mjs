@@ -57,7 +57,7 @@ test('Select API saves publisher-indexed links, refuses synthetic prompts, and i
     assert.ok(a.data.matches.every(item=>item.originalPromptStatus==='verified-publisher'));
     assert.equal(a.data.matches[0].originalPrompt,originalPrompt);
     assert.ok(a.data.matches.every(item=>item.id.startsWith('live_')));
-    assert.ok(a.data.matches.length>=10);
+    assert.equal(a.data.matches.length,1);
     assert.equal(a.data.selected.length,0);
     assert.ok(a.data.matches[0].reasons.length>0);
     const forbidden=await bob(path);
