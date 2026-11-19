@@ -64,14 +64,14 @@ export default function InspirationExplorer({project,api,notice}){
       </div>
     </div>
     <div className="inspiration-discovery-state" role="status">
-      <div><Globe2 size={16}/><strong>{status==='ready'?'Live source index searched':
-        status==='partial'?'Partial live search':status==='no-matches'?'No matching source pages':
-        status==='not-configured'?'Search integration not configured':
+      <div><Globe2 size={16}/><strong>{status==='ready'?'Publisher prompt verified':
+        status==='partial'?'Original publisher results':status==='no-matches'?'No matching source pages':
+        status==='not-configured'?'Source retrieval disabled for tests':
         status==='rate-limited'?'Hourly search limit reached':
         status==='unavailable'?'Live source search unavailable':'Searching source websites'}</strong></div>
       {data.discovery?.note&&<p>{data.discovery.note}</p>}
       {error&&<p>{error}</p>}
-      {data.discovery?.query&&<p>Only search keywords were sent to the search provider:
+      {data.discovery?.query&&<p>Only limited project keywords were sent to publisher MCP:
         <strong> {data.discovery.query}</strong>. Private chats, accounts and feedback were not sent.</p>}
       <button type="button" onClick={()=>setRetry(n=>n+1)} disabled={loading}>
         <RefreshCw size={14}/>{loading?'Searching…':'Retry source discovery'}
@@ -97,7 +97,7 @@ export default function InspirationExplorer({project,api,notice}){
       </div>
     </div>
     {loading?<div className="inspiration-loading" role="status">
-      <span className="inspiration-pulse"/>Searching original domains, not pre-saved recommendations…
+      <span className="inspiration-pulse"/>Asking original publisher tools for real designs and prompts…
     </div>:matches.length? <div className="inspiration-grid">
       {matches.map(item=><article className={'inspiration-card '+(selected.has(item.id)?'is-saved':'')} key={item.id}>
         <div className="inspiration-card-body">
@@ -106,7 +106,7 @@ export default function InspirationExplorer({project,api,notice}){
             <span className="inspiration-signal">{item.matchLabel}</span>
           </div>
           <h3>{item.name}</h3>
-          <p className="inspiration-publisher"><Globe2 size={13}/>{item.provider} · Search-index URL</p>
+          <p className="inspiration-publisher"><Globe2 size={13}/>{item.provider} · Official source link</p>
           <div className="inspiration-reasons">{(item.reasons||[]).slice(0,3).map((reason,i)=>
             <p key={i}><Check size={12}/>{reason}</p>)}</div>
           <details className="inspiration-evidence">
@@ -115,12 +115,23 @@ export default function InspirationExplorer({project,api,notice}){
             <p>Relevance is heuristic metadata matching, not verified usability quality.
               Search results may change or become unavailable.</p>
           </details>
-          <div className="inspiration-original-prompt">
-            <ShieldCheck size={15}/>
-            <span>Original publisher prompt: <strong>Not verified for reproduction.</strong>
-              {' '}Open the original site to view any prompt it provides.
-              Frontline never invents a prompt and calls it the source original.</span>
-          </div>
+          {item.originalPromptStatus==='verified-publisher'&&item.originalPrompt?
+            <details className="inspiration-prompt-verbatim">
+              <summary><ShieldCheck size={15}/> Original {item.provider} prompt — verified from publisher</summary>
+              <p>Verbatim text from {item.originalPromptOrigin}. No AI rewrite.
+                Hash: <code>{item.originalPromptHash?.slice(0,18)}</code></p>
+              <pre>{item.originalPrompt}</pre>
+              <button type="button" onClick={async()=>{
+                try{await navigator.clipboard.writeText(item.originalPrompt);
+                  notice('Exact original '+item.provider+' prompt copied.');}
+                catch{notice('Copy unavailable; select the publisher prompt text instead.');}
+              }}><Copy size={15}/> Copy exact original publisher prompt</button>
+            </details>:
+            <div className="inspiration-original-prompt">
+              <ShieldCheck size={15}/>
+              <span>Original publisher prompt: <strong>Not verified or not available from this source.</strong>
+                {' '}Visit the original site; Frontline does not manufacture it.</span>
+            </div>}
           <div className="inspiration-actions">
             <button type="button" className={'inspiration-save '+(selected.has(item.id)?'selected':'')}
               onClick={()=>toggle(item)} disabled={Boolean(saving)}
@@ -130,7 +141,7 @@ export default function InspirationExplorer({project,api,notice}){
             </button>
             <a href={item.originalPromptUrl||item.site} target="_blank" rel="noopener noreferrer"
               aria-label={'Open original '+item.provider+' source for '+item.name}>
-              {item.originalPromptUrl?'View publisher prompt':'Open original source'} <ArrowUpRight size={15}/>
+              Open original source <ArrowUpRight size={15}/>
             </a>
           </div>
         </div>
@@ -139,8 +150,8 @@ export default function InspirationExplorer({project,api,notice}){
     <div className="inspiration-none">
       <Info size={18}/>
       {savedOnly?'No saved source links match these filters.':
-        status==='not-configured'?'No live results were invented. An administrator must configure the search provider.':
-        'No original indexed pages match this project right now. Open a publisher below or try another brief.'}
+        status==='not-configured'?'Source calls are disabled in automated test mode. No matches were invented.':
+        'No verified original publisher pages match this project right now. Open a publisher below or try another brief.'}
     </div>}
     <div className="inspiration-source-directory">
       <h3>Original websites covered</h3>
