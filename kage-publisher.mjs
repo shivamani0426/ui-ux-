@@ -20,8 +20,12 @@ const allowedUrl=s=>{
 export function sourceUrlForKage(item){
   if(!isObject(item))return null;
   for(const value of [item.url,item.link,item.site,item.designUrl,item.design_url]){
+    if(value==null)continue;
     const url=allowedUrl(value);
-    if(url&&url.includes('/designs/'))return url;
+    // An explicit invalid or unrelated URL must never be repaired into a
+    // fabricated valid Kage URL using a separate slug field.
+    if(!url||!url.includes('/designs/'))return null;
+    return url;
   }
   const slug=safeWord(item.slug||item.design_slug||item.designSlug);
   return slugPattern.test(slug)?'https://kage.design/designs/'+slug:null;
