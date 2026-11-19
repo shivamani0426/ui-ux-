@@ -83,3 +83,44 @@ test('publisher unavailability is transparent rather than pretending React Bits 
   assert.match(after,/temporarily unavailable/);
   assert.match(after,/ui.aceternity.com\/components\/sidebar/);
 });
+
+test('exact user chatbot request rejects Kage App Store Screenshots, preserves genuine components',()=>{
+  const brief='Design an AI chatbot workspace with a collapsible conversation sidebar, '+
+    'interactive message input, animated AI responses, floating navigation, and interactive cards. '+
+    'Find genuine UI/UX inspiration and matching original components with their publisher links.';
+  const source={provider:'Kage',name:'App Store Screenshots',
+    site:'https://kage.design/designs/app-store-screenshots',
+    originalPrompt:null,originalPromptStatus:'not-verified'};
+  const unrelated={provider:'Kage',name:'Retail Analytics Dashboard',
+    site:'https://kage.design/designs/retail-analytics-dashboard',
+    originalPrompt:null,originalPromptStatus:'not-verified'};
+  const componentMatches=selectPublisherComponents(brief,react,ace,{limit:5});
+  const sources={matches:[source,unrelated],componentMatches};
+  assert.deepEqual(matchingPublisherDesigns(brief,sources.matches),[]);
+  const first=formatSourceDiscovery(sources,{brief});
+  assert.doesNotMatch(first,/App Store Screenshots|app-store-screenshots|Retail Analytics/);
+  assert.match(first,/Would you like matching original UI components/);
+  assert.doesNotMatch(first,/best combination of UI\/UX designs/);
+  const second=formatSourceCombination(sources,{brief});
+  assert.doesNotMatch(second,/App Store Screenshots|app-store-screenshots|Retail Analytics/);
+  assert.doesNotMatch(second,/Frontline combined implementation prompt/);
+  assert.match(second,/reactbits.dev\/micro\/prompt-bar/);
+  assert.match(second,/ui.aceternity.com\/components\/sidebar/);
+});
+test('only a relevant publisher design can become a source of a combined implementation prompt',()=>{
+  const brief='Design an AI chatbot workspace with a conversation sidebar and interactive message input.';
+  const designs=[
+    {provider:'Kage',name:'App Store Screenshots',site:'https://kage.design/designs/app-store-screenshots',
+     originalPrompt:null,originalPromptStatus:'not-verified'},
+    {provider:'Kage',name:'AI Chat Workspace',site:'https://kage.design/designs/ai-chat-workspace',
+     originalPrompt:null,originalPromptStatus:'not-verified'}
+  ];
+  const result=matchingPublisherDesigns(brief,designs);
+  assert.deepEqual(result.map(x=>x.name),['AI Chat Workspace']);
+  const output=formatSourceCombination({matches:designs,componentMatches:[react[0]]},{brief});
+  assert.match(output,/Frontline combined implementation prompt/);
+  assert.match(output,/kage.design\/designs\/ai-chat-workspace/);
+  assert.doesNotMatch(output,/App Store Screenshots/);
+  assert.ok(output.includes('\n\n**Frontline combined implementation prompt'));
+  assert.ok(!output.includes('\\n\\n'),'Combined prompt should contain real newlines, never literal backslash-n sequences');
+});
