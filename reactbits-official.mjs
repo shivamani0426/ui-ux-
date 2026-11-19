@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 
 // Publisher-maintained machine-readable catalogue. No scraped galleries,
 // copied component code or hard-coded result pages.
-const DOCS='https://reactbits.dev/llms.txt';
+const DOCS='https://reactbits.dev/sitemap.xml';
 const MAX_BYTES=220_000,TTL=12*60*1000;
 const STOP=new Set(('create build make website application app ui ux react design interactive '+
   'with from about for the this that need want please modern great good '+
@@ -16,7 +16,7 @@ const allowedUrl=v=>{
     const u=new URL(v);
     if(u.protocol!=='https:'||!['reactbits.dev','www.reactbits.dev'].includes(u.hostname.toLowerCase())||
       u.port||u.username||u.password||u.search||u.hash)return null;
-    if(!/^\/(components|animations|backgrounds|text-animations)\/[a-z0-9-]+$/.test(u.pathname))return null;
+    if(!/^\/(components|animations|backgrounds|text-animations|micro)\/[a-z0-9-]+$/.test(u.pathname))return null;
     return u.href;
   }catch{return null;}
 };
@@ -40,6 +40,24 @@ export function parseReactBitsPublisherCatalogue(markdown){
       componentName:match[4],category});
   }
   return [...items.values()];
+}
+// The current first-party sitemap contains exact published component pages.
+// Its llms.txt is now a short documentation intro, not a component catalogue.
+export function parseReactBitsPublisherSitemap(xml){
+  if(typeof xml!=='string'||Buffer.byteLength(xml,'utf8')>MAX_BYTES)
+    throw Error('React Bits official sitemap missing or oversized');
+  const entries=new Map();
+  const links=[...xml.matchAll(/<loc>\s*(https:\/\/[^<\s]+)\s*<\/loc>/g)].map(x=>x[1]);
+  if(!links.length)throw Error('React Bits sitemap has no original URLs');
+  for(const source of links){
+    const site=allowedUrl(source);
+    if(!site||entries.has(site))continue;
+    const parts=new URL(site).pathname.split('/').filter(Boolean);
+    const slug=parts[1],name=slug.split('-').map(x=>x[0].toUpperCase()+x.slice(1)).join(' ');
+    entries.set(site,{site,name,description:'',
+      componentName:slug,category:parts[0]});
+  }
+  return [...entries.values()];
 }
 export function rankReactBitsOriginalComponents(brief,entries,{limit=3}={}){
   const query=tokens(brief).slice(0,12);
@@ -66,12 +84,12 @@ export async function findReactBitsOriginalComponents(brief,{
   transport=fetch,now=()=>Date.now(),limit=3}={}){
   if(cache.expires<=now()){
     if(!pending)pending=(async()=>{
-      const res=await transport(DOCS,{method:'GET',headers:{Accept:'text/plain'},
+      const res=await transport(DOCS,{method:'GET',headers:{Accept:'application/xml, text/xml'},
         redirect:'error',signal:AbortSignal.timeout(6500)});
       if(!res.ok)throw Error('React Bits publisher index HTTP '+res.status);
       const size=Number(res.headers?.get('content-length')||0);
       if(size>MAX_BYTES)throw Error('React Bits index too large');
-      const list=parseReactBitsPublisherCatalogue(await res.text());
+      const list=parseReactBitsPublisherSitemap(await res.text());
       if(list.length<20)throw Error('React Bits publisher index not recognized');
       return list;
     })().finally(()=>{pending=null;});
