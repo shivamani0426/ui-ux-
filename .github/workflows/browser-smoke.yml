@@ -38,6 +38,13 @@ jobs:
       - name: Verify React Bits original component cards in Chromium and Firefox
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 54
         run: NODE_ENV=test node tests/reactbits-browser.e2e.mjs
+      - name: Check real Aceternity component publisher API (diagnostic)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 55
+        continue-on-error: true
+        run: node tests/aceternity-live-smoke.mjs
+      - name: Verify Aceternity UI links and saves in Chromium and Firefox
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 55
+        run: NODE_ENV=test node tests/aceternity-browser.e2e.mjs
       - name: Wait for exact GitHub commit on Render (no stale deploys)
         id: release_gate
         if: github.event_name == 'push'
