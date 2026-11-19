@@ -156,3 +156,21 @@ test('existing AI source planner accepts unfamiliar briefs with structured JSON 
   assert.equal(calls,1);
   assert.match(result.text,/equipment maintenance dashboard/);
 });
+
+test('live publisher MCP compatibility on CI: actual Screenrove search and exact source URL', {
+  skip:process.env.GITHUB_ACTIONS!=='true'
+},async()=>{
+  const {createScreenroveClient,screenroveToolData}=await import('../screenrove-publisher.mjs');
+  const client=createScreenroveClient({timeoutMs:12000});
+  await client.initialize();
+  const search=screenroveToolData(await client.call('search_screens',{
+    q:'dashboard',kind:'product',limit:2,images:0
+  }));
+  console.log('SCREENROVE_LIVE_SEARCH_KEYS',Object.keys(search||{}));
+  console.log('SCREENROVE_LIVE_SEARCH_SAMPLE',JSON.stringify(search).slice(0,950));
+  const results=search?.screens||search?.data?.screens||search?.results||[];
+  assert.ok(results.length>0,'Official publisher should return screen entries');
+  const detail=screenroveToolData(await client.call('get_screen',{screenId:results[0].id}));
+  console.log('SCREENROVE_LIVE_DETAIL_KEYS',Object.keys(detail||{}));
+  console.log('SCREENROVE_LIVE_DETAIL_SAMPLE',JSON.stringify(detail).slice(0,1400));
+});
