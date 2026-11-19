@@ -39,15 +39,15 @@ const block=item=>{
 export function matchingPublisherDesigns(brief,matches){
   const items=(Array.isArray(matches)?matches:[]).filter(x=>trustedPublisherLink(x));
   const q=String(brief||'').toLowerCase();
-  const wantsWorkspace=/\\b(chatbot|chatgpt|dashboard|workspace|editor|management platform|student portal|web app|application|admin panel|chat interface)\\b/.test(q);
-  const wantsLanding=/\\b(landing|homepage|home page|marketing page|hero section)\\b/.test(q);
+  const wantsWorkspace=/\b(chatbot|chatgpt|dashboard|workspace|editor|management platform|student portal|web app|application|admin panel|chat interface)\b/.test(q);
+  const wantsLanding=/\b(landing|homepage|home page|marketing page|hero section)\b/.test(q);
   if(!wantsWorkspace||wantsLanding)return items;
   return items.filter(x=>{
     const name=clean(x.name).toLowerCase();
-    if(/\\b(landing|homepage|marketing page|splash page)\\b/.test(name))return false;
+    if(/\b(landing|homepage|marketing page|splash page)\b/.test(name))return false;
     // Bare brand names have no evidence of being an in-app interface.
-    if(!x.originalPrompt&&name.split(/\\s+/).length<=2&&
-       !/\\b(dashboard|workspace|chat|assistant|portal|interface|app|school|student|editor|support)\\b/.test(name))
+    if(!x.originalPrompt&&name.split(/\s+/).length<=2&&
+       !/\b(dashboard|workspace|chat|assistant|portal|interface|app|school|student|editor|support)\b/.test(name))
        return false;
     return true;
   });
@@ -77,22 +77,22 @@ export function formatSourceCombination(sources,{brief=''}={}){
   const components=(sources?.componentMatches||[]).filter(x=>trustedPublisherLink(x)).slice(0,5);
   const designRows=designs.map((item,i)=>
     (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
-    '\\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
-    (verifiedOriginal(item)?'\\nOriginal publisher prompt: already displayed above.':
-      '\\nOriginal publisher prompt: not available or not verified.')).join('\\n\\n');
+    '\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
+    (verifiedOriginal(item)?'\nOriginal publisher prompt: already displayed above.':
+      '\nOriginal publisher prompt: not available or not verified.')).join('\n\n');
   const componentRows=components.map((item,i)=>
     (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
-    '\\n[Open original component page]('+trustedPublisherLink(item)+')').join('\\n\\n');
+    '\n[Open original component page]('+trustedPublisherLink(item)+')').join('\n\n');
   const reactStatus=(sources?.componentDiscovery?.providers||[])
     .find(x=>x.provider==='React Bits')?.status;
   const reactNote=!components.some(x=>x.provider==='React Bits')&&reactStatus==='unavailable'?
-    '\\nReact Bits publisher index is temporarily unavailable; no component links were invented.':'';
-  return '**UI/UX designs and original prompts**\\n\\n'+
+    '\nReact Bits publisher index is temporarily unavailable; no component links were invented.':'';
+  return '**UI/UX designs and original prompts**\n\n'+
     (designRows||'No verified matching original application designs were found.')+
-    '\\n\\n**Matching components and animations**\\n\\n'+
+    '\n\n**Matching components and animations**\n\n'+
     (componentRows||'No verified matching components were found in the publisher indexes.')+
     reactNote+
-    '\\n\\nComponent publishers supply original documentation links, not publisher-authored design prompts. Original design prompts remain in the preceding chat reply when available.';
+    '\n\nComponent publishers supply original documentation links, not publisher-authored design prompts. Original design prompts remain in the preceding chat reply when available.';
 }
 export function isAffirmative(value){
   return /^(yes|yes please)$/i.test(String(value||'').trim());
