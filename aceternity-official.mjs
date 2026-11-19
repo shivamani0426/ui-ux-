@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {publisherComponentIntentBoost} from './publisher-component-intent.mjs';
 
 // Original, first-party JSON registry published specifically for AI integrations.
 // No page scraping, guessing slugs, cloning code, or invented prompts.
@@ -61,6 +62,7 @@ export function rankAceternityOriginals(brief,items,{limit=4}={}){
       if(b.has(word))score+=2;
       if(c.has(word))score+=1;
     }
+    score+=publisherComponentIntentBoost(brief,item.name);
     return score?{...item,relevanceScore:score}:null;
   }).filter(Boolean).sort((a,b)=>b.relevanceScore-a.relevanceScore||
     a.site.localeCompare(b.site))
