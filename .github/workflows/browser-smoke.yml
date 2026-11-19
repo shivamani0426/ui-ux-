@@ -25,7 +25,7 @@ jobs:
       - name: Install browser test runner
         run: npm install --no-save --ignore-scripts playwright@1.56.1
       - name: Install browser binaries
-        run: npx playwright install --with-deps chromium firefox
+        run: npx playwright install chromium firefox
       - name: Verify React Bits original catalogue on PR 54 (non-blocking live diagnostic)
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 54
         continue-on-error: true
