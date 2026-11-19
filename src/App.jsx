@@ -16,6 +16,7 @@ import ProjectIntelligencePanel from './components/ProjectIntelligencePanel.jsx'
 import ProjectWorkbench from './components/ProjectWorkbench.jsx';
 import usePwaExperience from './hooks/usePwaExperience.js';
 import MessageMarkdown from './components/MessageMarkdown.jsx';
+import {isConsentReply} from '../simple-discovery-chat.mjs';
 import LearningPreferencesPanel from './components/LearningPreferencesPanel.jsx';
 import './styles.css';
 import './frontline-studio.css';
@@ -400,7 +401,7 @@ function App(){
     try{
       let current=project;
       const lastStage=messages.at(-1)?.flowStage;
-      const consentReply=/^(yes|yes please|no|no thanks|no thank you|not now|nah|ok|okay|sure|yep|maybe)$/i.test(raw);
+      const consentReply=isConsentReply(raw);
       // If a user enters a different problem after an offer, search the new
       // problem in a new private project instead of reusing stale old sources.
       if(!current||(!advancedMode&&(lastStage==='complete'||
@@ -677,7 +678,7 @@ function App(){
             {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="DESIGN BEGINS WITH YOU" fontSize={38} fontWeight={650} reveal="letter" reach={0} labels={false} selection={false} draggable={false} specks={0} sweep={false} clickKick={false} color="currentColor" accentColor="#bd7444" /></div></div>}
             <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent?.isComposing){e.preventDefault();send(e.currentTarget.value);}}} placeholder="Describe your website, app, or design idea…" rows={active?1:3} maxLength={1200} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
-              <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?(config.aiPrimary==='openrouter'?'OpenRouter configured':'AI configured'):'Design guidance ready'}</span>
+              <span className="composer-status"><span className="live-dot"/>{!advancedMode?'Original publisher lookup':config.aiEnabled?(config.aiPrimary==='openrouter'?'OpenRouter configured':'AI configured'):'Design guidance ready'}</span>
               <div className="composer-buttons">
                 {advancedMode&&<button type="button" className="tool-button" title="Explore tools" onClick={()=>showMenu('tools')} aria-label="Open design tools"><Plus size={19}/></button>}
                 <button className="submit-button" type="submit" disabled={working||brief.trim().length<2} aria-label="Send message">{working?<RotateCcw size={18} className="spin"/>:<ArrowUp size={19}/>}</button>
