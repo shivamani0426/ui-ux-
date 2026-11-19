@@ -158,3 +158,16 @@
 .inspiration-source-links a:hover{border-color:var(--fl-brass);text-decoration:underline}
 @media(max-width:760px){.inspiration-source-links{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.inspiration-source-links{grid-template-columns:minmax(0,1fr)}}
+
+
+/* Exact publisher prompt — plain readable text, not a generated summary. */
+.inspiration-prompt-verbatim{padding:11px;border-radius:12px;background:var(--soft);border:1px solid var(--line)}
+.inspiration-prompt-verbatim summary{display:flex;align-items:center;gap:7px;cursor:pointer;color:var(--lav);
+  font:750 11px/1.45 'DM Sans',sans-serif}
+.inspiration-prompt-verbatim p{font:500 10px/1.5 'DM Sans',sans-serif;color:var(--muted);overflow-wrap:anywhere}
+.inspiration-prompt-verbatim pre{max-height:260px;overflow:auto;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;
+  background:var(--fl-surface-glass);border:1px solid var(--line);border-radius:9px;
+  font:500 10px/1.6 ui-monospace,monospace;color:var(--text);user-select:text}
+.inspiration-prompt-verbatim button{display:flex;align-items:center;gap:8px;padding:9px 12px;
+  border:1px solid var(--line);border-radius:9px;background:var(--fl-surface-glass);
+  color:var(--lav);font:750 11px/1.3 'DM Sans',sans-serif}
