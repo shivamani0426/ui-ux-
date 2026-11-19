@@ -2,7 +2,11 @@ import {installKageMock,originalPrompt} from './kage-mcp-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {rankInspirations,makeSelectionPrompt} from '../inspiration-engine.mjs';
-import {REFERENCES} from '../design-engine.mjs';
+// These example.org references exist only as test inputs; production has no fixed catalogue.
+const exampleRefs=[
+  {id:'example-education',name:'Educational layout',site:'https://example.org/study',category:'Education',styles:['minimal'],tags:['education']},
+  {id:'example-dashboard',name:'Dashboard layout',site:'https://example.org/dashboard',category:'Dashboard',styles:['glass'],tags:['dashboard']}
+];
 import {server} from '../server.mjs';
 
 function client(base){
@@ -32,7 +36,7 @@ test('Explainable ranking highlights domain matches without invented visual scan
   assert.equal(personal[0].personalized,true);
 });
 test('Selection prompt describes original design deliverables, not cloned websites',()=>{
-  const prompt=makeSelectionPrompt({brief:'Student learning platform'},REFERENCES.slice(0,2));
+  const prompt=makeSelectionPrompt({brief:'Student learning platform'},exampleRefs);
   assert.match(prompt,/ORIGINAL/);
   assert.match(prompt,/Student learning platform/);
   assert.match(prompt,/accessib/i);
@@ -95,7 +99,7 @@ test('Select API saves publisher-indexed links, refuses synthetic prompts, and i
 
 test('Saved inspiration prompts retain explicit requirements without claiming visual scans',()=>{
   const p={brief:'Design a student learning dashboard with an AI tutor and calendar. Must keep existing backend.'};
-  const prompt=makeSelectionPrompt(p,REFERENCES.slice(0,2));
+  const prompt=makeSelectionPrompt(p,exampleRefs);
   assert.match(prompt,/PROJECT UNDERSTANDING/);
   assert.match(prompt,/Students \/ learners/);
   assert.match(prompt,/AI tutor/);
