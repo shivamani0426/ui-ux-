@@ -90,14 +90,20 @@ export function verifiedScreenroveReference(search,detail,expectedKind){
   const record=detail&&typeof detail==='object'?detail:{};
   const id=clean(search.id||search.screenId,135);
   // Never construct a URL from a screen ID or a product name.
-  const page=validScreenrovePage(record.pageUrl||record.referenceUrl||record.reference_url||
-    record.page_url||search.pageUrl||search.referenceUrl||'');
+  const page=validScreenrovePage(record.url||record.pageUrl||record.referenceUrl||
+    record.reference_url||record.page_url||search.url||search.pageUrl||search.referenceUrl||'');
+  // Publisher-reported search and detail pages must agree when both provided.
+  const searchPage=validScreenrovePage(search.url||search.pageUrl||'');
+  if(searchPage&&searchPage!==page)return null;
   if(!id||!page)return null;
   const returnedId=clean(record.id||record.screenId||record.screen_id||'',135);
   if(returnedId&&returnedId!==id)return null;
   const kind=clean(search.kind||record.kind,20);
   if(kind&&kind!==expectedKind)return null;
-  const title=clean(search.title||record.title||search.productName,100);
+  const product=clean(search.productName||record.productName||search.product||'',45);
+  const screenTitle=clean(search.title||record.title,75);
+  const title=clean(product&&screenTitle&&!screenTitle.toLowerCase().startsWith(product.toLowerCase())?
+    product+' — '+screenTitle:screenTitle||product,100);
   if(title.length<3)return null;
   const summary=clean(search.notes||record.notes||record.description,230);
   const designType=expectedKind==='product'?'application-ui':'landing-page';
