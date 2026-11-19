@@ -171,3 +171,15 @@
 .inspiration-prompt-verbatim button{display:flex;align-items:center;gap:8px;padding:9px 12px;
   border:1px solid var(--line);border-radius:9px;background:var(--fl-surface-glass);
   color:var(--lav);font:750 11px/1.3 'DM Sans',sans-serif}
+
+/* React Bits: original component references, never publisher prompt copies. */
+.inspiration-original-components{margin-top:22px}
+.inspiration-components-head{margin-bottom:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.inspiration-components-head h3{font:650 20px/1.25 'DM Sans',sans-serif;margin:0 0 7px;color:var(--text)}
+.inspiration-components-head p{font:500 12px/1.6 'DM Sans',sans-serif;color:var(--muted);margin:0 0 9px}
+.inspiration-components-head small{color:var(--lav);font:700 11px 'DM Sans',sans-serif}
+.inspiration-component-card .inspiration-card-body{display:flex;flex-direction:column;gap:12px}
+.inspiration-component-card .inspiration-card-body>p{margin:0;font-size:12px;line-height:1.55}
+.inspiration-component-card .inspiration-original-component-disclosure{display:flex;align-items:flex-start;gap:7px;
+  border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--muted);background:var(--soft)}
+.inspiration-original-component-disclosure svg{flex:0 0 auto;color:var(--lav);margin-top:2px}

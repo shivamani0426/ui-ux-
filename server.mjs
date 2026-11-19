@@ -7,6 +7,7 @@ import {createGitHubAppConnection} from './github-app-connect.mjs';
 import {fileURLToPath} from 'node:url';
 import {recommend,STYLES,exportPrompt} from './design-engine.mjs';
 import {discoverLiveSources} from './live-source-discovery.mjs';
+import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
@@ -159,18 +160,30 @@ async function savedSourceRows(owner,projectId){
   return result.rows;
 }
 async function makeInspirationResponse(owner,project){
-  const [discovery,raw,picks,personalTags]=await Promise.all([
-    discoverLiveSources(project.brief),profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
+  // Kage design prompts and React Bits component references have different
+  // rights and contracts. Never label a component description as a prompt.
+  const componentsRequest=process.env.NODE_ENV==='test'&&
+    process.env.FRONTLINE_REACTBITS_TEST_MOCK!=='1'
+    ?Promise.resolve({status:'test-disabled',matches:[]})
+    :findReactBitsOriginalComponents(project.brief);
+  const [discovery,components,raw,picks,personalTags]=await Promise.all([
+    discoverLiveSources(project.brief),componentsRequest,profile(owner),
+    selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
-  if(discovery.matches.length)await storeDiscoveredReferences(discovery.matches);
-  // Saved historical LIVE results may be retained for continuity, but are
-  // never substituted for a current search when discovery fails.
+  const current=[...discovery.matches,...components.matches];
+  if(current.length)await storeDiscoveredReferences(current);
   const saved=await savedSourceRows(owner,project.id);
-  const seen=new Set(discovery.matches.map(x=>x.id));
-  const refs=[...discovery.matches,...saved.filter(x=>!seen.has(x.id))];
-  const index=new Map(refs.map(r=>[r.id,r]));
+  const seen=new Set(current.map(x=>x.id));
+  // Saved sources can stay visible if the publisher is temporarily
+  // unreachable; mark old Kage prompt as unavailable, never reconstruct it.
+  const past=saved.filter(x=>!seen.has(x.id));
+  const designRefs=[...discovery.matches,...past.filter(x=>x.sourceKind!=='animation')];
+  const animationRefs=[...components.matches,...past.filter(x=>x.sourceKind==='animation')
+    .map(x=>({...x,originalPrompt:null,originalPromptStatus:'not-published',
+      provenance:'Previously selected original React Bits page, saved privately.'}))];
+  const index=new Map(designRefs.map(r=>[r.id,r]));
   const prefs=effectivePreferences(raw);
-  const matches=rankInspirations(project.brief,refs,{
+  const matches=rankInspirations(project.brief,designRefs,{
     styleWeights:prefs.personalization.enabled?prefs.styleWeights||{}:{},
     favoriteTags:prefs.personalization.enabled?personalTags:[]
   }).map(item=>{
@@ -183,11 +196,15 @@ async function makeInspirationResponse(owner,project){
       originalPromptUrl:source.originalPromptStatus==='verified-publisher'?source.site:null,
       provenance:source.provenance||'Publisher link only; no original prompt was returned.'};
   });
-  return {projectId:project.id,matches,selected:picks.filter(id=>index.has(id)),
-    librarySize:discovery.matches.length,rankingVersion:3,
+  const ids=new Set([...designRefs,...animationRefs].map(x=>x.id));
+  return {projectId:project.id,matches,componentMatches:animationRefs,
+    selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
+    rankingVersion:4,
     discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
-      providers:discovery.providerStatus||[]},sources:discovery.sources,
-    ranking:'Live search-index metadata only. No fake prompts, stored website leaderboard, or third-party screenshots.'};
+      providers:discovery.providerStatus||[]},
+    componentDiscovery:{status:components.status,note:components.note||''},
+    sources:discovery.sources,
+    ranking:'Official Kage MCP prompts and original React Bits catalogue URLs; no invented publisher prompts, copied component code, or old static website catalogue.'};
 }
 async function profile(owner){
   if(!pg)return normalizeProfile(guests.get(owner));
@@ -996,7 +1013,7 @@ const server=http.createServer(async(req,res)=>{
             return json(res,400,{error:'Choose a valid reference and selection state'});
           const alreadySaved=(await selectionIds(owner,id)).includes(b.sourceId);
           const searched=b.selected?await makeInspirationResponse(owner,p):null;
-          const found=b.selected?searched.matches.find(x=>x.id===b.sourceId):
+          const found=b.selected?[...searched.matches,...(searched.componentMatches||[])].find(x=>x.id===b.sourceId):
             (await savedSourceRows(owner,id)).find(x=>x.id===b.sourceId&&alreadySaved);
           if(!found)return json(res,404,{error:'Source not found in this project live search.'});
           await updateInspirationSelection(owner,id,found.id,b.selected);
