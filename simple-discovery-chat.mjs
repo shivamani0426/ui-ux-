@@ -27,7 +27,7 @@ const block=item=>{
   const site=trustedPublisherLink(item);
   if(!site)return null;
   const title=clean(item.name)||item.provider;
-  const header='**'+title+'** — '+item.provider+'\nOriginal design/component: '+site;
+  const header='**'+title+'** — '+item.provider+'\n[Open original publisher page]('+site+')';
   const prompt=verifiedOriginal(item);
   return header+(prompt?'\nOriginal publisher prompt (verbatim):\n````text\n'+prompt+'\n````':
     '\nOriginal publisher prompt: not available or not verified.');
