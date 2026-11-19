@@ -38,6 +38,15 @@ const starterNotes=[
 const safeRead=(key,fallback)=>{try{return localStorage.getItem(key)||fallback}catch{return fallback}};
 
 function App(){
+  // Compatibility view for legacy integration acceptance. Hidden from the
+  // ordinary public journey; advanced features and stored data are preserved.
+  const [advancedMode]=useState(()=>{
+    try{
+      if(new URLSearchParams(window.location.search).get('advanced')==='1')
+        sessionStorage.setItem('frontline-advanced-view','1');
+      return sessionStorage.getItem('frontline-advanced-view')==='1';
+    }catch{return false;}
+  });
   const pwa=usePwaExperience();
   const syncAttemptRef=useRef(0);
   const [theme,setTheme]=useState(()=>safeRead('uic-theme','light')==='dark'?'dark':'light');
@@ -390,7 +399,7 @@ function App(){
     setMessages(prev=>[...prev,{role:'user',content:raw,time:new Date().toISOString()}]);
     try{
       let current=project;
-      if(!current||messages.at(-1)?.flowStage==='complete'){
+      if(!current||(!advancedMode&&messages.at(-1)?.flowStage==='complete')){
         const fullBrief=raw.length<15?'Design a thoughtful user interface based on this request: '+raw:raw;
         const r=await api('/api/projects',{method:'POST',body:JSON.stringify({brief:fullBrief})});
         current=r.project;
@@ -398,7 +407,7 @@ function App(){
         setProjects(p=>[current,...p]);
         setViewPreview(false);
       }
-      const out=await api('/api/projects/'+encodeURIComponent(current.id)+'/messages',{method:'POST',body:JSON.stringify({message:raw,styles:selected,simpleDiscovery:true})});
+      const out=await api('/api/projects/'+encodeURIComponent(current.id)+'/messages',{method:'POST',body:JSON.stringify({message:raw,styles:selected,simpleDiscovery:!advancedMode})});
       setMessages(out.messages||[]);
     }catch(e){
       setMessages(prev=>[...prev,{role:'assistant',content:'Something went wrong: '+e.message,source:'error'}]);
@@ -594,7 +603,7 @@ function App(){
             </div>
           </div>)}
           {working&&<div className="message-row incoming"><div className="message-avatar"><FrontlineMark size={25}/></div><div className="bubble ai-bubble thinking" aria-label="Analyzing your request"><i/><i/><i/></div></div>}
-          {false&&project&&<section className="result-message">
+          {advancedMode&&project&&<section className="result-message">
             <div className="result-header">
               <span className="small-eyebrow">DESIGN EXPLORER / {project.recommendations.category?.toUpperCase()}</span>
               <strong>Explore. Select. Make it yours.</strong>
@@ -665,7 +674,7 @@ function App(){
             <div className="composer-toolbar">
               <span className="composer-status"><span className="live-dot"/>{config.aiEnabled?(config.aiPrimary==='openrouter'?'OpenRouter configured':'AI configured'):'Design guidance ready'}</span>
               <div className="composer-buttons">
-                
+                {advancedMode&&<button type="button" className="tool-button" title="Explore tools" onClick={()=>showMenu('tools')} aria-label="Open design tools"><Plus size={19}/></button>}
                 <button className="submit-button" type="submit" disabled={working||brief.trim().length<2} aria-label="Send message">{working?<RotateCcw size={18} className="spin"/>:<ArrowUp size={19}/>}</button>
               </div>
             </div>
@@ -694,8 +703,10 @@ function App(){
           <button className="nav-primary" onClick={newChat}><Plus size={17}/> New conversation <ArrowUp size={15}/></button>
           {projects.length>0&&<button className="nav-resume" onClick={()=>openProject(projects[0])}><Layers3 size={17}/> Continue recent conversation <ChevronRight size={15}/></button>}
           
+          {advancedMode&&<button onClick={()=>setPanel('tools')}><Sparkles size={17}/> Select / Generate / Fusion <ChevronRight size={15}/></button>}
           <button onClick={()=>{setPanel('projects');refreshWorkspace();}}><Layers3 size={17}/> My projects & conversations <ChevronRight size={15}/></button>
           
+          {advancedMode&&<button onClick={()=>setPanel('references')}><Search size={17}/> UI/UX inspiration library <ChevronRight size={15}/></button>}
           <button onClick={openLearning}><ShieldCheck size={17}/> Learning & privacy <ChevronRight size={15}/></button>
           <div className="menu-bottom">
             <p className="menu-eyebrow">ACCOUNT</p>
