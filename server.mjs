@@ -11,6 +11,8 @@ import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
 import {selectPublisherComponents} from './published-component-selection.mjs';
 import {matchPublishedComponents} from './publisher-semantic-matcher.mjs';
+import {planSourceQueries} from './publisher-source-query-plan.mjs';
+import {searchScreenroveReferences} from './screenrove-publisher.mjs';
 import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
@@ -174,8 +176,19 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     process.env.FRONTLINE_ACETERNITY_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
     :findAceternityOriginalComponents(project.brief,forSimpleChat?{limit:250,includeAll:true}:{limit:4});
-  const [discovery,components,aceternity,raw,picks,personalTags]=await Promise.all([
-    discoverLiveSources(project.brief,{requester:owner}),componentsRequest,aceternityRequest,
+  // Real application UI and landing pages come from Screenrove's read-only
+  // publisher MCP. Query planning interprets ANY brief by task, not app type.
+  // Browser tests never touch a live publisher without explicit fixtures.
+  const screenroveRequest=!forSimpleChat?Promise.resolve({status:'not-requested',matches:[]}):
+    process.env.NODE_ENV==='test'&&process.env.FRONTLINE_SCREENROVE_TEST_MOCK!=='1'
+    ?Promise.resolve({status:'test-disabled',matches:[]}):
+    planSourceQueries(project.brief,{
+      model:brief=>designAiReply({brief,task:'source-query',messages:[],styles:[]})
+    }).then(queries=>searchScreenroveReferences(queries))
+      .catch(()=>({status:'unavailable',matches:[]}));
+  const [discovery,screenrove,components,aceternity,raw,picks,personalTags]=await Promise.all([
+    discoverLiveSources(project.brief,{requester:owner}),screenroveRequest,
+    componentsRequest,aceternityRequest,
     profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
   // Semantic matching happens on the ENTIRE first-party catalogue after Yes.
@@ -188,14 +201,14 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       })
     }):null;
   const shortlisted=forSimpleChat?(semantic?.matches||[]):null;
-  const current=[...discovery.matches,...(shortlisted||[...components.matches,...aceternity.matches])];
+  const current=[...discovery.matches,...(screenrove.matches||[]),...(shortlisted||[...components.matches,...aceternity.matches])];
   if(current.length)await storeDiscoveredReferences(current);
   const saved=await savedSourceRows(owner,project.id);
   const seen=new Set(current.map(x=>x.id));
   // Saved sources can stay visible if the publisher is temporarily
   // unreachable; mark old Kage prompt as unavailable, never reconstruct it.
   const past=saved.filter(x=>!seen.has(x.id));
-  const designRefs=[...discovery.matches,...past.filter(x=>x.sourceKind!=='animation')];
+  const designRefs=[...discovery.matches,...(screenrove.matches||[]),...past.filter(x=>x.sourceKind!=='animation')];
   const animationRefs=[...components.matches,...aceternity.matches,
     ...past.filter(x=>x.sourceKind==='animation')
     .map(x=>({...x,originalPrompt:null,originalPromptStatus:'not-published',
@@ -210,6 +223,8 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
   }).map(item=>{
     const source=index.get(item.id);
     return {...item,provider:source.provider||'',sourceKind:source.sourceKind||'',
+      designType:source.designType||'landing-page',publisherVerified:source.publisherVerified===true,
+      summary:source.summary||item.summary||'',
       originalPrompt:source.originalPromptStatus==='verified-publisher'?source.originalPrompt:null,
       originalPromptStatus:source.originalPromptStatus||'not-verified',
       originalPromptHash:source.originalPromptHash||null,
@@ -218,7 +233,14 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       provenance:source.provenance||'Publisher link only; no original prompt was returned.'};
   });
   const ids=new Set([...designRefs,...animationRefs].map(x=>x.id));
-  return {projectId:project.id,matches,componentMatches:shortlisted||animationRefs,
+  const applicationMatches=(screenrove.matches||[]).filter(x=>x.designType==='application-ui').slice(0,2);
+  const landingMatches=[
+    ...(screenrove.matches||[]).filter(x=>x.designType==='landing-page'),
+    ...matches.filter(x=>x.provider==='Kage')
+  ].slice(0,4);
+  return {projectId:project.id,matches,
+    applicationMatches,landingMatches,screenroveStatus:screenrove.status,
+    componentMatches:shortlisted||animationRefs,
     selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
     rankingVersion:5,
     discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
@@ -229,7 +251,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       providers:[{provider:'React Bits',status:components.status,count:components.matches.length},
         {provider:'Aceternity UI',status:aceternity.status,count:aceternity.matches.length}]},
     sources:discovery.sources,
-    ranking:'Official Kage MCP original prompts, React Bits component index, and Aceternity first-party JSON component URLs. No invented publisher prompts, copied code or static website catalogue.'};
+    ranking:'Original Screenrove app/landing screen pages, Kage MCP original prompts, and official React Bits/Aceternity components; source URLs are not model-generated.'};
 }
 async function profile(owner){
   if(!pg)return normalizeProfile(guests.get(owner));
