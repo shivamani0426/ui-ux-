@@ -65,8 +65,8 @@ export default function InspirationExplorer({project,api,notice}){
           <h2>Discover real design <em>sources.</em></h2>
           <p>Kage recommendations come directly from its official publisher MCP,
             with real design links and exact original prompts when verified.
-            Original React Bits components are presented separately, using its
-            own publisher-maintained index. Other sites remain source links
+            React Bits and Aceternity UI components are shown separately from the
+            publisher-written Kage prompts. Other sites remain source links
             until their official retrieval interfaces are authorized.</p>
         </div>
         <span className="inspiration-collection-count">{data.librarySize||0}
@@ -166,11 +166,11 @@ export default function InspirationExplorer({project,api,notice}){
     {!loading&&componentMatches.length>0&&<section className="inspiration-original-components"
       aria-label="Verified original UI components and animations">
       <div className="inspiration-components-head">
-        <h3>Original React Bits components & animations</h3>
-        <p>These are real component pages listed by React Bits itself.
-          They are original source links and descriptions, <strong>not Kage prompts,
-          generated UI, or republished component code.</strong> Open each original
-          page for installation details and license conditions.</p>
+        <h3>Original components & animations</h3>
+        <p>These are real component pages published by React Bits and Aceternity UI.
+          The source links and descriptions come from the publishers themselves—
+          <strong> not Kage prompts, invented components or republished code.</strong>
+          Review the original documentation and license before installing.</p>
         <small>{componentMatches.length} official-index matches</small>
       </div>
       <div className="inspiration-grid">
@@ -179,15 +179,15 @@ export default function InspirationExplorer({project,api,notice}){
           <div className="inspiration-card-body">
             <div className="inspiration-meta">
               <span>{item.componentCategory||'ORIGINAL COMPONENT'}</span>
-              <span className="inspiration-signal">React Bits official index</span>
+              <span className="inspiration-signal">Original publisher catalogue</span>
             </div>
             <h3>{item.name}</h3>
-            <p className="inspiration-publisher"><Globe2 size={13}/>React Bits</p>
+            <p className="inspiration-publisher"><Globe2 size={13}/>{item.provider}</p>
             {item.summary&&<p>{item.summary}</p>}
             <p className="inspiration-original-component-disclosure">
               <ShieldCheck size={14}/>
-              The original component link is listed in React Bits' official catalogue.
-              No publisher-authored design prompt was provided for this component.
+              The original component link is provided by {item.provider}'s official catalogue.
+              No publisher-authored design prompt was supplied for this component.
             </p>
             <div className="inspiration-actions">
               <button type="button" className={'inspiration-save '+(selected.has(item.id)?'selected':'')}
@@ -196,7 +196,7 @@ export default function InspirationExplorer({project,api,notice}){
                 {saving===item.id?'Saving…':selected.has(item.id)?'Saved component':'Save component link'}
               </button>
               <a href={item.site} target="_blank" rel="noopener noreferrer"
-                aria-label={'Open original React Bits '+item.name}>
+                aria-label={'Open original '+item.provider+' '+item.name}>
                 Open original component <ArrowUpRight size={15}/>
               </a>
             </div>
