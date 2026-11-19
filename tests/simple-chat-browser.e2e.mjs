@@ -26,8 +26,12 @@ try{
       // Never reveal components or invented prompts until explicit user approval.
       await page.getByRole('button',{name:'Yes, combine them'}).click();
       await page.locator('.message-markdown').nth(1).waitFor({timeout:15000});
-      assert.match(await page.locator('.message-markdown').nth(1).innerText(),
-        /No verified publisher designs or components were available/);
+      const combined=await page.locator('.message-markdown').nth(1).innerText();
+      assert.match(combined,/UI\/UX designs and original prompts/);
+      assert.match(combined,/No verified matching original application designs/);
+      assert.match(combined,/Matching components and animations/);
+      assert.match(combined,/No verified matching components were found/);
+      assert.doesNotMatch(combined,/Original prompt: see publisher page \(too long/);
       assert.equal(await page.getByRole('button',{name:'Yes, combine them'}).count(),0);
       await page.locator('.composer textarea').fill(
         'Create a separate school attendance portal with student and teacher accounts');
