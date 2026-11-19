@@ -16,7 +16,7 @@ const allowedUrl=v=>{
     const u=new URL(v);
     if(u.protocol!=='https:'||!['reactbits.dev','www.reactbits.dev'].includes(u.hostname.toLowerCase())||
       u.port||u.username||u.password||u.search||u.hash)return null;
-    if(!/^\/(components|animations|backgrounds|text-animations)\/[a-z0-9-]+$/.test(u.pathname))return null;
+    if(!/^\/(components|animations|backgrounds|text-animations|micro)\/[a-z0-9-]+$/.test(u.pathname))return null;
     return u.href;
   }catch{return null;}
 };
@@ -26,16 +26,16 @@ export function parseReactBitsPublisherCatalogue(markdown){
   const items=new Map();
   let category='';
   for(const line of markdown.split(/\r?\n/)){
-    const heading=line.match(/^##\s+(Components|Animations|Backgrounds|Text Animations)\s*$/);
+    const heading=line.match(/^##\s+(Components|Animations|Backgrounds|Text Animations|Micro)\s*$/);
     if(heading){category=heading[1];continue;}
-    if(!['Components','Animations','Backgrounds','Text Animations'].includes(category))continue;
+    if(!['Components','Animations','Backgrounds','Text Animations','Micro'].includes(category))continue;
     const match=line.match(/^-\s+\[([^\]]{2,100})\]\((https:\/\/[^ )]{8,250})\):\s*(.{5,400}?)\s+CLI:\s*\x60([A-Za-z][A-Za-z0-9]{2,70})\x60\.\s*$/);
     if(!match)continue;
     const site=allowedUrl(match[2]);
     if(!site||items.has(site))continue;
     const kind=new URL(site).pathname.split('/')[1];
     if(kind!=={'Components':'components','Animations':'animations',
-      'Backgrounds':'backgrounds','Text Animations':'text-animations'}[category])continue;
+      'Backgrounds':'backgrounds','Text Animations':'text-animations','Micro':'micro'}[category])continue;
     items.set(site,{site,name:clean(match[1]).slice(0,90),description:clean(match[3]).slice(0,330),
       componentName:match[4],category});
   }
