@@ -1,8 +1,7 @@
 # M08 — Genuine original-source links and publisher prompts
 
-Status: **Kage official MCP end-to-end tested live**, other 12 website
-categories link-only until a permitted, compatible publisher integration
-exists. Avoid implying all 14 sites publish prompts; many only provide
+Status: **Kage official MCP end-to-end verified, React Bits official index live**, Aceternity UI official JSON API in PR #55 pending production verification.
+Other 11 websites remain directory links until source-specific permitted integrations exist. Avoid implying all 14 sites publish prompts; many only provide
 visual inspiration, components or UX research.
 
 ## Two source categories
@@ -19,8 +18,8 @@ as AI matches. Currently the official Kage MCP returns genuine matched design UR
 exact prompts. React Bits is independently linked through its official
 https://reactbits.dev/llms.txt index: actual animation/component URLs and
 descriptions only, no publisher prompts or republished component source code.
-The remaining 12 websites are original publisher directories, not
-fabricated recommendation cards. 21st.dev has a keyed
+Aceternity UI exposes its original components through the official first-party JSON API at https://ui.aceternity.com/api/components. Its component titles, descriptions and page links can be recommended, but it does not publish original design prompts in that index.
+The remaining 11 websites are original publisher directories, not fabricated recommendation cards. 21st.dev has a keyed
 MCP endpoint, but its publisher API is NOT yet connected or authorized for
 republication in Frontline; do not imply otherwise.
 
@@ -65,8 +64,7 @@ independent copyright or design-quality certificate.
 Kage's own original prompt is displayed under a clearly labeled
 expandable detail with an **exact copy** button. It is not mixed into
 a generic Frontline original prompt and not silently rewritten.
-React Bits component cards link directly to original component pages and
-explicitly state that no original prompt is published in its index.
+React Bits and Aceternity component cards link directly to original documentation and explicitly state that no original design prompt was provided by their catalogues.
 React Bits uses MIT + Commons Clause; Frontline does not redistribute
 component code. Other sites show their original URL until an authorized
 source-specific retrieval method is available.
@@ -111,3 +109,27 @@ instructions and dependencies visible to the end user.
 
 Release verification: test the live publisher catalogue, URL validation,
 owner-scoped save/remove, no fake prompt status and Chrome/Firefox UI cards.
+
+## Aceternity UI original component integration (M08C)
+
+First-party index: https://ui.aceternity.com/api/components. The publisher's
+https://ui.aceternity.com/llms.txt explicitly directs AI systems to this JSON API.
+Frontline fetches the original catalogue server-side, with no user brief or
+private account data in the request. Results are ranked locally against a
+brief's keywords. It accepts only original HTTPS documentation links at
+https://ui.aceternity.com/components/<publisher-provided-slug> where the
+publisher JSON name and URL exactly agree. No external lookalike domains,
+unverified slugs, screenshots, media files or component source code are used.
+
+The indexed JSON is cached 10 minutes. Invalid/oversized, inaccessible or
+schema-incompatible source responses produce zero invented recommendations.
+Original component URLs can be saved in a private project board, but the
+records are link metadata only and never claimed as original design prompts.
+The original publisher's licensing and install details remain on each linked
+source page. These components share the UI explorer with React Bits, but
+are labeled and ranked by verified individual publisher provenance.
+
+Production release requires CI unit/security/API tests, live first-party API
+verification, real Chromium and Firefox UI tests, a matching Render commit
+and post-deploy health checks. No claims about the other 11 sites being
+connected are authorized.
