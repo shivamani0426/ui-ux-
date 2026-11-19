@@ -7,7 +7,7 @@ import {ArrowUpRight,Bookmark,Check,Copy,ExternalLink,Globe2,Info,
 export default function InspirationExplorer({project,api,notice}){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [data,setData]=useState({matches:[],selected:[],sources:[],discovery:null,librarySize:0});
+  const [data,setData]=useState({matches:[],componentMatches:[],selected:[],sources:[],discovery:null,componentDiscovery:null,librarySize:0});
   const [search,setSearch]=useState('');
   const [kind,setKind]=useState('all');
   const [savedOnly,setSavedOnly]=useState(false);
@@ -31,6 +31,14 @@ export default function InspirationExplorer({project,api,notice}){
       (!q||[x.name,x.category,x.provider,...(x.tags||[])].join(' ').toLowerCase().includes(q))
     ).slice(0,30);
   },[data.matches,kind,search,savedOnly,selected]);
+  const componentMatches=useMemo(()=>{
+    const q=search.trim().toLowerCase();
+    if(kind==='inspiration')return [];
+    return (data.componentMatches||[]).filter(x=>
+      (!savedOnly||selected.has(x.id))&&
+      (!q||[x.name,x.summary,x.category,...(x.tags||[])].join(' ').toLowerCase().includes(q))
+    ).slice(0,16);
+  },[data.componentMatches,kind,search,savedOnly,selected]);
   const sources=data.sources||[];
   const status=data.discovery?.status||'pending';
   async function toggle(item){
@@ -57,16 +65,17 @@ export default function InspirationExplorer({project,api,notice}){
           <h2>Discover real design <em>sources.</em></h2>
           <p>Kage recommendations come directly from its official publisher MCP,
             with real design links and exact original prompts when verified.
-            Explore the other original websites in the directory below; they are not
-            represented as results unless an authorized provider returns a match.</p>
+            Original React Bits components are presented separately, using its
+            own publisher-maintained index. Other sites remain source links
+            until their official retrieval interfaces are authorized.</p>
         </div>
         <span className="inspiration-collection-count">{data.librarySize||0}
-          <small>indexed page matches</small></span>
+          <small>verified design prompts</small></span>
       </div>
     </div>
     <div className="inspiration-discovery-state" role="status">
       <div><Globe2 size={16}/><strong>{status==='ready'?'Publisher prompt verified':
-        status==='partial'?'Original publisher results':status==='no-matches'?'No matching source pages':
+        status==='partial'?'Original publisher results':status==='no-matches'?(componentMatches.length?'Real original components discovered':'No verified Kage prompt matches'):
         status==='not-configured'?'Source retrieval disabled for tests':
         status==='rate-limited'?'Hourly search limit reached':
         status==='unavailable'?'Live source search unavailable':'Searching source websites'}</strong></div>
@@ -94,7 +103,7 @@ export default function InspirationExplorer({project,api,notice}){
           <input type="checkbox" checked={savedOnly} onChange={e=>setSavedOnly(e.target.checked)}/>
           Saved only
         </label>
-        <span role="status" className="inspiration-result-count">{matches.length} shown</span>
+        <span role="status" className="inspiration-result-count">{matches.length+componentMatches.length} shown</span>
       </div>
     </div>
     {loading?<div className="inspiration-loading" role="status">
@@ -147,13 +156,54 @@ export default function InspirationExplorer({project,api,notice}){
           </div>
         </div>
       </article>)}
-    </div>:
+    </div>:componentMatches.length?null:
     <div className="inspiration-none">
       <Info size={18}/>
       {savedOnly?'No saved source links match these filters.':
         status==='not-configured'?'Source calls are disabled in automated test mode. No matches were invented.':
         'No verified original publisher pages match this project right now. Open a publisher below or try another brief.'}
     </div>}
+    {!loading&&componentMatches.length>0&&<section className="inspiration-original-components"
+      aria-label="Verified original UI components and animations">
+      <div className="inspiration-components-head">
+        <h3>Original React Bits components & animations</h3>
+        <p>These are real component pages listed by React Bits itself.
+          They are original source links and descriptions, <strong>not Kage prompts,
+          generated UI, or republished component code.</strong> Open each original
+          page for installation details and license conditions.</p>
+        <small>{componentMatches.length} official-index matches</small>
+      </div>
+      <div className="inspiration-grid">
+        {componentMatches.map(item=><article key={item.id}
+          className={'inspiration-card inspiration-component-card '+(selected.has(item.id)?'is-saved':'')}>
+          <div className="inspiration-card-body">
+            <div className="inspiration-meta">
+              <span>{item.componentCategory||'ORIGINAL COMPONENT'}</span>
+              <span className="inspiration-signal">React Bits official index</span>
+            </div>
+            <h3>{item.name}</h3>
+            <p className="inspiration-publisher"><Globe2 size={13}/>React Bits</p>
+            {item.summary&&<p>{item.summary}</p>}
+            <p className="inspiration-original-component-disclosure">
+              <ShieldCheck size={14}/>
+              The original component link is listed in React Bits' official catalogue.
+              No publisher-authored design prompt was provided for this component.
+            </p>
+            <div className="inspiration-actions">
+              <button type="button" className={'inspiration-save '+(selected.has(item.id)?'selected':'')}
+                onClick={()=>toggle(item)} disabled={Boolean(saving)} aria-pressed={selected.has(item.id)}>
+                {selected.has(item.id)?<Check size={15}/>:<Bookmark size={15}/>}
+                {saving===item.id?'Saving…':selected.has(item.id)?'Saved component':'Save component link'}
+              </button>
+              <a href={item.site} target="_blank" rel="noopener noreferrer"
+                aria-label={'Open original React Bits '+item.name}>
+                Open original component <ArrowUpRight size={15}/>
+              </a>
+            </div>
+          </div>
+        </article>)}
+      </div>
+    </section>}
     <div className="inspiration-source-directory">
       <h3>Original websites covered</h3>
       <p>Each opens the original publisher. Listings below are a source directory,
