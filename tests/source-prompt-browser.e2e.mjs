@@ -17,7 +17,7 @@ try{
       const page=await browser.newPage({viewport:{width:1280,height:800}});
       const errors=[];
       page.on('pageerror',e=>errors.push(e.message));
-      await page.goto(base+'/studio',{waitUntil:'domcontentloaded',timeout:20000});
+      await page.goto(base+'/studio?advanced=1',{waitUntil:'domcontentloaded',timeout:20000});
       await page.locator('.composer textarea').waitFor({timeout:13000});
       await page.locator('.composer textarea').fill(
         'Build a student learning dashboard with courses, assignments and progress');
@@ -37,6 +37,22 @@ try{
       await button.click();
       assert.ok(errors.length===0,label+' JavaScript errors: '+errors.join('; '));
       console.log(label+' verified original link, verbatim prompt and copy control');
+      // The public default is the simple chat, not the technical explorer.
+      const publicPage=await browser.newPage({viewport:{width:390,height:844}});
+      await publicPage.goto(base+'/studio',{waitUntil:'domcontentloaded',timeout:20000});
+      await publicPage.locator('.composer textarea').fill(
+        'Build a student learning dashboard with courses, assignments and progress');
+      await publicPage.locator('.composer textarea').press('Enter');
+      await publicPage.getByRole('button',{name:'Yes, combine them'}).waitFor({timeout:20000});
+      assert.equal(await publicPage.locator('.result-message').count(),0);
+      const chatMessage=await publicPage.locator('.message-markdown').first().innerText();
+      assert.ok(chatMessage.includes(originalPrompt),'Public chat must show complete original Kage prompt');
+      const originalLink=publicPage.locator('.message-markdown').first()
+        .getByRole('link',{name:'Open original publisher page'});
+      assert.equal(await originalLink.getAttribute('href'),
+        'https://kage.design/designs/student-dashboard-original');
+      console.log(label+' public simple chat shows original Kage prompt and link');
+
     }catch(e){
       failed=true;
       console.error(label+' original prompt viewer FAILED: '+e.stack);

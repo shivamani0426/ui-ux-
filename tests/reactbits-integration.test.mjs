@@ -13,6 +13,8 @@ const docs=[
   '- [Effect '+i+'](https://www.reactbits.dev/animations/effect-'+i+
   '): A smooth animated effect and motion treatment for interactive visuals. CLI: '+tick+'Effect'+i+tick+'.')
 ].join('\n');
+const sitemap='<urlset>'+[...docs.matchAll(/https:\/\/www\.reactbits\.dev\/(?:components|animations)\/[a-z0-9-]+/g)]
+  .map(x=>'<url><loc>'+x[0]+'</loc></url>').join('')+'</urlset>';
 
 test('Actual Frontline API finds original React Bits source, persists the link and isolates it per owner',async()=>{
   clearReactBitsCacheForTests();
@@ -20,8 +22,8 @@ test('Actual Frontline API finds original React Bits source, persists the link a
   const flag=process.env.FRONTLINE_REACTBITS_TEST_MOCK;
   process.env.FRONTLINE_REACTBITS_TEST_MOCK='1';
   globalThis.fetch=(url,options)=>{
-    if(String(url)==='https://reactbits.dev/llms.txt')
-      return Promise.resolve(new Response(docs,{status:200,headers:{'Content-Type':'text/plain'}}));
+    if(String(url)==='https://reactbits.dev/sitemap.xml')
+      return Promise.resolve(new Response(sitemap,{status:200,headers:{'Content-Type':'application/xml'}}));
     return previous(url,options);
   };
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));

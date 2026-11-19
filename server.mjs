@@ -9,6 +9,7 @@ import {recommend,STYLES,exportPrompt} from './design-engine.mjs';
 import {discoverLiveSources} from './live-source-discovery.mjs';
 import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
+import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative} from './simple-discovery-chat.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
@@ -160,14 +161,14 @@ async function savedSourceRows(owner,projectId){
     ORDER BY r.created_at ASC LIMIT 8`,[owner,projectId]);
   return result.rows;
 }
-async function makeInspirationResponse(owner,project){
+async function makeInspirationResponse(owner,project,{includeComponents=true}={}){
   // Kage design prompts and React Bits component references have different
   // rights and contracts. Never label a component description as a prompt.
-  const componentsRequest=process.env.NODE_ENV==='test'&&
+  const componentsRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
     process.env.FRONTLINE_REACTBITS_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
     :findReactBitsOriginalComponents(project.brief);
-  const aceternityRequest=process.env.NODE_ENV==='test'&&
+  const aceternityRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
     process.env.FRONTLINE_ACETERNITY_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]})
     :findAceternityOriginalComponents(project.brief);
@@ -1207,6 +1208,29 @@ const server=http.createServer(async(req,res)=>{
           const b=await readBody(req);if(!validateText(b.message,2,1200))return json(res,400,{error:'Message must be 2–1,200 characters.'});
           if(!Array.isArray(b.styles)||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Invalid styles'});
           const messages=(Array.isArray(p.messages)?p.messages:[]).slice(-24);
+          // Public conversation mode: show only authentic design prompts and links.
+          // Components are retrieved and presented only after an explicit Yes.
+          if(b.simpleDiscovery===true){
+            const previous=messages.at(-1);
+            const asked=previous?.role==='assistant'&&previous.flowStage==='offer-combination';
+            const yes=asked&&isAffirmative(b.message);
+            const no=asked&&isNegative(b.message);
+            messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
+            let content,flowStage='complete';
+            if(no)content='Okay. You can enter a new design idea whenever you like.';
+            else {
+              const sources=await makeInspirationResponse(owner,p,{includeComponents:yes});
+              if(yes)content=formatSourceCombination(sources);
+              else {
+                content=formatSourceDiscovery(sources);
+                flowStage='offer-combination';
+              }
+            }
+            const assistant={role:'assistant',content,source:'publisher',flowStage,time:new Date().toISOString()};
+            messages.push(assistant);
+            await updateMessages(owner,id,messages);
+            return json(res,200,{messages,answer:assistant});
+          }
           messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
           const activeBrief=p.brief+(p.recommendations?.refinement?
             '\nLatest refinement: '+p.recommendations.refinement:'');

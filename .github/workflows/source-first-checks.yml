@@ -1,0 +1,22 @@
+name: Frontline source-first chat checks
+on:
+  push:
+    branches:
+      - feat/simple-source-first-chat
+  pull_request:
+    branches:
+      - main
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --omit=dev
+      - run: npm test
+      - run: npm run build

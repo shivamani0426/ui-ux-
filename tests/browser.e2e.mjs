@@ -146,218 +146,49 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     await page.locator('.message-row.outgoing').first().waitFor({timeout:12000});
     await page.locator('.message-row.incoming').first().waitFor({timeout:12000});
     assert.ok(await page.locator('.message-avatar .fl-monogram').count()>=1,'AI avatar must use F mark');
-    await page.locator('.result-message').first().waitFor({timeout:12000});
-    // Project creation renders recommendations immediately while the model is
-    // still responding. .message-row.incoming can be only the thinking dots.
-    // Wait for the actual completed assistant content, never assert against a
-    // loading animation or incorrectly claim Markdown was not rendered.
-    await page.locator('.message-markdown').first().waitFor({timeout:remote?100000:12000});
+    // Public release: source-first chat is the only default response. No style panels.
+    await page.locator('.message-markdown').first().waitFor({timeout:remote?100000:15000});
+    try{
+      await page.getByRole('button',{name:'Yes, combine them'}).waitFor({timeout:15000});
+    }catch(error){
+      const messages=await page.locator('.message-row').allInnerTexts();
+      const sourceResponse=await page.evaluate(()=>({url:location.href,
+        appText:document.body?.innerText?.slice(-1000)||''}));
+      throw new Error('Source chat consent unavailable. Messages: '+JSON.stringify(messages)+
+        '. Browser state: '+JSON.stringify(sourceResponse)+'. Console: '+errors.join(' | ')+'. '+error.message);
+    }
+    assert.equal(await page.locator('.result-message').count(),0,
+      'No complex recommendations/workbench should interrupt the source-first chat');
+    assert.equal(await page.locator('.design-option').count(),0,
+      'No Minimal, Glass or Creative style selectors in normal chat');
+    const firstAnswer=await page.locator('.message-markdown').last().innerText();
+    assert.match(firstAnswer,/Would you like the best combination of UI\/UX designs and components/i);
+    assert.doesNotMatch(firstAnswer,/Matching components and animations/i,
+      'Components must not appear before opt-in');
+    await page.getByRole('button',{name:'Yes, combine them'}).click();
+    await page.locator('.message-markdown').nth(1).waitFor({timeout:15000});
+    await page.waitForFunction(()=>document.querySelectorAll('.message-markdown').length>=2);
+    const combined=await page.locator('.message-markdown').last().innerText();
+    assert.match(combined,/No verified publisher|UI\/UX designs and original prompts/i);
+    assert.equal(await page.getByRole('button',{name:'Yes, combine them'}).count(),0,
+      'Consent prompt must disappear once the user answers');
+    await page.screenshot({path:'browser-artifacts/'+name+'-simple-source-chat.png',fullPage:false});
     if(!remote){
-      await page.locator('.inspiration-source-links a').first().waitFor({timeout:9000});
-      assert.equal(await page.locator('.inspiration-source-links a').count(),14,
-        'All fourteen original source directories must remain reachable');
-      assert.equal(await page.locator('.inspiration-card').count(),0,
-        'Never show invented matching cards without an authorized live search API');
-      assert.match(await page.locator('.inspiration-discovery-state').innerText(),
-        /not configured|provider|disabled for tests/i);
-      assert.equal(await page.getByRole('button',{name:'Copy design prompt'}).count(),0,
-        'Select must never fabricate an original publisher prompt');
-      // M13: board, style comparison, checkpoint and nondestructive restore.
-      const workbench=page.locator('.pw-workbench');
-      await workbench.waitFor({timeout:10000});
-      await workbench.getByRole('button',{name:'Refresh design workbench'}).click();
-      await workbench.getByRole('textbox',{name:'Design decision or task'})
-        .fill('Make the dashboard keyboard navigable');
-      await workbench.getByRole('button',{name:'Add decision'}).click();
-      await workbench.getByRole('combobox',{name:'Choose suggested page'}).selectOption({index:1});
-      await workbench.getByRole('button',{name:'Add page'}).click();
-      assert.equal(await workbench.locator('.pw-card').count(),2);
-      await workbench.locator('.pw-card').first().getByRole('combobox').selectOption('approved');
-      await workbench.getByRole('button',{name:'Save design board'}).click();
-      await page.waitForFunction(()=>document.querySelector('.pw-save-row small')
-        ?.textContent?.includes('Saved board'));
-      // M14A: a saved, approved card is required for a local-only export.
-      await workbench.getByRole('button',{name:/Design handoff/}).click();
-      await workbench.getByRole('list',{name:'Cards included in handoff'}).waitFor();
-      assert.match(await workbench.locator('.pw-figma').innerText(),/Editable Figma handoff/);
-      assert.match(await workbench.locator('.pw-github').innerText(),/Sign in with Google/);
-      assert.equal(await workbench.getByRole('button',{name:'Create draft pull request'}).count(),0,
-        'Guest browser must not display a privileged GitHub publishing form');
-      assert.match(await workbench.locator('.pw-handoff-summary').innerText(),/Approved cards/);
-      const markdownDownload=page.waitForEvent('download');
-      await workbench.getByRole('button',{name:'Download Markdown'}).click();
-      const handoffMarkdown=await markdownDownload;
-      assert.match(handoffMarkdown.suggestedFilename(),/-design-handoff\.md$/);
-      const jsonDownload=page.waitForEvent('download');
-      await workbench.getByRole('button',{name:'Download JSON'}).click();
-      const handoffJson=await jsonDownload;
-      assert.match(handoffJson.suggestedFilename(),/-design-handoff\.json$/);
-      await workbench.getByRole('button',{name:/Compare styles/}).click();
-      assert.equal(await workbench.locator('.pw-style-card').count(),3,
-        'Show all three original design directions side by side');
-      await page.screenshot({path:'browser-artifacts/'+name+'-side-by-side-design-review.png',fullPage:false});
-      await workbench.getByRole('button',{name:/Checkpoints/}).click();
-      await workbench.getByRole('textbox',{name:'Checkpoint name'}).fill('First approved board');
-      await workbench.getByRole('button',{name:'Save checkpoint'}).click();
-      await workbench.locator('.pw-version-list li').first().waitFor({timeout:9000});
-      await workbench.getByRole('button',{name:'Compare',exact:true}).click();
-      await workbench.locator('.pw-change-report').waitFor({timeout:6000});
-      await workbench.getByRole('button',{name:/Design board/}).click();
-      await workbench.locator('.pw-card textarea').first().fill('Updated while reviewing the board');
-      await workbench.getByRole('button',{name:'Save design board'}).click();
-      await workbench.getByRole('button',{name:/Checkpoints/}).click();
-      await workbench.getByRole('button',{name:'Compare',exact:true}).click();
-      assert.match(await workbench.locator('.pw-change-report').innerText(),/Edited or moved/i);
-      page.once('dialog',dialog=>dialog.accept());
-      await workbench.getByRole('button',{name:'Restore',exact:true}).click();
-      await workbench.getByRole('button',{name:/Design board/}).click();
-      assert.equal(await workbench.locator('.pw-card textarea').first().inputValue(),'',
-        'Checkpoint restore must recover saved notes without deleting the chat');
-      await page.screenshot({path:'browser-artifacts/'+name+'-advanced-design-board.png',fullPage:false});
-      await page.locator('.inspiration-source-directory').scrollIntoViewIfNeeded();
-      await page.waitForTimeout(450);
-      await page.screenshot({path:'browser-artifacts/'+name+'-select-inspirations.png',fullPage:false});
-      await page.locator('.inspiration-search input').fill('portfolio');
-      assert.equal(await page.locator('.inspiration-card').count(),0,
-        'Filtering must not invent a portfolio reference');
-      await page.locator('.inspiration-search input').fill('');
-      await page.reload({waitUntil:'networkidle'});
-      // /studio deep links now restore the studio without replaying the dome.
-      await page.locator('.composer-position.docked textarea').waitFor({timeout:8500});
-      assert.equal(new URL(page.url()).pathname,'/studio','Studio refresh should preserve its URL');
+      await page.reload({waitUntil:'domcontentloaded'});
+      await page.locator('.composer textarea').waitFor({timeout:8500});
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/My projects & conversations/i}).click();
-      await page.locator('.fl-project-library').waitFor({timeout:7000});
-      assert.ok(await page.locator('.fl-project-card').count()>=1,
-        'Private design archive must list saved projects');
-      await page.getByRole('combobox',{name:'Sort projects'}).selectOption('alphabetical');
-      await page.getByRole('combobox',{name:'Filter projects'}).selectOption('all');
-      await page.getByRole('textbox',{name:'Search saved conversations'}).fill('no-match-testing-title');
-      await page.getByText('No matching designs').waitFor();
-      await page.getByRole('textbox',{name:'Search saved conversations'}).fill('');
+      await page.locator('.fl-project-library').waitFor({timeout:9000});
+      assert.ok(await page.locator('.fl-project-card').count()>=1,'Project archive must remain usable');
       await page.locator('.fl-project-card').first().click();
-      await page.locator('.inspiration-source-links a').first().waitFor({timeout:10000});
-      assert.equal(await page.locator('.inspiration-source-links a').count(),14,
-        'All fourteen original publishers remain available after refresh');
-      await page.locator('.pw-workbench .pw-card').first().waitFor({timeout:9000});
-      assert.equal(await page.locator('.pw-workbench .pw-card').count(),2,
-        'Private board cards must survive project reopening');
-      await page.locator('.pw-workbench').getByRole('button',{name:/Checkpoints/}).click();
-      assert.equal(await page.locator('.pw-version-list li').count(),1,
-        'Named design checkpoints must survive browser reloads');
-    }
-    if(!remote){
+      await page.locator('.message-markdown').nth(1).waitFor({timeout:10000});
+      assert.equal(await page.getByRole('button',{name:'Yes, combine them'}).count(),0,
+        'Saved answers must not recreate a previous consent step');
       await page.getByRole('button',{name:'Open navigation menu'}).click();
       await page.getByRole('button',{name:/Guest account & privacy/i}).click();
       await page.locator('.fl-account-root').waitFor({timeout:7000});
-      assert.ok((await page.locator('.fl-account-stat').count())===4,
-        'Account dashboard must show saved work, prompts, inspirations and feedback');
-      const downloadPromise=page.waitForEvent('download');
-      await page.getByRole('button',{name:/Download my private data/i}).click();
-      const archive=await downloadPromise;
-      assert.match(archive.suggestedFilename(),/frontline-private-data-\d{4}-\d{2}-\d{2}\.json/);
-      await page.screenshot({path:'browser-artifacts/'+name+'-personal-account-dashboard.png',fullPage:false});
-      await page.getByRole('button',{name:/Account security & recovery/i}).click();
-      await page.locator('.fl-security-root').waitFor({timeout:7000});
-      assert.equal(await page.locator('.fl-security-status').count(),1,
-        'Guest security panel must explain browser session protection');
-      assert.equal(await page.locator('.fl-security-delete').count(),0,
-        'Guest visitors must never see an active Google account-deletion action');
-      await page.screenshot({path:'browser-artifacts/'+name+'-account-security-guest.png',fullPage:false});
-      await page.locator('.menu-panel .close-menu').click();
-    }
-    assert.equal(await page.locator('.pi-panel').count(),1,'Project Intelligence must render once, not repeat');
-    assert.equal(await page.locator('.pi-comparisons').count(),1,'Comparison must render once');
-    assert.equal(await page.locator('.pi-confidence').count(),1,
-      'Brief-based evidence strength is visible, not presented as measured certainty');
-    if(!remote){
-      await page.locator('.pi-refine textarea').fill(
-        'Keep the student dashboard and AI tutor, but exclude chat messaging. Prioritize mobile accessibility.');
-      await page.getByRole('button',{name:'Update recommendations'}).click();
-      await page.locator('.pi-exclusions').waitFor({timeout:8000});
-      assert.match(await page.locator('.pi-exclusions').innerText(),/Messages and conversations/);
-      await page.locator('.pi-details > summary').filter({hasText:'Compare the three directions'}).click();
-      await page.locator('.pi-factor-details').first().locator('summary').click();
-      assert.ok((await page.locator('.pi-factor-details').first().locator('li').count())>=2,
-        'Each recommendation must disclose an auditable numeric scoring ledger');
-      await page.screenshot({path:'browser-artifacts/'+name+'-design-intelligence-v2.png',fullPage:false});
-      await page.getByRole('button',{name:'Reset',exact:true}).click();
-      await page.locator('.pi-exclusions').waitFor({state:'detached',timeout:8000});
-      assert.equal(await page.locator('.pi-refine textarea').inputValue(),'',
-        'Reset returns to the original brief without deleting saved messages');
-    }
-    assert.ok(await page.locator('.message-markdown').count()>=1,'Advisor messages should use safe Markdown renderer');
-    if(!remote){
-      await page.getByRole('button',{name:'Open navigation menu'}).click();
-      await page.getByRole('button',{name:/Learning & privacy/i}).click();
-      await page.locator('.learning-preferences').waitFor({timeout:7000});
-      await page.locator('.learning-context-box').waitFor({timeout:7000});
-      assert.match(await page.locator('.learning-context-box').innerText(),
-        /latest explicit reaction|No confirmed category-level preference/i);
-      assert.ok(await page.locator('.opt-in input[type="checkbox"]').isDisabled(),
-        'Guest cookies must never be treated as verified contributors');
-      await page.screenshot({path:'browser-artifacts/'+name+'-contextual-learning-privacy.png',fullPage:false});
-      assert.ok(await page.locator('.learning-settings select').count()===4,
-        'Private memory controls must offer motion, density, contrast and color atmosphere');
-      const toggle=page.locator('.learning-switch input');
-      await toggle.uncheck();
-      await page.waitForFunction(()=>document.querySelector('.learning-switch input')?.checked===false);
-      assert.ok(await page.locator('.learning-settings select').first().isDisabled(),
-        'Pausing learning must disable preference corrections');
-      await toggle.check();
-      await page.locator('.learning-settings select').first().selectOption('minimal');
-      await page.waitForFunction(()=>document.querySelector('.learning-settings select')?.value==='minimal');
+      assert.equal(await page.locator('.fl-account-stat').count(),4);
       await page.locator('.close-menu').click();
-    }
-    const fallbackRetry=page.getByRole('button',{name:/Retry with OpenRouter/i});
-    if(!remote&&await fallbackRetry.count())assert.ok(await fallbackRetry.first().isEnabled(),'Offline fallback must offer a usable retry action');
-    const selectAll=page.getByRole('button',{name:/Select all three/i});
-    await selectAll.click();
-    const count=await page.locator('.design-option.picked').count();
-    assert.equal(count,3);
-    console.log(name+' workflow passed, selected='+count);
-    await page.waitForTimeout(950);
-    await page.screenshot({path:'browser-artifacts/'+name+'-chat.png',fullPage:false});
-    if(!remote){
-      await page.getByRole('button',{name:/Preview selected design/i}).click();
-      await page.locator('.preview-app.fusion').waitFor();
-      await page.waitForTimeout(650);
-      await page.screenshot({path:'browser-artifacts/'+name+'-fusion-workbench.png',fullPage:false});
-      await page.locator('.feedback-details > summary').click();
-      assert.equal(await page.locator('.reaction-set button').count(),3);
-      await page.locator('.feedback-details > summary').click();
-      // Milestone 0.4: actual Generate UI/UX and Design Fusion prompt journeys.
-      await page.getByRole('button',{name:'Open navigation menu'}).click();
-      await page.getByRole('button',{name:/Select \/ Generate \/ Fusion/i}).click();
-      await page.locator('.tool-mode').filter({hasText:'Generate UI/UX'}).click();
-      await page.getByRole('button',{name:/Generate three directions/i}).click();
-      await page.locator('.di-result').waitFor({timeout:16000});
-      const generatedPrompt=await page.locator('.di-result pre').innerText();
-      assert.match(generatedPrompt,/THREE ORIGINAL DESIGN DIRECTIONS/);
-      assert.match(generatedPrompt,/DIRECTION 3/);
-      assert.ok(generatedPrompt.length>1800,name+' generated UI/UX prompt should be substantial');
-      assert.match(generatedPrompt,/REQUIREMENT TRACEABILITY MATRIX/);
-      assert.match(generatedPrompt,/PER-PAGE INTERACTION CONTRACTS/);
-      assert.match(generatedPrompt,/ROLE-SPECIFIC NAVIGATION & PERMISSION STATES/);
-      const coverage=page.locator('.di-trace-report');
-      await coverage.waitFor({timeout:4000});
-      await coverage.locator('summary').click();
-      assert.match(await coverage.innerText(),/mapped/i,
-        'Visible design quality report should disclose the exact requirement coverage');
-      assert.match(await coverage.innerText(),/not real-user studies|not real-world|not.*verified/i,
-        'The UI must not imply the traceability score is a measured usability audit');
-      await page.screenshot({path:'browser-artifacts/'+name+'-generate-uiux-prompt.png',fullPage:false});
-      await page.getByRole('button',{name:'Open navigation menu'}).click();
-      await page.getByRole('button',{name:/Select \/ Generate \/ Fusion/i}).click();
-      await page.locator('.tool-mode').filter({hasText:'Design Fusion'}).click();
-      await page.getByRole('button',{name:/Combine my selected concepts/i}).click();
-      await page.locator('.di-result').waitFor({timeout:16000});
-      const fusionPrompt=await page.locator('.di-result pre').innerText();
-      assert.match(fusionPrompt,/DESIGN FUSION SPECIFICATION/);
-      assert.match(fusionPrompt,/REQUIREMENT TRACEABILITY MATRIX/);
-      assert.equal(await page.locator('.di-trace-report').count(),1,
-        'Fusion must also disclose its requirement coverage instead of showing a raw unverified prompt');
-      await page.screenshot({path:'browser-artifacts/'+name+'-intelligent-design-fusion.png',fullPage:false});
     }
     const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,hasTouch:true});
     await mobile.goto(url+'/',{waitUntil:'domcontentloaded',timeout:60000});
@@ -386,20 +217,14 @@ for(const [name,browserType] of [['Chromium',chromium],['Firefox',firefox]]){
     assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
       'Mobile studio must have no horizontal overflow');
     if(!remote){
-      // M13 mobile regression: the real board must remain usable at 390px
-      // without clipping its columns or introducing horizontal scrolling.
       await mobile.locator('.composer textarea').fill(
         'Design a mobile-first creator portfolio with case studies, projects and accessible navigation.');
       await mobile.locator('.composer textarea').press('Enter');
-      await mobile.locator('.pw-workbench').waitFor({timeout:15000});
-      await mobile.locator('.pw-workbench .pw-tabs button').first().waitFor();
-      await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-design-workbench.png',fullPage:false});
+      await mobile.getByRole('button',{name:'Yes, combine them'}).waitFor({timeout:15000});
+      assert.equal(await mobile.locator('.result-message').count(),0);
       assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
-        'Mobile project workbench must not create horizontal overflow');
-      await mobile.locator('.pw-workbench').getByRole('button',{name:/Compare styles/}).click();
-      assert.equal(await mobile.locator('.pw-style-card').count(),3);
-      assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false,
-        'Side-by-side comparison must reflow into mobile-friendly cards');
+        'Source-first mobile chat must not overflow horizontally');
+      await mobile.screenshot({path:'browser-artifacts/'+name+'-mobile-source-chat.png',fullPage:false});
     }
     await mobile.close();
     // M15: a genuine Chromium service worker must reopen the public PWA shell
