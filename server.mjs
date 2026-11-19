@@ -177,7 +177,11 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     discoverLiveSources(project.brief),componentsRequest,aceternityRequest,
     profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
-  const current=[...discovery.matches,...components.matches,...aceternity.matches];
+  // Do not store dozens of unrelated publisher candidates just to show
+  // five precise components after consent.
+  const shortlisted=forSimpleChat?
+    selectPublisherComponents(project.brief,components.matches,aceternity.matches):null;
+  const current=[...discovery.matches,...(shortlisted||[...components.matches,...aceternity.matches])];
   if(current.length)await storeDiscoveredReferences(current);
   const saved=await savedSourceRows(owner,project.id);
   const seen=new Set(current.map(x=>x.id));
@@ -207,8 +211,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       provenance:source.provenance||'Publisher link only; no original prompt was returned.'};
   });
   const ids=new Set([...designRefs,...animationRefs].map(x=>x.id));
-  return {projectId:project.id,matches,componentMatches:forSimpleChat?
-    selectPublisherComponents(project.brief,components.matches,aceternity.matches):animationRefs,
+  return {projectId:project.id,matches,componentMatches:shortlisted||animationRefs,
     selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
     rankingVersion:5,
     discovery:{status:discovery.status,note:discovery.note,query:discovery.query,
