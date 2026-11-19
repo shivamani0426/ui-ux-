@@ -18,7 +18,9 @@ const sample=[
   '- [Component '+i+'](https://www.reactbits.dev/text-animations/component-'+i+
   '): Text motion effect and animation. CLI: '+String.fromCharCode(96)+'Component'+i+String.fromCharCode(96)+'.')
 ].join('\n');
-const respond=()=>new Response(sample,{status:200,headers:{'Content-Type':'text/plain'}});
+const sitemap='<urlset>'+[...sample.matchAll(/https:\/\/www\.reactbits\.dev\/(?:components|animations|backgrounds|text-animations)\/[a-z0-9-]+/g)]
+  .map(x=>'<url><loc>'+x[0]+'</loc></url>').join('')+'</urlset>';
+const respond=()=>new Response(sitemap,{status:200,headers:{'Content-Type':'application/xml'}});
 test('Only exact official React Bits documentation URLs become source references',()=>{
   const items=parseReactBitsPublisherCatalogue(sample);
   assert.equal(items.length,27);
@@ -40,7 +42,7 @@ test('Official catalogue fetch is bounded and cached, without copying component 
   let calls=0;
   const fetcher=async(url,options)=>{
     calls++;
-    assert.equal(url,'https://reactbits.dev/llms.txt');
+    assert.equal(url,'https://reactbits.dev/sitemap.xml');
     assert.equal(options.method,'GET');
     return respond();
   };
