@@ -186,7 +186,9 @@ async function makeInspirationResponse(owner,project){
   const animationRefs=[...components.matches,...aceternity.matches,
     ...past.filter(x=>x.sourceKind==='animation')
     .map(x=>({...x,originalPrompt:null,originalPromptStatus:'not-published',
-      provenance:'Previously selected publisher component page, saved privately.'}))];
+      provenance:'Previously selected publisher component page, saved privately.'}))].sort(
+        (a,b)=>(b.relevanceScore||0)-(a.relevanceScore||0)||
+          (a.name||'').localeCompare(b.name||''));
   const index=new Map(designRefs.map(r=>[r.id,r]));
   const prefs=effectivePreferences(raw);
   const matches=rankInspirations(project.brief,designRefs,{
