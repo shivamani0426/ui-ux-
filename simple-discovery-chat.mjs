@@ -97,9 +97,22 @@ export function formatSourceCombination(sources,{brief=''}={}){
       '\n\nThe original design prompts, when published, were provided in the preceding chat reply.':
       '\n\nThese are original component documentation links. No matching publisher design prompt was found.');
 }
+// Shared by server and browser: punctuation is harmless; ambiguous assent
+// still never authorizes fetching or combining publisher components.
+export function normalizeConsent(value){
+  return String(value||'').trim().toLowerCase()
+    .replace(/[!.]+$/g,'').replace(/,/g,' ')
+    .replace(/\\s+/g,' ').trim();
+}
 export function isAffirmative(value){
-  return /^(yes|yes please)$/i.test(String(value||'').trim());
+  return /^(yes|yes please)$/.test(normalizeConsent(value));
 }
 export function isNegative(value){
-  return /^(no|no thanks|no thank you|not now|nah)$/i.test(String(value||'').trim());
+  return /^(no|no thanks|no thank you|not now|nah)$/.test(normalizeConsent(value));
+}
+export function isAmbiguousConsent(value){
+  return /^(ok|okay|sure|yep|maybe)$/.test(normalizeConsent(value));
+}
+export function isConsentReply(value){
+  return isAffirmative(value)||isNegative(value)||isAmbiguousConsent(value);
 }
