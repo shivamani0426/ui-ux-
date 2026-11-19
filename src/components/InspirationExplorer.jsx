@@ -75,7 +75,7 @@ export default function InspirationExplorer({project,api,notice}){
     </div>
     <div className="inspiration-discovery-state" role="status">
       <div><Globe2 size={16}/><strong>{status==='ready'?'Publisher prompt verified':
-        status==='partial'?'Original publisher results':status==='no-matches'?'No matching source pages':
+        status==='partial'?'Original publisher results':status==='no-matches'?(componentMatches.length?'Real original components discovered':'No verified Kage prompt matches'):
         status==='not-configured'?'Source retrieval disabled for tests':
         status==='rate-limited'?'Hourly search limit reached':
         status==='unavailable'?'Live source search unavailable':'Searching source websites'}</strong></div>
