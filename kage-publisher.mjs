@@ -132,7 +132,9 @@ export function verifiedKagePrompt(response,expectedUrl){
   const data=parseToolContent(response);
   if(!data)return null;
   const returned=sourceUrlForKage(data.design||data);
-  if(returned&&returned!==expectedUrl)return null;
+  // Never attribute publisher prompt text to an unrelated search result.
+  // get_design must identify the exact design (URL or publisher-issued slug).
+  if(!returned||returned!==expectedUrl)return null;
   const prompt=extractPrompt(data);
   if(!prompt)return null;
   return {text:prompt,sha256:crypto.createHash('sha256').update(prompt).digest('hex'),
