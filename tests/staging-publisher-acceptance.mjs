@@ -4,6 +4,7 @@
  * non-AI fallback, not semantic-model accuracy. Do not call this AI validation.
  */
 const TARGET=process.env.STAGING_TARGET||'http://127.0.0.1:3019';
+const REQUIRE_REAL_AI=process.env.STAGING_REQUIRE_SEMANTIC_AI==='1';
 if(!/^http:\/\/127\.0\.0\.1:[0-9]{2,5}$/.test(TARGET))
   throw Error('Staging target must be local isolated server');
 const brief='Create an equipment reservation and maintenance workspace for a neighborhood learning center. '+
@@ -28,7 +29,8 @@ try{
   const health=await get('/api/health');
   assert(health.code===200&&health.data.database==='connected','staging-db-health');
   const config=await get('/api/config');
-  assert(config.code===200&&config.data.aiEnabled===false,'staging-must-not-use-real-model');
+  assert(config.code===200&&config.data.aiEnabled===REQUIRE_REAL_AI,
+    REQUIRE_REAL_AI?'staging-real-ai-not-configured':'staging-must-not-use-real-model');
   say('database','connected');
   const created=await get('/api/projects','POST',{brief});
   assert(created.code===201,'staging-project-creation');
@@ -38,9 +40,13 @@ try{
   assert(first.code===200,'staging-first-http');
   const source=first.data.answer;
   assert(source?.flowStage==='offer-combination','staging-first-stage');
-  assert(source.quality?.sourceReview==='metadata-fallback'||
-    source.quality?.sourceReview==='no-verified-candidates',
-    'staging-review-status-not-honest');
+  if(REQUIRE_REAL_AI){
+    assert(source.quality?.sourceReview==='semantic-evaluated','staging-semantic-ai-not-proven');
+  }else{
+    assert(source.quality?.sourceReview==='metadata-fallback'||
+      source.quality?.sourceReview==='no-verified-candidates',
+      'staging-review-status-not-honest');
+  }
   const links=linksOf(source.content);
   const snapshot=source.sourceSnapshot;
   assert(snapshot,'staging-missing-source-snapshot');
@@ -49,6 +55,7 @@ try{
   assert(!persisted.some(x=>/404|not-found|error-page/i.test(x)),'staging-broken-page');
   say('publisher-links',String(links.length));
   say('source-review',source.quality.sourceReview);
+  say('model-mode',REQUIRE_REAL_AI?'live-semantic':'no-model-fallback');
   const yes=await get(route,'POST',{message:'Yes',styles:[],simpleDiscovery:true});
   assert(yes.code===200,'staging-yes-http');
   const after=linksOf(yes.data.answer.content);
