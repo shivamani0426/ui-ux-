@@ -16,7 +16,7 @@ const STOP=new Set((
   'tool tools new more best using use used designed provide include includes '+
   'allows allow should through able every all clearly various different '+
   'content information access based real realtime time today person people '+
-  'large small important public private powered create get started other severe instead purchasing purchase '+
+  'large small important public private powered create get started other severe instead purchasing purchase navigate explain low high simple easy quick '+
   'digital online page marketing hero pricing price now discover explore '+
   'first next customer customers their these those about this that which '+
   'how why where when what out also some items item data common'
@@ -78,7 +78,8 @@ export function rankPublisherEvidence(brief,items,{limit=4}={}){
 export function fallbackSubjectTerms(brief){
   const first=(String(brief||'').split(/[.!?\n]/)[0]||'').slice(0,500);
   const terms=distinctiveTerms(first);
-  // End of the first sentence usually describes the subject rather than
-  // boilerplate such as "Build a platform that..." or "Create an AI assistant".
-  return [...new Set([...terms.slice(0,2),...terms.slice(-4)])].slice(0,6);
+  // The initial distinct task nouns are more reliable than the final
+  // clause, which may describe a secondary feature ("and explain impact").
+  // Strip generic boilerplate rather than memorizing industries or topics.
+  return terms.slice(0,8);
 }
