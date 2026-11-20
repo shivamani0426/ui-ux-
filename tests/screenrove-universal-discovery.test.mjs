@@ -176,3 +176,41 @@ test('live publisher MCP compatibility on CI: actual Screenrove search and exact
   console.log('SCREENROVE_LIVE_DETAIL_KEYS',Object.keys(detail||{}));
   console.log('SCREENROVE_LIVE_DETAIL_SAMPLE',JSON.stringify(detail).slice(0,1400));
 });
+
+test('transient publisher HTTP 503 receives one retry and still validates real page details',async()=>{
+  clearScreenroveCacheForTests();
+  let failed=0;
+  const network=async(url,options)=>{
+    const payload=JSON.parse(options.body);
+    if(payload.method==='tools/call'&&payload.params.name==='search_screens'&&
+        payload.params.arguments.kind==='product'&&failed++===0)
+      return new Response('{}',{status:503,headers:{'Content-Type':'application/json'}});
+    return fakeTransport(url,options);
+  };
+  const r=await searchScreenroveReferences({appQuery:'activity analytics dashboard',
+    landingQuery:'community volunteer service landing page'},
+    {transport:network,now:()=>200000});
+  assert.equal(r.status,'ready');
+  assert.equal(r.matches.length,2);
+  assert.ok(failed>=2,'search was retried before accepting the page');
+  assert.ok(r.matches.every(x=>x.publisherVerified===true));
+});
+test('unavailable publisher response is not cached as a false no-match',async()=>{
+  clearScreenroveCacheForTests();
+  let failures=0;
+  const rejected=async(url,options)=>{
+    const method=JSON.parse(options.body).method;
+    if(method==='initialize'||method==='notifications/initialized')
+      return fakeTransport(url,options);
+    failures++;
+    return new Response('{}',{status:503,headers:{'Content-Type':'application/json'}});
+  };
+  const q={appQuery:'activity analytics dashboard',
+    landingQuery:'community volunteer service landing page'};
+  const x=await searchScreenroveReferences(q,{transport:rejected,now:()=>300000});
+  assert.equal(x.status,'unavailable');
+  assert.ok(failures>=2);
+  const recovered=await searchScreenroveReferences(q,{transport:fakeTransport,now:()=>300020});
+  assert.equal(recovered.status,'ready');
+  assert.equal(recovered.matches.length,2);
+});
