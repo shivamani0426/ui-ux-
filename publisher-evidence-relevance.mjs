@@ -16,7 +16,7 @@ const STOP=new Set((
   'tool tools new more best using use used designed provide include includes '+
   'allows allow should through able every all clearly various different '+
   'content information access based real realtime time today person people '+
-  'large small important public private powered create get started other '+
+  'large small important public private powered create get started other severe instead purchasing purchase '+
   'digital online page marketing hero pricing price now discover explore '+
   'first next customer customers their these those about this that which '+
   'how why where when what out also some items item data common'
@@ -80,5 +80,5 @@ export function fallbackSubjectTerms(brief){
   const terms=distinctiveTerms(first);
   // End of the first sentence usually describes the subject rather than
   // boilerplate such as "Build a platform that..." or "Create an AI assistant".
-  return terms.slice(-6);
+  return [...new Set([...terms.slice(0,2),...terms.slice(-4)])].slice(0,6);
 }
