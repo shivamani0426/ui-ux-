@@ -1,0 +1,31 @@
+name: Frontline real Groq to NVIDIA failover acceptance
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  real-authorized-failover:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'qa/full-release-') || startsWith(github.head_ref, 'release/') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    env:
+      FRONTLINE_PROVIDER_FAILOVER_ACCEPTANCE: '1'
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require both actual model credentials without revealing them
+        run: |
+          if [ -z "${GROQ_API_KEY}" ] || [ -z "${NVIDIA_API_KEY}" ]; then
+            echo 'RELEASE_BLOCKED missing Groq/NVIDIA secret'
+            exit 1
+          fi
+      - name: Install dependencies
+        run: npm install --omit=dev --ignore-scripts
+      - name: Fail Groq intentionally and verify real NVIDIA semantic backup
+        run: node tests/real-groq-nvidia-failover.mjs
