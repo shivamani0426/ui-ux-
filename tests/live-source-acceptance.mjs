@@ -63,7 +63,8 @@ try{
   // A heuristic fallback or absent AI proof must not be misrepresented as
   // a successful semantic AI recommendation.
   const degraded=/AI relevance checking was temporarily unavailable|temporarily unavailable.*publisher-metadata/i.test(firstText);
-  note('ai-review-mode',degraded?'degraded':'not-identified-as-degraded');
+  const reviewStatus=String(previous.quality?.sourceReview||'unreported');
+  note('ai-review-mode',degraded?'degraded':reviewStatus);
   const firstLinks=sourceURLs(firstText);
   const snapLinks=[...snapshot.applicationMatches,...snapshot.landingMatches]
     .map(x=>x.site).sort();
@@ -92,6 +93,7 @@ try{
   // An unavailable live model is a meaningful release blocker: the current
   // public flow must not be certified as fully AI-verified in this case.
   check(!degraded,'semantic-ai-unavailable');
+  check(reviewStatus==='semantic-evaluated','semantic-ai-not-proven-by-api');
   check(componentLinks.length>0,'no-verified-components-in-live-sample');
   // A source-empty result isn't automatically fabricated, but cannot prove
   // working publisher coverage on this intentionally broad, common UI task.
