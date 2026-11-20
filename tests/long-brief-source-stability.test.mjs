@@ -22,7 +22,8 @@ test('long combined prompt keeps the full requirements and uses matching first-p
   assert.ok(long.length>2300);
   const app={provider:'Screenrove',name:'Community — Tool Sharing Dashboard',
     site:'https://screenrove.com/community/product/community-tool-dashboard',
-    designType:'application-ui',publisherVerified:true,originalPrompt:null};
+    designType:'application-ui',publisherVerified:true,originalPrompt:null,
+    summary:'Community borrowing repair and equipment sharing activity'};
   const land={provider:'Screenrove',name:'Community — Landing',
     site:'https://screenrove.com/community/marketing/community-landing',
     designType:'landing-page',publisherVerified:true,originalPrompt:null,
