@@ -16,9 +16,9 @@ const openRouterOk=text=>response(200,{choices:[{message:{content:text}}]});
 test('Provider configuration never exposes keys, and no key means no network access',async()=>{
   const env={GEMINI_API_KEY:'super-private-123',OPENROUTER_API_KEY:'another-private-789',GROQ_API_KEY:'groq-private-456',AI_FALLBACK_ENABLED:'true'};
   const config=aiConfig(env);
-  assert.deepEqual(config,{aiEnabled:true,aiProviders:{gemini:true,openrouter:true,groq:true},aiPrimary:'openrouter',aiFallbackProvider:'groq',aiFallbackEnabled:true,aiStatus:'configured-unverified'});
+  assert.deepEqual(config,{aiEnabled:true,aiProviders:{gemini:true,openrouter:true,groq:true,nvidia:false},aiPrimary:'openrouter',aiFallbackProvider:'groq',aiFallbackEnabled:true,aiStatus:'configured-unverified'});
   assert.ok(!JSON.stringify(config).includes('private'));
-  assert.deepEqual(aiConfig({}),{aiEnabled:false,aiProviders:{gemini:false,openrouter:false,groq:false},aiPrimary:'openrouter',aiFallbackProvider:'groq',aiFallbackEnabled:false,aiStatus:'not-configured'});
+  assert.deepEqual(aiConfig({}),{aiEnabled:false,aiProviders:{gemini:false,openrouter:false,groq:false,nvidia:false},aiPrimary:'openrouter',aiFallbackProvider:'groq',aiFallbackEnabled:false,aiStatus:'not-configured'});
   let calls=0;
   const out=await designAiReply({brief,messages,env:{},request:()=>{calls++;throw Error('must not run')}});
   assert.equal(out,null);
@@ -443,4 +443,81 @@ test('real shared free key enters a brief 429 cooldown without another upstream 
     assert.equal(failures.length,2);
     assert.ok(failures.every(x=>x.reason==='rate-limited'&&x.retryAfterSeconds>0));
   }finally{globalThis.fetch=nativeFetch;console.warn=originalWarn;}
+});
+
+
+test('NVIDIA server-only adapter uses the official hosted API and does not expose the key',async()=>{
+  const calls=[];
+  const env={NVIDIA_API_KEY:'nvidia-qa-secret',NVIDIA_MODEL:'meta/llama-3.1-8b-instruct',AI_PRIMARY_PROVIDER:'nvidia'};
+  const result=await designAiReply({brief,messages:[],styles,task:'source-evaluate',
+    sourceCatalog:'0 | application-ui | Screenrove | Shared bookings | Calendar and available reservation slots',
+    env,request:async(url,init)=>{
+      calls.push({url,init});
+      return response(200,{choices:[{finish_reason:'stop',message:{
+        content:'{"choices":[{"index":0,"fit":5,"reason":"The calendar offers available reservation slots."}]}'
+      }}]});
+    }});
+  assert.equal(result.provider,'nvidia');
+  assert.equal(result.source,'ai');
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,'https://integrate.api.nvidia.com/v1/chat/completions');
+  assert.equal(calls[0].init.headers.Authorization,'Bearer nvidia-qa-secret');
+  const body=JSON.parse(calls[0].init.body);
+  assert.equal(body.model,'meta/llama-3.1-8b-instruct');
+  assert.equal(body.stream,false);
+  assert.equal(body.max_tokens,1700);
+  assert.equal(body.messages.length,2);
+  assert.match(body.messages[0].content,/genuine publisher design references/);
+  assert.match(body.messages[1].content,/Shared bookings/);
+  assert.ok(!JSON.stringify(body).includes('nvidia-qa-secret'));
+  assert.equal(aiConfig(env).aiProviders.nvidia,true);
+});
+
+test('Groq 429 falls back to NVIDIA only with explicit permission',async()=>{
+  const calls=[];
+  const env={GROQ_API_KEY:'groq-qa',NVIDIA_API_KEY:'nvidia-qa',OPENROUTER_API_KEY:'unused',
+    AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_PROVIDER:'nvidia',AI_FALLBACK_ENABLED:'true'};
+  const got=await designAiReply({brief,messages:[],env,request:async(url)=>{
+    calls.push(url);
+    if(url.includes('api.groq.com'))return response(429,{error:{message:'quota hit'}});
+    return response(200,{choices:[{finish_reason:'stop',message:{content:'Verified response from independent NVIDIA inference.'}}]});
+  }});
+  assert.equal(got.provider,'nvidia');
+  assert.deepEqual(calls.map(url=>new URL(url).host),['api.groq.com','integrate.api.nvidia.com']);
+  assert.equal(aiConfig(env).aiFallbackProvider,'nvidia');
+});
+
+test('Do not send user requests to NVIDIA without explicit fallback permission',async()=>{
+  const calls=[];
+  const result=await designAiReply({brief,messages:[],env:{
+    GROQ_API_KEY:'groq',NVIDIA_API_KEY:'nvidia',
+    AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_PROVIDER:'nvidia',AI_FALLBACK_ENABLED:'false'
+  },request:async url=>{calls.push(url);return response(429,{error:{message:'quota'}})}});
+  assert.equal(result,null);
+  assert.deepEqual(calls.map(u=>new URL(u).host),['api.groq.com']);
+});
+
+test('NVIDIA failures preserve privacy and never show truncated or empty inference as verified',async()=>{
+  const logs=[];const original=console.warn;console.warn=(...parts)=>logs.push(parts.join(' '));
+  const env={NVIDIA_API_KEY:'private-nvidia-credential',AI_PRIMARY_PROVIDER:'nvidia'};
+  try{
+    const result=await designAiReply({brief,messages:[],env,request:async()=>response(200,{
+      choices:[{finish_reason:'length',message:{content:'{"choices":[{"index":0'}}]} )});
+    assert.equal(result,null);
+    const refused=await designAiReply({brief,messages:[],env,request:async()=>response(401,{
+      error:{message:'private-nvidia-credential must never appear in logs'}})});
+    assert.equal(refused,null);
+    assert.doesNotMatch(logs.join(' '),/private-nvidia-credential/);
+    assert.match(logs.join(' '),/nvidia/);
+  }finally{console.warn=original}
+});
+
+test('NVIDIA configured as missing primary can use an already approved Groq fallback',async()=>{
+  const calls=[];const env={AI_PRIMARY_PROVIDER:'nvidia',AI_FALLBACK_PROVIDER:'groq',
+    AI_FALLBACK_ENABLED:'false',GROQ_API_KEY:'groq-only'};
+  const answer=await designAiReply({brief,messages:[],env,request:async url=>{
+    calls.push(url);return response(200,{choices:[{message:{content:'Groq live backup response'}}]});
+  }});
+  assert.equal(answer.provider,'groq');
+  assert.deepEqual(calls.map(url=>new URL(url).host),['api.groq.com']);
 });

@@ -110,7 +110,7 @@ const cleanMessages=messages=>(Array.isArray(messages)?messages:[]).slice(-8)
   .filter(m=>['user','assistant'].includes(m?.role)&&typeof m.content==='string')
   .map(m=>({role:m.role,content:m.content.slice(0,7000)}));
 const trimText=value=>String(value||'').slice(0,2500);
-const configured=env=>({gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_API_KEY,groq:!!env.GROQ_API_KEY});
+const configured=env=>({gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_API_KEY,groq:!!env.GROQ_API_KEY,nvidia:!!env.NVIDIA_API_KEY});
 // The free OpenRouter key is shared by the deployed service. A brief process-local
 // cooldown after HTTP 429 prevents a retry storm. It contains no user data.
 let openRouterCooldownUntil=0;
@@ -130,7 +130,7 @@ const networkTimeout=env=>{
 };
 export function aiConfig(env=process.env){
   const providers=configured(env);
-  const supported=['openrouter','groq','gemini'];
+  const supported=['openrouter','groq','gemini','nvidia'];
   const primary=supported.includes(env.AI_PRIMARY_PROVIDER)?env.AI_PRIMARY_PROVIDER:'openrouter';
   // Gemini remains supported but must not be retried automatically after
   // the user selected Groq as the explicitly configured secondary provider.
@@ -391,6 +391,53 @@ async function groqReply({brief,messages,styles,task,env,request,designPreferenc
   return {text:answer,source:'ai',provider:'groq'};
 }
 
+
+/**
+ * NVIDIA API Catalog hosted inference; no local GPU or self-hosted NIM required.
+ * The model ID must match one available on NVIDIA Build; choose a stable
+ * documented default, and allow an explicit server-side override.
+ */
+async function nvidiaReply({brief,messages,styles,task,env,request,designPreferences=[],sourceCatalog=''}) {
+  const configuredModel=env.NVIDIA_MODEL;
+  const safeModel=typeof configuredModel==='string'&&configuredModel.length<=100&&
+    /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(configuredModel);
+  const model=safeModel?configuredModel:'meta/llama-3.1-8b-instruct';
+  const isEvaluation=task==='source-evaluate',isQuery=task==='source-query';
+  const isMatch=task==='component-match',isPrompt=task==='prompt',isInsight=task==='insight';
+  const outputLimit=isEvaluation?1700:isQuery?450:isMatch?850:isPrompt?3900:isInsight?1700:1500;
+  const contentLimit=isEvaluation||isMatch?7000:isQuery?2200:isPrompt?13000:isInsight?4500:3500;
+  const system=isEvaluation?SOURCE_EVALUATION_SYSTEM:isQuery?SOURCE_QUERY_SYSTEM:
+    isMatch?COMPONENT_MATCH_SYSTEM:isPrompt?DESIGN_PROMPT_SYSTEM:
+      isInsight?DESIGN_INSIGHT_SYSTEM:SYSTEM_PROMPT;
+  const user=isEvaluation?sourceEvaluationContext(brief,sourceCatalog):
+    isQuery?SOURCE_QUERY_CONTEXT(brief):isMatch?componentMatchContext(brief,sourceCatalog):
+      contextMessage(brief,styles,designPreferences);
+  const r=await request('https://integrate.api.nvidia.com/v1/chat/completions',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+env.NVIDIA_API_KEY,
+      'Content-Type':'application/json',Accept:'application/json'},
+    signal:AbortSignal.timeout(networkTimeout(env)),
+    body:JSON.stringify({
+      model,stream:false,
+      temperature:isEvaluation||isQuery||isMatch?0.1:isPrompt||isInsight?0.65:0.5,
+      max_tokens:outputLimit,
+      messages:[{role:'system',content:system},{role:'user',content:user},
+        ...((isEvaluation||isQuery||isMatch)?[]:cleanMessages(messages))]
+    })
+  });
+  if(!r.ok)throw await errorFor('nvidia',r);
+  const data=await r.json();
+  const choice=data?.choices?.[0],raw=choice?.message?.content;
+  const answer=(typeof raw==='string'?raw.trim().slice(0,contentLimit):
+    extractText(raw,contentLimit));
+  if(!answer)throw new Error('provider-empty-content');
+  // Incomplete JSON cannot verify publisher relevance, and a truncated
+  // response must never be promoted to a finished AI recommendation.
+  if(['length','content_filter','error'].includes(choice?.finish_reason))
+    throw new Error('provider-incomplete-content');
+  return {text:answer,source:'ai',provider:'nvidia'};
+}
+
 /**
  * Returns null if AI is unavailable so the deterministic engine can respond.
  * A second provider receives the user's prompt ONLY with explicit opt-in
@@ -409,7 +456,7 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
     if(!settings.aiProviders[provider])return false;
     return index===0||!settings.aiProviders[first]||settings.aiFallbackEnabled;
   });
-  const handlers={gemini:geminiReply,openrouter:openRouterReply,groq:groqReply};
+  const handlers={gemini:geminiReply,openrouter:openRouterReply,groq:groqReply,nvidia:nvidiaReply};
   for(const provider of order){
     if(provider==='openrouter'&&request===fetch&&openRouterCooldownUntil>Date.now()){
       onFailure?.({reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((openRouterCooldownUntil-Date.now())/1000))});
