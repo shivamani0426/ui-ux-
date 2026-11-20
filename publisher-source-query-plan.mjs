@@ -23,7 +23,7 @@ export function parseSourceQueries(output){
 export function fallbackSourceQueries(brief){
   // Existing requirements engine extracts general workflows; it is not used
   // as a hardcoded catalogue of matching site links.
-  const analysis=analyzeProject(String(brief||'').slice(0,2400));
+  const analysis=analyzeProject(String(brief||'').slice(0,7000));
   const feature=analysis.features.slice(0,2).map(x=>x.page).filter(Boolean).join(' ');
   const generic=trim(feature||'overview dashboard primary workflow');
   return {appQuery:(generic+' interface dashboard').slice(0,110),
