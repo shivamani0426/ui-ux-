@@ -125,3 +125,23 @@ test('component quality gate accepts functional purposes and honors an intention
   assert.equal(rejected.status,'semantic-rejected');
   assert.deepEqual(rejected.matches,[]);
 });
+
+test('large genuine Kage prompts never overflow the combined first-response renderer budget',()=>{
+  const originalPrompt='## Original design\n'+('Original publisher layout detail. '.repeat(235));
+  const kage=[1,2,3].map(i=>({
+    id:'k'+i,provider:'Kage',publisherVerified:true,sourceKind:'inspiration',
+    name:'Heritage conservation exhibit landing page '+i,
+    site:'https://kage.design/designs/heritage-exhibit-'+i,
+    originalPromptStatus:'verified-publisher',originalPrompt,
+    relevanceAccepted:true,matchReason:'Its exhibition content structures support accessible visitor guidance.'
+  }));
+  const result=formatSourceDiscovery({
+    applicationMatches:[],
+    landingMatches:kage,sourceQualityStatus:'semantic-evaluated',
+    screenroveStatus:'ready'
+  },{brief});
+  assert.ok(result.length<16_000,'All displayed original prompts must fit the renderer');
+  assert.match(result,/kage.design\/designs\/heritage-exhibit-1/);
+  assert.match(result,/kage.design\/designs\/heritage-exhibit-3/);
+  assert.match(result,/view the full verbatim text on its original page/);
+});
