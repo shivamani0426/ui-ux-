@@ -185,7 +185,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       // production AI keys must never turn regression tests into live calls.
       model:process.env.NODE_ENV==='test'?null:
         brief=>designAiReply({brief,task:'source-query',messages:[],styles:[]})
-    }).then(queries=>searchScreenroveReferences(queries))
+    }).then(queries=>searchScreenroveReferences({...queries,brief:project.brief}))
       .catch(()=>({status:'unavailable',matches:[]}));
   const [discovery,screenrove,components,aceternity,raw,picks,personalTags]=await Promise.all([
     discoveryRequest,screenroveRequest,
