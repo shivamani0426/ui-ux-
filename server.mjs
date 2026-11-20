@@ -13,7 +13,7 @@ import {selectPublisherComponents} from './published-component-selection.mjs';
 import {matchPublishedComponents} from './publisher-semantic-matcher.mjs';
 import {planSourceQueries} from './publisher-source-query-plan.mjs';
 import {searchScreenroveReferences} from './screenrove-publisher.mjs';
-import {formatSourceDiscovery,formatSourceCombination,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
+import {formatSourceDiscovery,formatSourceCombination,shownSourceReferences,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
@@ -165,7 +165,7 @@ async function savedSourceRows(owner,projectId){
     ORDER BY r.created_at ASC LIMIT 8`,[owner,projectId]);
   return result.rows;
 }
-async function makeInspirationResponse(owner,project,{includeComponents=true,forSimpleChat=false}={}){
+async function makeInspirationResponse(owner,project,{includeComponents=true,forSimpleChat=false,reuseSources=null}={}){
   // Kage design prompts and React Bits component references have different
   // rights and contracts. Never label a component description as a prompt.
   const componentsRequest=!includeComponents?Promise.resolve({status:'not-requested',matches:[]}):process.env.NODE_ENV==='test'&&
@@ -179,7 +179,20 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
   // Real application UI and landing pages come from Screenrove's read-only
   // publisher MCP. Query planning interprets ANY brief by task, not app type.
   // Browser tests never touch a live publisher without explicit fixtures.
-  const screenroveRequest=!forSimpleChat?Promise.resolve({status:'not-requested',matches:[]}):
+  // The Yes follow-up reuses the exact original references already shown in
+  // this project's previous assistant reply; do not silently replace them
+  // with an unrelated second publisher search.
+  const reuse=forSimpleChat&&reuseSources&&
+    Array.isArray(reuseSources.applicationMatches)&&Array.isArray(reuseSources.landingMatches)?
+    reuseSources:null;
+  const discoveryRequest=reuse?Promise.resolve({
+    status:'reused',query:'',matches:reuse.landingMatches.filter(x=>x.provider==='Kage'),
+    providerStatus:[],sources:[]
+  }):discoverLiveSources(project.brief,{requester:owner});
+  const screenroveRequest=reuse?Promise.resolve({
+    status:'reused',matches:[...reuse.applicationMatches,
+      ...reuse.landingMatches.filter(x=>x.provider==='Screenrove')]
+  }):!forSimpleChat?Promise.resolve({status:'not-requested',matches:[]}):
     process.env.NODE_ENV==='test'&&process.env.FRONTLINE_SCREENROVE_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]}):
     planSourceQueries(project.brief,{
@@ -187,7 +200,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     }).then(queries=>searchScreenroveReferences(queries))
       .catch(()=>({status:'unavailable',matches:[]}));
   const [discovery,screenrove,components,aceternity,raw,picks,personalTags]=await Promise.all([
-    discoverLiveSources(project.brief,{requester:owner}),screenroveRequest,
+    discoveryRequest,screenroveRequest,
     componentsRequest,aceternityRequest,
     profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
@@ -233,8 +246,9 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       provenance:source.provenance||'Publisher link only; no original prompt was returned.'};
   });
   const ids=new Set([...designRefs,...animationRefs].map(x=>x.id));
-  const applicationMatches=(screenrove.matches||[]).filter(x=>x.designType==='application-ui').slice(0,2);
-  const landingMatches=[
+  const applicationMatches=reuse?reuse.applicationMatches:
+    (screenrove.matches||[]).filter(x=>x.designType==='application-ui').slice(0,2);
+  const landingMatches=reuse?reuse.landingMatches:[
     ...(screenrove.matches||[]).filter(x=>x.designType==='landing-page'),
     ...matches.filter(x=>x.provider==='Kage')
   ].slice(0,4);
@@ -1266,20 +1280,35 @@ const server=http.createServer(async(req,res)=>{
             const yes=asked&&isAffirmative(b.message);
             const no=asked&&isNegative(b.message);
             messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
-            let content,flowStage='complete';
+            let content,flowStage='complete',sources=null;
             if(no)content='Okay. You can enter a new design idea whenever you like.';
             else if(asked&&isAmbiguousConsent(b.message)){
               content='Please reply Yes or No. I will only combine designs with components after an explicit Yes.';
               flowStage='offer-combination';
             }else {
-              const sources=await makeInspirationResponse(owner,p,{includeComponents:yes,forSimpleChat:true});
+              sources=await makeInspirationResponse(owner,p,{includeComponents:yes,forSimpleChat:true,
+                reuseSources:yes?previous?.sourceSnapshot:null});
               if(yes)content=formatSourceCombination(sources,{brief:p.brief});
               else {
                 content=formatSourceDiscovery(sources,{brief:p.brief});
                 flowStage='offer-combination';
               }
             }
-            const assistant={role:'assistant',content,source:'publisher',flowStage,time:new Date().toISOString()};
+            // Store only real first-party URLs and brief source metadata in
+            // this private project's history. The same links must remain
+            // unchanged in the subsequent consent response, across requests.
+            const chosen=flowStage==='offer-combination'&&sources?
+              shownSourceReferences(sources,{brief:p.brief}):null;
+            const snapshot=chosen?Object.fromEntries(Object.entries(chosen).map(([group,items])=>[
+              group,items.map(x=>({
+                id:x.id,name:x.name,site:x.site,provider:x.provider,sourceKind:x.sourceKind,
+                designType:x.designType,publisherVerified:x.publisherVerified,
+                originalPromptStatus:x.originalPromptStatus,
+                summary:String(x.summary||'').slice(0,230)
+              }))
+            ])):null;
+            const assistant={role:'assistant',content,source:'publisher',flowStage,
+              ...(snapshot?{sourceSnapshot:snapshot}:{}),time:new Date().toISOString()};
             messages.push(assistant);
             await updateMessages(owner,id,messages);
             return json(res,200,{messages,answer:assistant});
