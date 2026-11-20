@@ -33,7 +33,8 @@ jobs:
       AI_PRIMARY_PROVIDER: openrouter
       AI_FALLBACK_ENABLED: 'false'
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENROUTER_MODEL: openrouter/free
+      OPENROUTER_MODEL: ${{ vars.FRONTLINE_QA_OPENROUTER_MODEL || 'openrouter/free' }}
+      FRONTLINE_QA_PAID_MODEL_APPROVED: ${{ vars.FRONTLINE_QA_PAID_MODEL_APPROVED }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,6 +44,12 @@ jobs:
         run: |
           if [ -z "${OPENROUTER_API_KEY}" ]; then
             echo 'RELEASE_BLOCKED missing repository Actions secret OPENROUTER_API_KEY'
+            exit 1
+          fi
+      - name: Refuse billable model without explicit operator approval
+        run: |
+          if [ "${OPENROUTER_MODEL}" != "openrouter/free" ] && [ "${FRONTLINE_QA_PAID_MODEL_APPROVED}" != "true" ]; then
+            echo 'RELEASE_BLOCKED non-free model is not explicitly approved'
             exit 1
           fi
       - name: Install and build actual PR candidate

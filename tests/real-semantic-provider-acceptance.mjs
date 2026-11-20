@@ -16,8 +16,13 @@ if(!token){
   console.error('REAL_AI_ACCEPTANCE FAILED live-ai-credential-not-connected-to-ci');
   process.exit(1);
 }
-if(process.env.OPENROUTER_MODEL!=='openrouter/free')
-  throw Error('For this QA check only use the current free-routed OpenRouter model');
+// Default remains zero-cost. A non-free QA model requires an explicit
+// repository Actions variable; never silently switch to a billable provider.
+const qaModel=process.env.OPENROUTER_MODEL||'openrouter/free';
+if(qaModel.length>100||!/^([a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.:-]+$/.test(qaModel))
+  throw Error('Invalid explicitly configured QA OpenRouter model');
+if(qaModel!=='openrouter/free'&&!process.env.FRONTLINE_QA_PAID_MODEL_APPROVED)
+  throw Error('Non-free QA model requires explicit approval flag');
 const brief='Design a shared equipment booking and inspection application for public workshop administrators. '+
   'Members reserve available time slots, check booking calendars and view equipment status. '+
   'Staff maintain inventory records and track repair requests. The interface must be accessible.';
@@ -39,7 +44,7 @@ const result=await evaluatePublisherSources(brief,items,{model:async({brief:goal
     messages:[],styles:[],onFailure:issue=>failures.push(issue.reason),
     env:{
       OPENROUTER_API_KEY:token,
-      OPENROUTER_MODEL:'openrouter/free',
+      OPENROUTER_MODEL:qaModel,
       AI_PRIMARY_PROVIDER:'openrouter',
       AI_FALLBACK_ENABLED:'false',
       AI_REQUEST_TIMEOUT_MS:'30000'
