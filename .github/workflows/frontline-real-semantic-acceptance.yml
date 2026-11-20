@@ -1,4 +1,4 @@
-name: Frontline predeploy real AI semantic acceptance
+name: Frontline NVIDIA Nemotron semantic acceptance
 on:
   pull_request:
     branches: [main]
@@ -12,20 +12,13 @@ jobs:
       contents: read
     env:
       FRONTLINE_REAL_AI_ACCEPTANCE: '1'
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENROUTER_MODEL: ${{ vars.FRONTLINE_QA_OPENROUTER_MODEL || 'openrouter/free' }}
-      FRONTLINE_QA_PAID_MODEL_APPROVED: ${{ vars.FRONTLINE_QA_PAID_MODEL_APPROVED }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_MODEL: nvidia/nemotron-3.5-lightning-30b-a3b
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Refuse billable model without explicit operator approval
-        run: |
-          if [ "${OPENROUTER_MODEL}" != "openrouter/free" ] && [ "${FRONTLINE_QA_PAID_MODEL_APPROVED}" != "true" ]; then
-            echo 'RELEASE_BLOCKED non-free model is not explicitly approved'
-            exit 1
-          fi
       - name: Install server dependencies without running unrelated tests
         run: npm install --omit=dev --ignore-scripts
       - name: Verify actual free model ranks verified original publisher screens
