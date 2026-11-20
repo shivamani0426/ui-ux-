@@ -639,3 +639,16 @@ test('NVIDIA hosted trial cannot accidentally become a production fallback',asyn
   assert.equal(aiConfig({...env,GITHUB_ACTIONS:'true',FRONTLINE_ISOLATED_STAGING:'1'}).aiProviders.nvidia,true);
   assert.equal(aiConfig({...env,FRONTLINE_ISOLATED_STAGING:'1'}).aiProviders.nvidia,false);
 });
+
+test('Groq error callbacks identify their own provider without printing a credential',async()=>{
+  const failures=[];
+  const env={GROQ_API_KEY:'private-test-key',AI_PRIMARY_PROVIDER:'groq',
+    AI_FALLBACK_ENABLED:'false'};
+  const answer=await designAiReply({brief,messages:[],env,
+    onFailure:v=>failures.push(v),request:async()=>response(429,{error:{message:'quota exceeded'}})});
+  assert.equal(answer,null);
+  assert.equal(failures.length,1);
+  assert.equal(failures[0].provider,'groq');
+  assert.equal(failures[0].reason,'rate-limited');
+  assert.ok(!JSON.stringify(failures).includes('private-test-key'));
+});

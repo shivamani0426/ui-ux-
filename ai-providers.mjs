@@ -513,16 +513,16 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
   const handlers={gemini:geminiReply,openrouter:openRouterReply,groq:groqReply,nvidia:nvidiaReply};
   for(const provider of order){
     if(provider==='groq'&&request===fetch&&groqCooldownUntil>Date.now()){
-      onFailure?.({reason:'rate-limited',retryAfterSeconds:
+      onFailure?.({provider,reason:'rate-limited',retryAfterSeconds:
         Math.max(1,Math.ceil((groqCooldownUntil-Date.now())/1000))});
       continue;
     }
     if(provider==='nvidia'&&request===fetch&&nvidiaCooldownUntil>Date.now()){
-      onFailure?.({reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((nvidiaCooldownUntil-Date.now())/1000))});
+      onFailure?.({provider,reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((nvidiaCooldownUntil-Date.now())/1000))});
       continue;
     }
     if(provider==='openrouter'&&request===fetch&&openRouterCooldownUntil>Date.now()){
-      onFailure?.({reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((openRouterCooldownUntil-Date.now())/1000))});
+      onFailure?.({provider,reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((openRouterCooldownUntil-Date.now())/1000))});
       continue;
     }
     try{
@@ -538,7 +538,7 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
         const seconds=err.retryAfterSeconds||90;
         openRouterCooldownUntil=Math.max(openRouterCooldownUntil,Date.now()+seconds*1000);
       }
-      onFailure?.({reason,retryAfterSeconds:
+      onFailure?.({provider,reason,retryAfterSeconds:
         reason==='billing-required'?900:reason==='rate-limited'?err.retryAfterSeconds||90:0});
       console.warn('Frontline AI provider unavailable:',provider,errorKind(err));
     }

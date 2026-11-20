@@ -18,6 +18,7 @@ import {formatSourceDiscovery,formatSourceCombination,shownSourceReferences,isAf
 import {persistDiscoveredPublisherSources,snapshotPublisherReferences} from './publisher-source-persistence.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
+import {aiFallbackGuidance} from './ai-failure-guidance.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {derivePrivateLearning,contextForCategory,publicLearningSummary,
@@ -859,15 +860,9 @@ async function chatReply(brief,messages,styleIds,preferences={}){
   }else{
     focus='Start with entry point → main task → progress/feedback → error recovery. Design real content and empty states before decorative treatments.';
   }
-  const unavailableNote=failure.reason==='rate-limited'
-    ?'OpenRouter is currently rate-limited. Repeated requests can consume the free allowance; try again after the cooldown (about '+Math.max(1,Math.ceil((failure.retryAfterSeconds||90)/60))+' minute(s)).'
-    :failure.reason==='timeout'
-      ?'OpenRouter timed out on this request. Free models can be slow or overloaded; the structured guidance below remains available.'
-      :failure.reason==='incomplete-output'
-        ?'OpenRouter stopped before its answer was complete. An unfinished AI answer was not passed off as a final design.'
-        :failure.reason==='scope-conflict'
-          ?'The AI suggestion contradicted an explicitly excluded capability, so Frontline used a scoped design guide instead.'
-          :'OpenRouter did not provide an answer for this request.';
+  const {note:unavailableNote,retry:retryGuidance}=aiFallbackGuidance({
+    ...failure,provider:failure.provider||aiConfig().aiPrimary
+  });
   const lines=[
     '## Project understanding',
     '**Audience:** '+audience,
@@ -887,8 +882,7 @@ async function chatReply(brief,messages,styleIds,preferences={}){
     focus,
     '',
     '*'+unavailableNote+' This is brief-based guidance, not a live model answer. Generate UI/UX can still produce a complete copyable specification.*',
-    ...(failure.reason==='rate-limited'?['*Do not repeatedly press Retry while the provider is rate-limited.*']:
-      ['*You may use Retry with OpenRouter to try again.*'])
+    retryGuidance
   ];
   return {text:lines.join('\n'),source:'guide',
     failureReason:failure.reason,retryAfterSeconds:failure.retryAfterSeconds||0};
