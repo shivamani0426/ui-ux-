@@ -186,7 +186,8 @@ export function formatSourceCombination(sources,{brief=''}={}){
       '\nOriginal publisher prompt: not available or not verified.')).join('\n\n');
   const componentRows=components.map(item=>
     '- **'+clean(item.name)+'** — '+item.provider+
-    '\n[Open original component page]('+trustedPublisherLink(item)+')').join('\n\n');
+    '\n[Open original component page]('+trustedPublisherLink(item)+')'+
+    (item.matchReason?'\nSuggested purpose: '+textReason(item.matchReason):'')).join('\n\n');
   const overview=String(brief||'').replace(/[\r\n<>\[\]`]/g,' ').replace(/\s+/g,' ').trim().slice(0,7000).replace(/[.?!\s]+$/,'');
   const designSummary=designs.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
   const componentSummary=components.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
