@@ -11,7 +11,8 @@ import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
 import {selectPublisherComponents} from './published-component-selection.mjs';
 import {matchPublishedComponents} from './publisher-semantic-matcher.mjs';
-import {planSourceQueries} from './publisher-source-query-plan.mjs';
+import {planSourceQueries,fallbackSourceQueries} from './publisher-source-query-plan.mjs';
+import {evaluatePublisherSources} from './publisher-semantic-evaluation.mjs';
 import {searchScreenroveReferences} from './screenrove-publisher.mjs';
 import {formatSourceDiscovery,formatSourceCombination,shownSourceReferences,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
 import {persistDiscoveredPublisherSources,snapshotPublisherReferences} from './publisher-source-persistence.mjs';
@@ -185,13 +186,33 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       // production AI keys must never turn regression tests into live calls.
       model:process.env.NODE_ENV==='test'?null:
         brief=>designAiReply({brief,task:'source-query',messages:[],styles:[]})
-    }).then(queries=>searchScreenroveReferences({...queries,brief:project.brief}))
-      .catch(()=>({status:'unavailable',matches:[]}));
+    }).then(queries=>{
+      const fallback=fallbackSourceQueries(project.brief);
+      // Two different search strategies: the model's task-to-UI query and a
+      // privacy-safe subject-based alternative. The publisher, not AI, supplies
+      // the authentic links; a separate AI judge checks actual suitability.
+      return searchScreenroveReferences({
+        ...queries,appQueries:[fallback.appQuery],landingQueries:[fallback.landingQuery],
+        brief:project.brief
+      },{candidateMode:true,limitPerKind:6});
+    }).catch(()=>({status:'unavailable',matches:[]}));
   const [discovery,screenrove,components,aceternity,raw,picks,personalTags]=await Promise.all([
     discoveryRequest,screenroveRequest,
     componentsRequest,aceternityRequest,
     profile(owner),selectionIds(owner,project.id),personalInspirationTags(owner)
   ]);
+  // Both application and landing candidates undergo the SAME domain-agnostic
+  // AI suitability review. No source is accepted merely for matching keywords.
+  // On a provider outage use a conservative genuine-source metadata fallback.
+  const sourceQuality=forSimpleChat&&!reuse&&screenrove.status!=='test-disabled'?
+    await evaluatePublisherSources(project.brief,[
+      ...(screenrove.matches||[]),...(discovery.matches||[])
+    ],{
+      model:process.env.NODE_ENV==='test'?null:
+        ({brief,sourceCatalog})=>designAiReply({
+          brief,sourceCatalog,task:'source-evaluate',messages:[],styles:[]
+        })
+    }):null;
   // Semantic matching happens on the ENTIRE first-party catalogue after Yes.
   // Never prefilter unknown problems through chatbot-specific keyword rules.
   // The model only chooses candidate indices; publisher URLs are server-owned.
@@ -238,15 +259,19 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       provenance:source.provenance||'Publisher link only; no original prompt was returned.'};
   });
   const ids=new Set([...designRefs,...animationRefs].map(x=>x.id));
-  const applicationMatches=reuse?reuse.applicationMatches:
+  const applicationMatches=reuse?reuse.applicationMatches:sourceQuality?
+    sourceQuality.applicationMatches:
     (screenrove.matches||[]).filter(x=>x.designType==='application-ui').slice(0,2);
-  const landingMatches=reuse?reuse.landingMatches:[
-    ...(screenrove.matches||[]).filter(x=>x.designType==='landing-page'),
-    ...matches.filter(x=>x.provider==='Kage')
-  ].slice(0,4);
+  const landingMatches=reuse?reuse.landingMatches:sourceQuality?
+    sourceQuality.landingMatches:[
+      ...(screenrove.matches||[]).filter(x=>x.designType==='landing-page'),
+      ...matches.filter(x=>x.provider==='Kage')
+    ].slice(0,4);
   return {projectId:project.id,matches,
     ...(forSimpleChat&&screenrove.status!=='test-disabled'
-      ?{applicationMatches,landingMatches,screenroveStatus:screenrove.status}:{}),
+      ?{applicationMatches,landingMatches,screenroveStatus:screenrove.status,
+        sourceQualityStatus:sourceQuality?.status||'reused',
+        inspectedPublisherCandidates:sourceQuality?.inspected||0}:{}),
     componentMatches:shortlisted||animationRefs,
     selected:picks.filter(id=>ids.has(id)),librarySize:discovery.matches.length,
     rankingVersion:5,

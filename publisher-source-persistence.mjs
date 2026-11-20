@@ -36,6 +36,8 @@ export function snapshotPublisherReferences(groups){
       sourceKind:x.sourceKind||'inspiration',designType:x.designType,
       publisherVerified:x.publisherVerified===true,
       originalPromptStatus:x.originalPromptStatus,
+      relevanceAccepted:x.relevanceAccepted===true,
+      matchReason:typeof x.matchReason==='string'?x.matchReason.slice(0,210):'',
       summary:String(x.summary||'').slice(0,230)
     }));
   }

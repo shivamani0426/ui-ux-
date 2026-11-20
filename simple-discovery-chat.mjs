@@ -21,6 +21,7 @@ export function trustedPublisherLink(item){
   }catch{return null;}
 }
 const clean=v=>String(v||'').replace(/[\[\]<>\r\n]/g,' ').trim().slice(0,100);
+const textReason=v=>String(v||'').replace(/[\[\]<>\r\n]/g,' ').replace(/\s+/g,' ').slice(0,210);
 function verifiedOriginal(item){
   return item?.provider==='Kage'&&item.originalPromptStatus==='verified-publisher'&&
     typeof item.originalPrompt==='string'&&item.originalPrompt.trim().length>=70&&item.originalPrompt.length<=9000?
@@ -34,13 +35,14 @@ const block=item=>{
     const notes=String(item.summary||'').replace(/[<>\[\]\r\n]/g,' ').replace(/\s+/g,' ').trim().slice(0,225);
     return '**'+title+'** — Screenrove\n[Open original screen reference]('+site+')'+
       (notes?'\nPublisher notes: '+notes:'')+
+      (item.matchReason?'\nWhy it may fit: '+textReason(item.matchReason):'')+
       '\nObserved interface reference; not a publisher-authored design prompt.';
   }
   const header='**'+title+'** — '+item.provider+'\n[Open original publisher page]('+site+')';
   const prompt=verifiedOriginal(item);
   const tooLong=item?.provider==='Kage'&&item.originalPromptStatus==='verified-publisher'&&
     typeof item.originalPrompt==='string'&&item.originalPrompt.length>9000;
-  return header+(prompt?'\nOriginal publisher prompt (verbatim):\n````text\n'+prompt+'\n````':
+  return header+(item.matchReason?'\nWhy it may fit: '+textReason(item.matchReason):'')+(prompt?'\nOriginal publisher prompt (verbatim):\n````text\n'+prompt+'\n````':
     (tooLong?'\nOriginal prompt is available but too long to display faithfully here. Open the original publisher page.':'\nOriginal publisher prompt: not available or not verified.'));
 };
 // Prefer interior application designs for chatbot and dashboard requests.
@@ -97,7 +99,16 @@ export function shownSourceReferences(sources,{brief=''}={}){
     x.provider==='Screenrove'&&x.designType==='landing-page'||
     x.provider==='Kage'&&matchingPublisherDesigns(brief,[x]).length>0
   ));
-  return {
+  const hasEvaluatedSources=sources.sourceQualityStatus==='semantic-evaluated'||
+    sources.sourceQualityStatus==='metadata-fallback'||sources.sourceQualityStatus==='no-verified-candidates'||
+    applications.some(x=>x.relevanceAccepted===true)||
+    landings.some(x=>x.relevanceAccepted===true);
+  // A structured AI review already rejected irrelevant genuine pages.
+  // NEVER reintroduce them through a second lexical sort (including after Yes).
+  return hasEvaluatedSources?{
+    applicationMatches:applications.filter(x=>x.relevanceAccepted===true).slice(0,2),
+    landingMatches:landings.filter(x=>x.relevanceAccepted===true).slice(0,3)
+  }:{
     applicationMatches:rankPublisherEvidence(brief,applications,{limit:2}),
     landingMatches:rankPublisherEvidence(brief,landings,{limit:3})
   };
@@ -109,13 +120,15 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
   if(shown){
     const app=shown.applicationMatches,landing=shown.landingMatches;
     const sections=[];
+    // One message-wide budget: separate application and landing sections must
+    // not each independently consume the browser's 16K renderer cap.
+    let used=0;
     const take=(label,items)=>{
-      let used=0;
       const rows=items.map((item,i)=>{
         const full=(i+1)+'. '+block(item);
-        if(used+full.length>11000)return (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
+        if(used+full.length>13500)return (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
           '\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
-          '\nOpen the publisher page to read its full prompt.';
+          '\nOriginal publisher prompt: view the full verbatim text on its original page.';
         used+=full.length+2;
         return full;
       });
@@ -125,8 +138,12 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
     take('Landing-page references',landing);
     if(!sections.length){
       const unavailable=sources.screenroveStatus==='unavailable'||sources?.discovery?.status==='unavailable';
+      const reviewDown=sources.sourceQualityStatus==='metadata-fallback';
       sections.push(unavailable?'Original screen publishers are temporarily unavailable. I could not verify live application or landing-page references.':
-        'No sufficiently relevant original application or landing-page references were verified for this request. I will not invent links or prompts.');
+        reviewDown?'AI relevance checking was temporarily unavailable, and no sufficiently strong publisher-metadata matches were verified. No unrelated pages were substituted.':
+        'No sufficiently relevant original application or landing-page references were verified in the currently available publisher results. I will not invent links or prompts.');
+    }else if(sources.sourceQualityStatus==='metadata-fallback'){
+      sections.push('*AI relevance checking was temporarily unavailable; these links passed only a conservative publisher-metadata check.*');
     }
     return sections.join('\n\n')+
       '\n\n**Would you like matching original UI components with publisher links as well?** Reply **Yes** or **No**.';
@@ -169,12 +186,14 @@ export function formatSourceCombination(sources,{brief=''}={}){
   const designRows=designs.map((item,i)=>
     (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
     '\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
+    (item.matchReason?'\nWhy it may fit: '+textReason(item.matchReason):'')+
     (verifiedOriginal(item)||item.originalPromptStatus==='verified-publisher'?'\nOriginal publisher prompt: already displayed above.':
       item.provider==='Screenrove'?'\nReal screen reference (no publisher design prompt).':
       '\nOriginal publisher prompt: not available or not verified.')).join('\n\n');
   const componentRows=components.map(item=>
     '- **'+clean(item.name)+'** — '+item.provider+
-    '\n[Open original component page]('+trustedPublisherLink(item)+')').join('\n\n');
+    '\n[Open original component page]('+trustedPublisherLink(item)+')'+
+    (item.matchReason?'\nSuggested purpose: '+textReason(item.matchReason):'')).join('\n\n');
   const overview=String(brief||'').replace(/[\r\n<>\[\]`]/g,' ').replace(/\s+/g,' ').trim().slice(0,7000).replace(/[.?!\s]+$/,'');
   const designSummary=designs.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
   const componentSummary=components.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');

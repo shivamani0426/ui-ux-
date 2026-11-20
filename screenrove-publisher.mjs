@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import {rankPublisherEvidence} from './publisher-evidence-relevance.mjs';
+import {rankPublisherEvidence,isUnusablePublisherPage} from './publisher-evidence-relevance.mjs';
 
 // Official publisher MCP: https://screenrove.com/agents
 // Read-only Screenrove tools, with no key, account, scraping or guessed URLs.
@@ -119,11 +119,15 @@ export function verifiedScreenroveReference(search,detail,expectedKind){
   };
 }
 export function clearScreenroveCacheForTests(){cache.clear();pending.clear();}
-export async function searchScreenroveReferences({appQuery,landingQuery,brief=''}={},{
-  transport=fetch,now=()=>Date.now(),limitPerKind=2}={}){
+export async function searchScreenroveReferences({appQuery,landingQuery,appQueries=[],landingQueries=[],brief=''}={},{
+  transport=fetch,now=()=>Date.now(),limitPerKind=2,candidateMode=false}={}){
   const app=clean(appQuery,105),landing=clean(landingQuery,105);
-  if(!app&&!landing)return {status:'no-queries',matches:[],providerStatus:[]};
-  const key=crypto.createHash('sha256').update(app+'|'+landing+'|'+clean(brief,7000)).digest('hex');
+  const querySet=(first,other)=>[...new Set([first,...(Array.isArray(other)?other:[])]
+    .map(x=>clean(x,105)).filter(Boolean))].slice(0,candidateMode?2:1);
+  const products=querySet(app,appQueries),marketing=querySet(landing,landingQueries);
+  if(!products.length&&!marketing.length)return {status:'no-queries',matches:[],providerStatus:[]};
+  const key=crypto.createHash('sha256').update(products.join('|')+'||'+marketing.join('|')+
+    '||'+clean(brief,7000)+'|'+candidateMode).digest('hex');
   const cached=cache.get(key);
   if(cached&&cached.expires>now())return cached.result;
   if(pending.has(key))return pending.get(key);
@@ -132,29 +136,44 @@ export async function searchScreenroveReferences({appQuery,landingQuery,brief=''
     let up=false;
     try{
       await client.initialize();up=true;
-      const pairs=[['product',app],['marketing',landing]].filter(([,q])=>q);
+      // Search by distinct user jobs and interface patterns, not by one
+      // memorized industry query. Every returned URL still needs get_screen.
+      const pairs=[...products.map(q=>['product',q]),...marketing.map(q=>['marketing',q])];
       const searches=await Promise.all(pairs.map(async([kind,q])=>{
         try{
           const response=await client.call('search_screens',{q,kind,limit:Math.max(3,Math.min(8,limitPerKind*3)),images:0});
           return {kind,found:entriesFrom(response).slice(0,Math.min(8,limitPerKind*3)),status:'ready'};
         }catch{return {kind,found:[],status:'unavailable'};}
       }));
-      // Search metadata is evidence for candidate relevance, not URL
-      // provenance. Rank the entire returned set before opening individual
-      // screens, instead of blindly taking the first two (including 404s).
-      const context=brief||app+' '+landing;
-      const grouped=await Promise.all(searches.map(async search=>{
-        const ranked=rankPublisherEvidence(context,search.found.map(item=>({
+      // Verify a wider, diverse candidate pool when the AI evaluator will
+      // judge actual suitability. Default library calls retain conservative
+      // lexical filtering so older non-AI flows remain safe.
+      const context=brief||products.join(' ')+' '+marketing.join(' ');
+      const grouped=await Promise.all(['product','marketing'].map(async kind=>{
+        const groups=searches.filter(x=>x.kind===kind).map(x=>x.found);
+        // Interleave genuine publisher hits from both query strategies so a
+        // broad first search cannot crowd out a more precise second search.
+        const alternated=[];
+        const longest=Math.max(0,...groups.map(g=>g.length));
+        for(let index=0;index<longest;index++)
+          for(const group of groups)if(group[index])alternated.push(group[index]);
+        const found=[...new Map(alternated.filter(x=>x&&x.id)
+          .map(x=>[x.id,x])).values()];
+        const annotated=found.map(item=>({
           ...item,name:item.title||item.name,summary:item.notes||item.description||''
-        })),{limit:Math.max(4,limitPerKind*2)});
-        // Only a confirmed detail response may furnish the exact original URL.
+        })).filter(item=>!isUnusablePublisherPage(item,context));
+        const ranked=candidateMode?annotated.slice(0,Math.max(6,limitPerKind+2)):
+          rankPublisherEvidence(context,annotated,{limit:Math.max(4,limitPerKind*2)});
         const detailed=await Promise.all(ranked.map(async item=>{
           try{
             const record=detailFrom(await client.call('get_screen',{screenId:item.id}));
-            return verifiedScreenroveReference(item,record,search.kind);
+            return verifiedScreenroveReference(item,record,kind);
           }catch{return null;}
         }));
-        return rankPublisherEvidence(context,detailed.filter(Boolean),{limit:limitPerKind});
+        const verified=detailed.filter(Boolean)
+          .filter(x=>!isUnusablePublisherPage(x,context));
+        return candidateMode?verified.slice(0,limitPerKind):
+          rankPublisherEvidence(context,verified,{limit:limitPerKind});
       }));
       const matches=[...new Map(grouped.flat().map(x=>[x.site,x])).values()];
       const result={status:matches.length?'ready':searches.some(x=>x.status==='unavailable')?'unavailable':'no-matches',
