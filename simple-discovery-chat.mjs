@@ -120,13 +120,15 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
   if(shown){
     const app=shown.applicationMatches,landing=shown.landingMatches;
     const sections=[];
+    // One message-wide budget: separate application and landing sections must
+    // not each independently consume the browser's 16K renderer cap.
+    let used=0;
     const take=(label,items)=>{
-      let used=0;
       const rows=items.map((item,i)=>{
         const full=(i+1)+'. '+block(item);
-        if(used+full.length>11000)return (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
+        if(used+full.length>13500)return (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
           '\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
-          '\nOpen the publisher page to read its full prompt.';
+          '\nOriginal publisher prompt: view the full verbatim text on its original page.';
         used+=full.length+2;
         return full;
       });
