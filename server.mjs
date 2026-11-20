@@ -181,7 +181,10 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     process.env.NODE_ENV==='test'&&process.env.FRONTLINE_SCREENROVE_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]}):
     planSourceQueries(project.brief,{
-      model:brief=>designAiReply({brief,task:'source-query',messages:[],styles:[]})
+      // Test suites use controlled publisher fixtures; Render's configured
+      // production AI keys must never turn regression tests into live calls.
+      model:process.env.NODE_ENV==='test'?null:
+        brief=>designAiReply({brief,task:'source-query',messages:[],styles:[]})
     }).then(queries=>searchScreenroveReferences(queries))
       .catch(()=>({status:'unavailable',matches:[]}));
   const [discovery,screenrove,components,aceternity,raw,picks,personalTags]=await Promise.all([
@@ -194,9 +197,10 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
   // The model only chooses candidate indices; publisher URLs are server-owned.
   const semantic=forSimpleChat&&includeComponents?
     await matchPublishedComponents(project.brief,components.matches,aceternity.matches,{
-      model:({brief,sourceCatalog})=>designAiReply({
-        brief,sourceCatalog,task:'component-match',messages:[],styles:[]
-      })
+      model:process.env.NODE_ENV==='test'?null:
+        ({brief,sourceCatalog})=>designAiReply({
+          brief,sourceCatalog,task:'component-match',messages:[],styles:[]
+        })
     }):null;
   const shortlisted=forSimpleChat?(semantic?.matches||[]):null;
   const current=[...discovery.matches,...(screenrove.matches||[]),...(shortlisted||[...components.matches,...aceternity.matches])];
