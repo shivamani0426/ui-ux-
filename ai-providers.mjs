@@ -186,7 +186,13 @@ const errorFor=async(provider,response)=>{
   error.provider=provider;error.httpStatus=Number(response.status)||0;
   if(error.httpStatus===429){
     const header=Number(response.headers?.get?.('retry-after'));
-    error.retryAfterSeconds=Number.isFinite(header)&&header>=1?Math.min(300,Math.max(30,Math.ceil(header))):90;
+    // OpenRouter's free-tier limiter commonly supplies an absolute reset time
+    // instead of Retry-After. Respect it rather than retrying into a full window.
+    const rawReset=Number(response.headers?.get?.('x-ratelimit-reset'));
+    const resetMs=rawReset>1e12?rawReset:rawReset>1e9?rawReset*1000:0;
+    const resetSeconds=resetMs>Date.now()?Math.ceil((resetMs-Date.now())/1000):0;
+    const wait=Number.isFinite(header)&&header>=1?header:resetSeconds||90;
+    error.retryAfterSeconds=Math.min(900,Math.max(30,Math.ceil(wait)));
   }
   try{
     const parsed=await response.json();
@@ -200,6 +206,18 @@ const errorFor=async(provider,response)=>{
       /model.{0,70}(not found|not supported|not available)/.test(msg)?'model-unavailable':
       /no endpoints found|no providers available/.test(msg)?'no-provider':
       /quota|rate limit|too many requests/.test(msg)?'quota-limit':'';
+    // Only log known, bounded upstream classifications. Never print the raw
+    // provider error body or arbitrary metadata fields from a failed request.
+    if(error.httpStatus===429){
+      const source=parsed?.error?.metadata?.limit_source;
+      const categories={
+        openrouter_free_tier_per_minute:'free-minute-limit',
+        openrouter_free_tier_per_day:'free-daily-limit',
+        upstream_provider_shared_pool:'upstream-capacity-limit'
+      };
+      if(Object.prototype.hasOwnProperty.call(categories,source))
+        error.category=categories[source];
+    }
   }catch{
     error.category='unparseable-error-response';
   }
@@ -250,7 +268,7 @@ async function geminiReply({brief,messages,styles,task,env,request,designPrefere
 async function openRouterReply({brief,messages,styles,task,env,request,designPreferences=[],sourceCatalog=''}){
   const model=env.OPENROUTER_MODEL||'openrouter/free';
   const isPrompt=task==='prompt',isInsight=task==='insight',isComponentMatch=task==='component-match',isSourceQuery=task==='source-query',isSourceEvaluation=task==='source-evaluate';
-  const outputLimit=isSourceEvaluation?1350:isSourceQuery?450:isComponentMatch?850:isPrompt?5400:isInsight?1700:2400;
+  const outputLimit=isSourceEvaluation?1750:isSourceQuery?450:isComponentMatch?850:isPrompt?5400:isInsight?1700:2400;
   const maxAttempts=isComponentMatch||isSourceQuery||isSourceEvaluation?1:freeRetryBudget(env,model);
   const recent=isComponentMatch||isSourceQuery||isSourceEvaluation?[]:task==='chat'
     ?cleanMessages(messages).slice(-4).map(m=>({...m,content:m.content.slice(0,m.role==='user'?1300:950)}))
@@ -288,7 +306,7 @@ async function openRouterReply({brief,messages,styles,task,env,request,designPre
       return r.json();
     };
     try{
-      return await requestOnce(isSourceEvaluation?Math.min(18000,networkTimeout(env)):isSourceQuery?Math.min(14000,networkTimeout(env)):isComponentMatch?Math.min(18000,networkTimeout(env)):Math.max(35000,networkTimeout(env)));
+      return await requestOnce(isSourceEvaluation?Math.min(30000,networkTimeout(env)):isSourceQuery?Math.min(14000,networkTimeout(env)):isComponentMatch?Math.min(18000,networkTimeout(env)):Math.max(35000,networkTimeout(env)));
     }catch(error){
       const transient=['TimeoutError','AbortError'].includes(error?.name)||[502,503,504].includes(error?.httpStatus);
       if(!transient||attempts>=maxAttempts)throw error;
