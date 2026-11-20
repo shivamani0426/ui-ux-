@@ -1057,7 +1057,7 @@ const server=http.createServer(async(req,res)=>{
         return json(res,200,await listProjects(owner,Number(offsetText||0)));
       }
       if(req.method==='POST'&&pathname==='/api/projects'){
-        const b=await readBody(req);if(!validateText(b.brief,15,2500))return json(res,400,{error:'Describe your project in 15–2,500 characters.'});
+        const b=await readBody(req,32000);if(!validateText(b.brief,15,7000))return json(res,400,{error:'Describe your project in 15–7,000 characters.'});
         const prefs=await recommendationPreferences(owner,b.brief);
         const recommendations=recommend(b.brief,prefs,[]);const id=crypto.randomUUID();
         const p={id,title:b.brief.trim().slice(0,64),brief:b.brief.trim(),recommendations,messages:[],createdAt:new Date().toISOString()};
@@ -1255,7 +1255,7 @@ const server=http.createServer(async(req,res)=>{
           }}});
         }
         if(req.method==='POST'&&action==='/messages'){
-          const b=await readBody(req);if(!validateText(b.message,2,1200))return json(res,400,{error:'Message must be 2–1,200 characters.'});
+          const b=await readBody(req,32000);if(!validateText(b.message,2,7000))return json(res,400,{error:'Message must be 2–7,000 characters.'});
           if(!Array.isArray(b.styles)||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Invalid styles'});
           const messages=(Array.isArray(p.messages)?p.messages:[]).slice(-24);
           // Public conversation mode: show only authentic design prompts and links.
