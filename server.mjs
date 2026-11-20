@@ -194,7 +194,7 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
       return searchScreenroveReferences({
         ...queries,appQueries:[fallback.appQuery],landingQueries:[fallback.landingQuery],
         brief:project.brief
-      },{candidateMode:true,limitPerKind:8});
+      },{candidateMode:true,limitPerKind:6});
     }).catch(()=>({status:'unavailable',matches:[]}));
   const [discovery,screenrove,components,aceternity,raw,picks,personalTags]=await Promise.all([
     discoveryRequest,screenroveRequest,
