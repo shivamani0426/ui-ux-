@@ -1,7 +1,7 @@
 // Universal discovery planner: no matching of memorized project titles.
 // Convert arbitrary problem statements into SEARCHABLE user tasks and screen
 // patterns. Publisher searches determine whether real references exist.
-import {analyzeProject} from './project-intelligence.mjs';
+import {fallbackSubjectTerms} from './publisher-evidence-relevance.mjs';
 const trim=v=>String(v??'').replace(/[\u0000-\u001f\u007f<>]/g,' ')
   .replace(/https?:\/\/\S+/gi,' ').replace(/\s+/g,' ').trim();
 const safeQuery=v=>{
@@ -21,18 +21,18 @@ export function parseSourceQueries(output){
   }catch{return null;}
 }
 export function fallbackSourceQueries(brief){
-  // Existing requirements engine extracts general workflows; it is not used
-  // as a hardcoded catalogue of matching site links.
-  const analysis=analyzeProject(String(brief||'').slice(0,7000));
-  const feature=analysis.features.slice(0,2).map(x=>x.page).filter(Boolean).join(' ');
-  const generic=trim(feature||'overview dashboard primary workflow');
-  return {appQuery:(generic+' interface dashboard').slice(0,110),
-    landingQuery:'product landing page features benefits',status:'generic-query-fallback'};
+  // No fixed application domains. Extract the actual subject from the first
+  // sentence so model outages don't search generic dashboards for every brief.
+  const terms=fallbackSubjectTerms(brief);
+  const topic=terms.join(' ')||'task management';
+  return {appQuery:(topic+' workflow interface').slice(0,110),
+    landingQuery:(topic+' service landing page').slice(0,110),
+    status:'subject-query-fallback'};
 }
 export async function planSourceQueries(brief,{model=null}={}){
   if(typeof model==='function'){
     try{
-      const answer=await model(String(brief||'').slice(0,2400));
+      const answer=await model(String(brief||'').slice(0,7000));
       const parsed=parseSourceQueries(typeof answer==='string'?answer:answer?.text);
       if(parsed)return parsed;
     }catch{/* A failed planning model never becomes an invented link. */}
