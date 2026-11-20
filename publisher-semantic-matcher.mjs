@@ -30,13 +30,24 @@ export function parseSemanticSelections(text,items,{limit=5}={}){
   if(!raw.startsWith('{')||!raw.endsWith('}'))return null;
   try{
     const parsed=JSON.parse(raw);
-    if(!parsed||typeof parsed!=='object'||!Array.isArray(parsed.indices)||parsed.indices.length>8)return null;
+    if(!parsed||typeof parsed!=='object')return null;
+    const structured=Array.isArray(parsed.choices);
+    const indexes=structured?parsed.choices:Array.isArray(parsed.indices)?parsed.indices:null;
+    if(!indexes||indexes.length>8)return null;
     const selected=[],used=new Set();
-    for(const index of parsed.indices){
+    for(const choice of indexes){
+      const index=structured?choice?.index:choice;
       if(!Number.isInteger(index)||index<0||index>=items.length||used.has(index))continue;
       const item=items[index];
       if(!trustedPublisherLink(item))continue;
-      used.add(index);selected.push(item);
+      if(structured){
+        // The model must give a concrete task for each component. It cannot
+        // pass off ornamental motion as the user's operational functionality.
+        const purpose=String(choice?.purpose||'').replace(/[<>\r\n]/g,' ').trim();
+        if(purpose.length<15||purpose.length>170||choice?.utility==='decorative')continue;
+        selected.push({...item,matchReason:purpose.slice(0,170)});
+      }else selected.push(item);
+      used.add(index);
       if(selected.length>=limit)break;
     }
     return selected;
@@ -116,10 +127,10 @@ export async function matchPublishedComponents(brief,react,aceternity,{
         sourceCatalog:sourceCatalogForModel(items)
       });
       const ranked=parseSemanticSelections(typeof answer==='string'?answer:answer?.text,items,{limit:capacity});
-      if(ranked?.length)return {matches:ranked,status:'semantic-ranked'};
-      // An empty, malformed or noncommittal model answer is not proof that
-      // no official source can help. Examine genuine functional affordances
-      // before telling the user that nothing matches.
+      if(ranked!==null)return {matches:ranked,
+        status:ranked.length?'semantic-ranked':'semantic-rejected'};
+      // Malformed model output is not a recommendation. Use conservative
+      // legitimate publisher affordances only when AI evaluation fails.
     }catch{/* Model outages must not create imaginary publisher results. */}
   }
   const matches=fallbackPublisherComponents(brief,items,{limit:capacity});
