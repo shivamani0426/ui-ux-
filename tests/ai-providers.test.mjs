@@ -622,3 +622,20 @@ test('Groq billing-required is surfaced safely and never causes another unauthor
     assert.ok(!notices.join(' ').includes('groq-billing-test-key'));
   }finally{console.warn=warn}
 });
+
+test('NVIDIA hosted trial cannot accidentally become a production fallback',async()=>{
+  const env={NODE_ENV:'production',GROQ_API_KEY:'primary',
+    NVIDIA_API_KEY:'nvidia-trial',AI_PRIMARY_PROVIDER:'groq',
+    AI_FALLBACK_PROVIDER:'nvidia',AI_FALLBACK_ENABLED:'true'};
+  const config=aiConfig(env);
+  assert.equal(config.aiProviders.nvidia,false,'Developer trial cannot serve live users by default');
+  const hosts=[];
+  const got=await designAiReply({brief,messages:[],env,request:async url=>{
+    hosts.push(new URL(url).host);return response(429,{error:{message:'quota limit'}});
+  }});
+  assert.equal(got,null);
+  assert.deepEqual(hosts,['api.groq.com']);
+  assert.equal(aiConfig({...env,NVIDIA_PRODUCTION_LICENSE_APPROVED:'true'}).aiProviders.nvidia,true);
+  assert.equal(aiConfig({...env,GITHUB_ACTIONS:'true',FRONTLINE_ISOLATED_STAGING:'1'}).aiProviders.nvidia,true);
+  assert.equal(aiConfig({...env,FRONTLINE_ISOLATED_STAGING:'1'}).aiProviders.nvidia,false);
+});

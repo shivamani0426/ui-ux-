@@ -32,6 +32,7 @@ jobs:
       STAGING_REQUIRE_SEMANTIC_AI: '1'
       AI_PRIMARY_PROVIDER: nvidia
       AI_FALLBACK_ENABLED: 'false'
+      FRONTLINE_ISOLATED_STAGING: '1'
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       NVIDIA_MODEL: nvidia/nemotron-3.5-lightning-30b-a3b
     steps:

@@ -112,7 +112,15 @@ const cleanMessages=messages=>(Array.isArray(messages)?messages:[]).slice(-8)
   .filter(m=>['user','assistant'].includes(m?.role)&&typeof m.content==='string')
   .map(m=>({role:m.role,content:m.content.slice(0,7000)}));
 const trimText=value=>String(value||'').slice(0,2500);
-const configured=env=>({gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_API_KEY,groq:!!env.GROQ_API_KEY,nvidia:!!env.NVIDIA_API_KEY});
+const configured=env=>({
+  gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_API_KEY,
+  groq:!!env.GROQ_API_KEY,
+  // NVIDIA's hosted trial is for testing, not serving public production.
+  // CI can exercise the REAL provider in an explicitly isolated staging job.
+  nvidia:!!env.NVIDIA_API_KEY&&(
+    env.NODE_ENV!=='production'||env.NVIDIA_PRODUCTION_LICENSE_APPROVED==='true'||
+    (env.GITHUB_ACTIONS==='true'&&env.FRONTLINE_ISOLATED_STAGING==='1'))
+});
 // The free OpenRouter key is shared by the deployed service. A brief process-local
 // cooldown after HTTP 429 prevents a retry storm. It contains no user data.
 let openRouterCooldownUntil=0;

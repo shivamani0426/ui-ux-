@@ -1,4 +1,4 @@
-name: Frontline candidate Groq + real publisher + Yes end-to-end gate
+name: Frontline candidate Groq + NVIDIA recovery + Yes end-to-end gate
 on:
   pull_request:
     branches: [main]
@@ -31,9 +31,13 @@ jobs:
       STAGING_TARGET: http://127.0.0.1:3020
       STAGING_REQUIRE_SEMANTIC_AI: '1'
       AI_PRIMARY_PROVIDER: groq
-      AI_FALLBACK_ENABLED: 'false'
+      AI_FALLBACK_PROVIDER: nvidia
+      AI_FALLBACK_ENABLED: 'true'
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       GROQ_MODEL: openai/gpt-oss-20b
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_MODEL: nvidia/nemotron-3.5-lightning-30b-a3b
+      FRONTLINE_ISOLATED_STAGING: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,8 +45,8 @@ jobs:
           node-version: '22'
       - name: Require actual model credential (never print token)
         run: |
-          if [ -z "${GROQ_API_KEY}" ]; then
-            echo 'RELEASE_BLOCKED missing repository Actions secret GROQ_API_KEY'
+          if [ -z "${GROQ_API_KEY}" ] || [ -z "${NVIDIA_API_KEY}" ]; then
+            echo 'RELEASE_BLOCKED missing repository Actions Groq/NVIDIA secrets'
             exit 1
           fi
       - name: Install and build actual PR candidate
