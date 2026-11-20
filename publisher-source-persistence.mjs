@@ -41,3 +41,22 @@ export function snapshotPublisherReferences(groups){
   }
   return snapshot;
 }
+
+export async function persistDiscoveredPublisherSources(database,rows){
+  const safe=normalizedPublisherSourceRows(rows);
+  if(!safe.length)return 0;
+  await database.query(`INSERT INTO frontline.design_sources
+    (id,name,site,category,tags,styles,summary,active,is_live_discovered,source_provider,source_kind,source_indexed_at)
+    SELECT x.id,x.name,x.site,x.category,x.tags,x.styles,'',true,true,x.provider,x.kind,NOW()
+    FROM jsonb_to_recordset($1::jsonb) AS x(
+      id text,name text,site text,category text,tags text[],styles text[],
+      provider text,kind text
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      name=EXCLUDED.name,site=EXCLUDED.site,category=EXCLUDED.category,
+      tags=EXCLUDED.tags,styles=EXCLUDED.styles,active=true,
+      is_live_discovered=true,source_provider=EXCLUDED.source_provider,
+      source_kind=EXCLUDED.source_kind,source_indexed_at=NOW()`,
+    [JSON.stringify(safe)]);
+  return safe.length;
+}
