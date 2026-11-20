@@ -1,0 +1,36 @@
+name: Frontline source PostgreSQL integration
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  publisher-source-db:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: frontline_qa
+          POSTGRES_PASSWORD: frontline_qa_only
+          POSTGRES_DB: frontline_qa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U frontline_qa -d frontline_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FRONTLINE_TEST_POSTGRES_URL: postgres://frontline_qa:frontline_qa_only@localhost:5432/frontline_qa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install application dependencies
+        run: npm install --omit=dev --ignore-scripts
+      - name: Reproduce production NOT NULL constraint and test corrected publisher writes
+        run: node --test tests/publisher-source-postgres.test.mjs
