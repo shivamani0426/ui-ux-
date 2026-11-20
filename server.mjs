@@ -14,7 +14,7 @@ import {matchPublishedComponents} from './publisher-semantic-matcher.mjs';
 import {planSourceQueries} from './publisher-source-query-plan.mjs';
 import {searchScreenroveReferences} from './screenrove-publisher.mjs';
 import {formatSourceDiscovery,formatSourceCombination,shownSourceReferences,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
-import {normalizedPublisherSourceRows,snapshotPublisherReferences} from './publisher-source-persistence.mjs';
+import {persistDiscoveredPublisherSources,snapshotPublisherReferences} from './publisher-source-persistence.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
@@ -100,21 +100,7 @@ async function listReferences(){
 async function storeDiscoveredReferences(rows){
   if(!Array.isArray(rows)||!rows.length)return;
   if(!pg){for(const row of rows)memoryLiveReferences.set(row.id,row);return;}
-  const safe=normalizedPublisherSourceRows(rows);
-  if(!safe.length)return;
-  await pg.query(`INSERT INTO frontline.design_sources
-    (id,name,site,category,tags,styles,summary,active,is_live_discovered,source_provider,source_kind,source_indexed_at)
-    SELECT x.id,x.name,x.site,x.category,x.tags,x.styles,'',true,true,x.provider,x.kind,NOW()
-    FROM jsonb_to_recordset($1::jsonb) AS x(
-      id text,name text,site text,category text,tags text[],styles text[],
-      provider text,kind text
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      name=EXCLUDED.name,site=EXCLUDED.site,category=EXCLUDED.category,
-      tags=EXCLUDED.tags,styles=EXCLUDED.styles,active=true,
-      is_live_discovered=true,source_provider=EXCLUDED.source_provider,
-      source_kind=EXCLUDED.source_kind,source_indexed_at=NOW()`,
-    [JSON.stringify(safe)]);
+  await persistDiscoveredPublisherSources(pg,rows);
 }
 async function selectionIds(owner,projectId){
   if(!pg)return [...(memorySelections.get(owner+':'+projectId)||new Set())];
