@@ -69,14 +69,14 @@ test('real PostgreSQL enforces NOT NULL and accepts previous missing-category pu
     const current=(await client.query('SELECT current_database() AS db')).rows[0].db;
     assert.equal(current,'frontline_qa','Refuse to touch any non-test database');
     await client.query('CREATE SCHEMA frontline');
-    await client.query(\`CREATE TABLE frontline.design_sources (
+    await client.query(`CREATE TABLE frontline.design_sources (
       id text PRIMARY KEY,name text NOT NULL,site text NOT NULL,
       category text NOT NULL,tags text[] NOT NULL DEFAULT ARRAY[]::text[],
       styles text[] NOT NULL DEFAULT ARRAY[]::text[],summary text,
       active boolean NOT NULL DEFAULT true,
       is_live_discovered boolean NOT NULL DEFAULT true,
       source_provider text,source_kind text,source_indexed_at timestamp with time zone
-    )\`);
+    )`);
     // Exact old production failure is reproduced by a direct un-normalized
     // record, then fixed by the same writer the production server calls.
     await assert.rejects(client.query(
