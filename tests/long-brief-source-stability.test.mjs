@@ -25,7 +25,8 @@ test('long combined prompt keeps the full requirements and uses matching first-p
     designType:'application-ui',publisherVerified:true,originalPrompt:null};
   const land={provider:'Screenrove',name:'Community — Landing',
     site:'https://screenrove.com/community/marketing/community-landing',
-    designType:'landing-page',publisherVerified:true,originalPrompt:null};
+    designType:'landing-page',publisherVerified:true,originalPrompt:null,
+    summary:'Community borrowing repair and tool sharing benefits'};
   const wrong={provider:'Screenrove',name:'Dribbble — Pro pricing',
     site:'https://screenrove.com/dribbble/marketing/dribbble-marketing-pricing',
     designType:'landing-page',publisherVerified:true,originalPrompt:null};
