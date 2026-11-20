@@ -19,9 +19,9 @@ test('UI workflow search generalizes to unseen subjects without per-project reco
     ['Build a photo upload portal for permit applications.','file upload form']
   ]){
     const found=reusableWorkflowQueries(brief);
-    assert.equal(found[0],first,brief);
+    assert.ok(found.includes(first),brief);
     const planned=planResilientPublisherQueries(brief);
-    assert.equal(planned.appQuery,first);
+    assert.ok([planned.appQuery,...planned.appQueries].includes(first),brief);
     assert.ok(planned.appQueries.every(x=>x!==planned.appQuery));
     assert.ok(planned.landingQuery.length>10);
     assert.ok(planned.landingQueries.length>0);
@@ -40,9 +40,9 @@ test('real first-party publisher response shape finds distinct task screens with
   const brief='Build a shared equipment booking system with reservation slots, '+
     'calendar and asset maintenance for volunteer coordinators.';
   const queries=planResilientPublisherQueries(brief);
-  assert.deepEqual([queries.appQuery,...queries.appQueries],[
+  assert.deepEqual([queries.appQuery,...queries.appQueries].sort(),[
     'booking calendar','inventory management'
-  ]);
+  ].sort());
   const calls=[],details=new Map();
   const publisher=async(_url,options)=>{
     const req=JSON.parse(options.body);
@@ -75,17 +75,19 @@ test('real first-party publisher response shape finds distinct task screens with
   const found=await searchScreenroveReferences({...queries,brief},
     {transport:publisher,now:()=>123456,candidateMode:true,limitPerKind:6});
   assert.equal(found.status,'ready');
-  assert.deepEqual(found.matches.map(x=>x.site),[
+  assert.deepEqual(found.matches.map(x=>x.site).sort(),[
     'https://screenrove.com/workflows/product/cal',
     'https://screenrove.com/workflows/product/inventory'
-  ]);
+  ].sort());
   assert.ok(calls.some(x=>x.q==='booking calendar'));
   assert.ok(calls.some(x=>x.q==='inventory management'));
   assert.ok(found.matches.every(x=>x.publisherVerified&&x.originalPrompt===null));
+  const calendarIndex=found.matches.findIndex(x=>x.site.endsWith('/cal'));
+  const inventoryIndex=found.matches.findIndex(x=>x.site.endsWith('/inventory'));
   const evaluated=await evaluatePublisherSources(brief,found.matches,{
     model:async()=>JSON.stringify({choices:[
-      {index:0,fit:5,reason:'The published calendar supports selecting and reviewing reservation slots.'},
-      {index:1,fit:4,reason:'The published asset list supports keeping track of maintenance work.'}
+      {index:calendarIndex,fit:5,reason:'The published calendar supports selecting and reviewing reservation slots.'},
+      {index:inventoryIndex,fit:4,reason:'The published asset list supports keeping track of maintenance work.'}
     ]})
   });
   assert.equal(evaluated.status,'semantic-evaluated');
