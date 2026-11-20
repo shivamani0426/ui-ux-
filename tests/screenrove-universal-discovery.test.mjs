@@ -65,7 +65,7 @@ test('read-only official Screenrove MCP gives genuine application and landing UR
   assert.equal(result.matches[0].site,'https://screenrove.com/dashboards/acme-product-home');
   assert.equal(result.matches[1].site,'https://screenrove.com/landing-pages?open=acme-marketing-home');
   const again=await searchScreenroveReferences({
-    appQuery:'activity analytics dashboard',landingQuery:'community service landing page'
+    appQuery:'activity analytics dashboard',landingQuery:'community volunteer service landing page'
   },{transport:async()=>{throw Error('cache should prevent extra source calls');},now:()=>100100});
   assert.deepEqual(again.matches,result.matches);
 });
