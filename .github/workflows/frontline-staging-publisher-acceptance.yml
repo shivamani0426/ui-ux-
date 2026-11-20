@@ -38,6 +38,20 @@ jobs:
         run: npm install --omit=dev --ignore-scripts
       - name: Build actual candidate app
         run: npm run build
+      - name: Apply original private-schema migrations to disposable PostgreSQL
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import pg from 'pg';
+            const client=new pg.Client({connectionString:process.env.DATABASE_URL});
+            await client.connect();
+            try{
+              await client.query(fs.readFileSync('tests/frontline-private-schema-ci.sql','utf8'));
+              const check=await client.query(\"SELECT to_regclass('frontline.uic_projects') AS projects,to_regclass('frontline.design_sources') AS sources\");
+              if(!check.rows[0].projects||!check.rows[0].sources)throw Error('schema-incomplete');
+              console.log('Original Frontline migrations applied on disposable CI PostgreSQL');
+            }finally{await client.end()}
+          "
       - name: Start isolated real server (no AI credentials)
         run: |
           npm start > /tmp/frontline-qa-server.log 2>&1 &
