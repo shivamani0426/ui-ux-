@@ -199,11 +199,13 @@ export function formatSourceCombination(sources,{brief=''}={}){
   const componentSummary=components.map(x=>clean(x.name)+' ('+x.provider+')').join('; ');
   // Generated connective instructions are explicitly Frontline-authored.
   // Never label this text as an original publisher prompt.
-  const combinationPrompt=designs.length&&components.length?
+  const combinationPrompt=designs.length?
     '\n\n**Frontline combined implementation prompt (Frontline-authored, NOT an original publisher prompt)**\n\n'+
     'Design a cohesive interface for: '+(overview||'the application described above')+
     '. Base the visual direction on these linked original design references: '+designSummary+
-    '. Integrate relevant functional elements using these linked original component references: '+componentSummary+
+    (components.length?
+      '. Integrate relevant functional elements using these linked original component references: '+componentSummary:
+      '. No matching original component was verified in the publisher catalogue. Design any missing controls as new, accessible original UI patterns; do not attribute them to a publisher or invent component links')+
     '. Preserve accessible navigation, responsive layouts and clear interaction states. The exact publisher links above identify the selected sources; do not attribute this combined text to a publisher.':'';
   const reactStatus=(sources?.componentDiscovery?.providers||[])
     .find(x=>x.provider==='React Bits')?.status;

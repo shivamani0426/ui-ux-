@@ -63,11 +63,23 @@ try{
   assert(equal(links,after),'staging-yes-replaced-sources');
   const components=[...String(yes.data.answer.content).matchAll(/https:\/\/(?:reactbits\.dev|ui\.aceternity\.com)\/[a-z0-9/.-]+/gi)].map(x=>x[0]);
   say('verified-components',String(components.length));
-  assert(components.length>0,'staging-no-verified-components');
-  say('component-review',yes.data.answer?.quality?.componentReview||'missing');
-  if(REQUIRE_REAL_AI)assert(
-    yes.data.answer?.quality?.componentReview==='semantic-ranked',
-    'staging-real-ai-component-ranking-not-proven');
+  const componentReview=yes.data.answer?.quality?.componentReview||'missing';
+  say('component-review',componentReview);
+  if(REQUIRE_REAL_AI){
+    assert(['semantic-ranked','semantic-rejected'].includes(componentReview),
+      'staging-real-ai-component-review-not-proven');
+    if(componentReview==='semantic-ranked')
+      assert(components.length>0,'staging-ranked-components-not-shown');
+    if(componentReview==='semantic-rejected'){
+      assert(components.length===0,'staging-rejected-components-invented');
+      assert(/No verified matching components were found/.test(yes.data.answer.content),
+        'staging-unmatched-components-not-explained');
+    }
+  }else{
+    assert(components.length>0,'staging-no-verified-components');
+  }
+  assert(/Frontline combined implementation prompt/.test(yes.data.answer.content),
+    'staging-no-usable-yes-combination');
   const saved=await get('/api/projects/'+id);
   assert(saved.code===200&&saved.data.project.messages?.length===4,'staging-messages-not-persisted');
   assert(links.length>0,'staging-no-verified-designs-from-real-publishers');
