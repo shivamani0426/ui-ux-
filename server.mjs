@@ -11,7 +11,7 @@ import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
 import {selectPublisherComponents} from './published-component-selection.mjs';
 import {matchPublishedComponents} from './publisher-semantic-matcher.mjs';
-import {planSourceQueries,fallbackSourceQueries} from './publisher-source-query-plan.mjs';
+import {planResilientPublisherQueries} from './publisher-workflow-queries.mjs';
 import {evaluatePublisherSources} from './publisher-semantic-evaluation.mjs';
 import {searchScreenroveReferences} from './screenrove-publisher.mjs';
 import {formatSourceDiscovery,formatSourceCombination,shownSourceReferences,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
@@ -181,21 +181,14 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
   }):!forSimpleChat?Promise.resolve({status:'not-requested',matches:[]}):
     process.env.NODE_ENV==='test'&&process.env.FRONTLINE_SCREENROVE_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]}):
-    planSourceQueries(project.brief,{
-      // Test suites use controlled publisher fixtures; Render's configured
-      // production AI keys must never turn regression tests into live calls.
-      model:process.env.NODE_ENV==='test'?null:
-        brief=>designAiReply({brief,task:'source-query',messages:[],styles:[]})
-    }).then(queries=>{
-      const fallback=fallbackSourceQueries(project.brief);
-      // Two different search strategies: the model's task-to-UI query and a
-      // privacy-safe subject-based alternative. The publisher, not AI, supplies
-      // the authentic links; a separate AI judge checks actual suitability.
-      return searchScreenroveReferences({
-        ...queries,appQueries:[fallback.appQuery],landingQueries:[fallback.landingQuery],
-        brief:project.brief
-      },{candidateMode:true,limitPerKind:6});
-    }).catch(()=>({status:'unavailable',matches:[]}));
+    // Search generic UI jobs first. Reserve the one unreliable free-model
+    // request for judging verified source suitability instead of burning time
+    // on a second, sequential AI call merely to invent search keywords.
+    Promise.resolve(planResilientPublisherQueries(project.brief))
+      .then(queries=>searchScreenroveReferences({
+        ...queries,brief:project.brief
+      },{candidateMode:true,limitPerKind:6}))
+      .catch(()=>({status:'unavailable',matches:[]}));
   const [discovery,screenrove,components,aceternity,raw,picks,personalTags]=await Promise.all([
     discoveryRequest,screenroveRequest,
     componentsRequest,aceternityRequest,
