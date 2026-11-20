@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {rankPublisherEvidence} from './publisher-evidence-relevance.mjs';
 
 // Official publisher MCP: https://screenrove.com/agents
 // Read-only Screenrove tools, with no key, account, scraping or guessed URLs.
@@ -118,11 +119,11 @@ export function verifiedScreenroveReference(search,detail,expectedKind){
   };
 }
 export function clearScreenroveCacheForTests(){cache.clear();pending.clear();}
-export async function searchScreenroveReferences({appQuery,landingQuery}={},{
+export async function searchScreenroveReferences({appQuery,landingQuery,brief=''}={},{
   transport=fetch,now=()=>Date.now(),limitPerKind=2}={}){
   const app=clean(appQuery,105),landing=clean(landingQuery,105);
   if(!app&&!landing)return {status:'no-queries',matches:[],providerStatus:[]};
-  const key=crypto.createHash('sha256').update(app+'|'+landing).digest('hex');
+  const key=crypto.createHash('sha256').update(app+'|'+landing+'|'+clean(brief,7000)).digest('hex');
   const cached=cache.get(key);
   if(cached&&cached.expires>now())return cached.result;
   if(pending.has(key))return pending.get(key);
@@ -138,19 +139,24 @@ export async function searchScreenroveReferences({appQuery,landingQuery}={},{
           return {kind,found:entriesFrom(response).slice(0,Math.min(8,limitPerKind*3)),status:'ready'};
         }catch{return {kind,found:[],status:'unavailable'};}
       }));
-      const matches=[];
-      for(const search of searches){
-        // Search results are insufficient provenance for an exact screen URL:
-        // get_screen must return or corroborate an official reference page.
-        for(const item of search.found){
-          if(matches.filter(x=>x.designType===(search.kind==='product'?'application-ui':'landing-page')).length>=limitPerKind)break;
-          let record;
-          try{record=detailFrom(await client.call('get_screen',{screenId:item.id}));}
-          catch{continue;}
-          const verified=verifiedScreenroveReference(item,record,search.kind);
-          if(verified&&!matches.some(x=>x.site===verified.site))matches.push(verified);
-        }
-      }
+      // Search metadata is evidence for candidate relevance, not URL
+      // provenance. Rank the entire returned set before opening individual
+      // screens, instead of blindly taking the first two (including 404s).
+      const context=brief||app+' '+landing;
+      const grouped=await Promise.all(searches.map(async search=>{
+        const ranked=rankPublisherEvidence(context,search.found.map(item=>({
+          ...item,name:item.title||item.name,summary:item.notes||item.description||''
+        })),{limit:Math.max(4,limitPerKind*2)});
+        // Only a confirmed detail response may furnish the exact original URL.
+        const detailed=await Promise.all(ranked.map(async item=>{
+          try{
+            const record=detailFrom(await client.call('get_screen',{screenId:item.id}));
+            return verifiedScreenroveReference(item,record,search.kind);
+          }catch{return null;}
+        }));
+        return rankPublisherEvidence(context,detailed.filter(Boolean),{limit:limitPerKind});
+      }));
+      const matches=[...new Map(grouped.flat().map(x=>[x.site,x])).values()];
       const result={status:matches.length?'ready':searches.some(x=>x.status==='unavailable')?'unavailable':'no-matches',
         matches,providerStatus:searches.map(x=>({id:'screenrove-'+x.kind,status:x.status,
           count:matches.filter(m=>m.designType===(x.kind==='product'?'application-ui':'landing-page')).length}))};

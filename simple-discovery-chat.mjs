@@ -1,5 +1,6 @@
 // Public-facing, source-first conversation. No invented publisher prompts or URLs.
 import {validScreenrovePage} from './screenrove-publisher.mjs';
+import {rankPublisherEvidence} from './publisher-evidence-relevance.mjs';
 const HOSTS={
   'Kage':new Set(['kage.design']),
   'React Bits':new Set(['reactbits.dev','www.reactbits.dev']),
@@ -85,36 +86,21 @@ export function matchingPublisherDesigns(brief,matches){
   });
   return [...screenrove,...selected];
 }
-// A verified link establishes authenticity, not task relevance. This small
-// universal quality gate removes clear mismatches without inventing sources or
-// turning the engine into a catalogue of memorized prompt categories.
-const meaningfulWords=text=>new Set((String(text||'').toLowerCase().match(/[a-z]{4,}/g)||[])
-  .filter(w=>!new Set(['design','website','application','users','user','create','build','with',
-    'from','their','about','would','should','home','page','landing','pricing','product',
-    'platform','software','powered','original','features','interface','service',
-    'make','interactive','using','this','that','your','there','have','more']).has(w)));
-function evidenceMatchesBrief(brief,item){
-  const title=String(item?.name||'');
-  if(/\b(pricing|plans|upgrade|subscription tier)\b/i.test(title)&&
-    !/\b(pricing|subscription|plans|billing|monetization|paid tiers|membership fees)\b/i.test(brief))
-    return false;
-  if(item.provider!=='Kage')return true;
-  const query=meaningfulWords(brief),titleWords=meaningfulWords(title);
-  // For Kage's publisher-authored landing pages, require at least one
-  // distinctive topic term in the title, not merely "AI", "product", or "landing".
-  return [...titleWords].some(word=>query.has(word));
-}
+// Authenticity and relevance are distinct checks. Preserve only real
+// publisher links with evidence tying the screen to this user's tasks.
 export function shownSourceReferences(sources,{brief=''}={}){
   if(!Array.isArray(sources?.applicationMatches)||!Array.isArray(sources?.landingMatches))
     return null;
-  const applicationMatches=sources.applicationMatches.filter(x=>x.provider==='Screenrove'&&
-    x.designType==='application-ui'&&trustedPublisherLink(x)&&evidenceMatchesBrief(brief,x)).slice(0,2);
-  const landingMatches=sources.landingMatches.filter(x=>trustedPublisherLink(x)&&
-    evidenceMatchesBrief(brief,x)&&(
-      x.provider==='Screenrove'&&x.designType==='landing-page'||
-      x.provider==='Kage'&&matchingPublisherDesigns(brief,[x]).length>0
-    )).slice(0,3);
-  return {applicationMatches,landingMatches};
+  const applications=sources.applicationMatches.filter(x=>
+    x.provider==='Screenrove'&&x.designType==='application-ui'&&trustedPublisherLink(x));
+  const landings=sources.landingMatches.filter(x=>trustedPublisherLink(x)&&(
+    x.provider==='Screenrove'&&x.designType==='landing-page'||
+    x.provider==='Kage'&&matchingPublisherDesigns(brief,[x]).length>0
+  ));
+  return {
+    applicationMatches:rankPublisherEvidence(brief,applications,{limit:2}),
+    landingMatches:rankPublisherEvidence(brief,landings,{limit:3})
+  };
 }
 export function formatSourceDiscovery(sources,{brief=''}={}){
   // Screenrove reports real in-app and marketing screen captures separately.

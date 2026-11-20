@@ -36,7 +36,7 @@ const fakeTransport=async(url,options)=>{
         [{id:'observed-product',kind:'product',product:'Acme',
           title:'Activity analytics dashboard',notes:'Task cards and progress metrics'}]:
         [{id:'observed-marketing',kind:'marketing',product:'Acme',
-          title:'Community product landing page',notes:'A clear benefits-first page'}];
+          title:'Community volunteer welcome page',notes:'Community volunteer membership welcome benefits'}];
       return asJson({structuredContent:{total:1,screens:list}});
     }
     if(request.params.name==='get_screen'){
@@ -55,7 +55,7 @@ test('read-only official Screenrove MCP gives genuine application and landing UR
   clearScreenroveCacheForTests();
   const result=await searchScreenroveReferences({
     appQuery:'activity analytics dashboard',
-    landingQuery:'community service landing page'
+    landingQuery:'community volunteer service landing page'
   },{transport:fakeTransport,now:()=>100000});
   assert.equal(result.status,'ready');
   assert.equal(result.matches.length,2);
@@ -65,7 +65,7 @@ test('read-only official Screenrove MCP gives genuine application and landing UR
   assert.equal(result.matches[0].site,'https://screenrove.com/dashboards/acme-product-home');
   assert.equal(result.matches[1].site,'https://screenrove.com/landing-pages?open=acme-marketing-home');
   const again=await searchScreenroveReferences({
-    appQuery:'activity analytics dashboard',landingQuery:'community service landing page'
+    appQuery:'activity analytics dashboard',landingQuery:'community volunteer service landing page'
   },{transport:async()=>{throw Error('cache should prevent extra source calls');},now:()=>100100});
   assert.deepEqual(again.matches,result.matches);
 });
@@ -103,16 +103,18 @@ test('unseen projects use general-purpose model query planning, not memorized pr
   }
   assert.equal(parseSourceQueries('{"application":"task dashboard","landing":"benefit page"}').status,'ai-queries');
   assert.equal(parseSourceQueries('{"application":"https://evil.com","landing":null}'),null);
-  assert.equal(fallbackSourceQueries(examples[0]).status,'generic-query-fallback');
+  assert.equal(fallbackSourceQueries(examples[0]).status,'subject-query-fallback');
+  assert.match(fallbackSourceQueries(examples[0]).appQuery,/smog/);
+  assert.doesNotMatch(fallbackSourceQueries(examples[0]).appQuery,/overview dashboard/);
 });
 test('publisher references shown in separate application and landing sections; components are opt-in',()=>{
   const sources=[
-    {provider:'Screenrove',name:'Activity analytics dashboard',
+    {provider:'Screenrove',name:'Winter smog family routine dashboard',
       site:'https://screenrove.com/dashboards/acme-product-home',publisherVerified:true,
-      sourceKind:'inspiration',designType:'application-ui',summary:'Task cards and progress metrics'},
-    {provider:'Screenrove',name:'Community landing page',
+      sourceKind:'inspiration',designType:'application-ui',summary:'Winter smog guidance for families and routines'},
+    {provider:'Screenrove',name:'Winter smog family guide landing page',
       site:'https://screenrove.com/landing-pages?open=acme-marketing-home',publisherVerified:true,
-      sourceKind:'inspiration',designType:'landing-page',summary:'Benefits-first content'}
+      sourceKind:'inspiration',designType:'landing-page',summary:'Smog advice for families and communities'}
   ];
   const screen={applicationMatches:[sources[0]],landingMatches:[sources[1]],
     matches:sources,screenroveStatus:'ready',
