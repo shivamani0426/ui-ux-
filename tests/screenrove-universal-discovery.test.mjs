@@ -109,9 +109,9 @@ test('unseen projects use general-purpose model query planning, not memorized pr
 });
 test('publisher references shown in separate application and landing sections; components are opt-in',()=>{
   const sources=[
-    {provider:'Screenrove',name:'Urban smog air quality dashboard',
+    {provider:'Screenrove',name:'Winter smog family routine dashboard',
       site:'https://screenrove.com/dashboards/acme-product-home',publisherVerified:true,
-      sourceKind:'inspiration',designType:'application-ui',summary:'Smog levels and air pollution metrics'},
+      sourceKind:'inspiration',designType:'application-ui',summary:'Winter smog guidance for families and routines'},
     {provider:'Screenrove',name:'Winter smog family guide landing page',
       site:'https://screenrove.com/landing-pages?open=acme-marketing-home',publisherVerified:true,
       sourceKind:'inspiration',designType:'landing-page',summary:'Smog advice for families and communities'}
