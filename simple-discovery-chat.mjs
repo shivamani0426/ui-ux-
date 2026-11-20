@@ -85,16 +85,43 @@ export function matchingPublisherDesigns(brief,matches){
   });
   return [...screenrove,...selected];
 }
-export function formatSourceDiscovery(sources,{brief=''}={}){
-  // Screenrove reports real in-app and marketing screen captures separately.
-  // No components are shown until the visitor explicitly opts in.
-  if(Array.isArray(sources?.applicationMatches)&&Array.isArray(sources?.landingMatches)){
-    const app=sources.applicationMatches.filter(x=>x.provider==='Screenrove'&&
-      x.designType==='application-ui'&&trustedPublisherLink(x)).slice(0,2);
-    const landing=sources.landingMatches.filter(x=>trustedPublisherLink(x)&&(
+// A verified link establishes authenticity, not task relevance. This small
+// universal quality gate removes clear mismatches without inventing sources or
+// turning the engine into a catalogue of memorized prompt categories.
+const meaningfulWords=text=>new Set((String(text||'').toLowerCase().match(/[a-z]{4,}/g)||[])
+  .filter(w=>!new Set(['design','website','application','users','user','create','build','with',
+    'from','their','about','would','should','home','page','landing','pricing','product',
+    'platform','software','powered','original','features','interface','service',
+    'make','interactive','using','this','that','your','there','have','more']).has(w)));
+function evidenceMatchesBrief(brief,item){
+  const title=String(item?.name||'');
+  if(/\\b(pricing|plans|upgrade|subscription tier)\\b/i.test(title)&&
+    !/\\b(pricing|subscription|plans|billing|monetization|paid tiers|membership fees)\\b/i.test(brief))
+    return false;
+  if(item.provider!=='Kage')return true;
+  const query=meaningfulWords(brief),titleWords=meaningfulWords(title);
+  // For Kage's publisher-authored landing pages, require at least one
+  // distinctive topic term in the title, not merely "AI", "product", or "landing".
+  return [...titleWords].some(word=>query.has(word));
+}
+export function shownSourceReferences(sources,{brief=''}={}){
+  if(!Array.isArray(sources?.applicationMatches)||!Array.isArray(sources?.landingMatches))
+    return null;
+  const applicationMatches=sources.applicationMatches.filter(x=>x.provider==='Screenrove'&&
+    x.designType==='application-ui'&&trustedPublisherLink(x)&&evidenceMatchesBrief(brief,x)).slice(0,2);
+  const landingMatches=sources.landingMatches.filter(x=>trustedPublisherLink(x)&&
+    evidenceMatchesBrief(brief,x)&&(
       x.provider==='Screenrove'&&x.designType==='landing-page'||
       x.provider==='Kage'&&matchingPublisherDesigns(brief,[x]).length>0
     )).slice(0,3);
+  return {applicationMatches,landingMatches};
+}
+export function formatSourceDiscovery(sources,{brief=''}={}){
+  // Screenrove reports real in-app and marketing screen captures separately.
+  // No components are shown until the visitor explicitly opts in.
+  const shown=shownSourceReferences(sources,{brief});
+  if(shown){
+    const app=shown.applicationMatches,landing=shown.landingMatches;
     const sections=[];
     const take=(label,items)=>{
       let used=0;
@@ -148,17 +175,15 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
   return text+'\n\n**Would you like the best combination of UI/UX designs and components?** Reply **Yes** or **No**.';
 }
 export function formatSourceCombination(sources,{brief=''}={}){
-  const designs=(Array.isArray(sources?.applicationMatches)&&Array.isArray(sources?.landingMatches)?
-    [...sources.applicationMatches.slice(0,2),...sources.landingMatches.filter(x=>
-      x.provider==='Screenrove'&&x.designType==='landing-page'||
-      x.provider==='Kage'&&matchingPublisherDesigns(brief,[x]).length>0).slice(0,3)]:
+  const shown=shownSourceReferences(sources,{brief});
+  const designs=(shown?[...shown.applicationMatches,...shown.landingMatches]:
     matchingPublisherDesigns(brief,sources?.matches).slice(0,3))
     .filter(x=>trustedPublisherLink(x)).slice(0,5);
   const components=(sources?.componentMatches||[]).filter(x=>trustedPublisherLink(x)).slice(0,5);
   const designRows=designs.map((item,i)=>
     (i+1)+'. **'+clean(item.name)+'** — '+item.provider+
     '\n[Open original publisher page]('+trustedPublisherLink(item)+')'+
-    (verifiedOriginal(item)?'\nOriginal publisher prompt: already displayed above.':
+    (verifiedOriginal(item)||item.originalPromptStatus==='verified-publisher'?'\nOriginal publisher prompt: already displayed above.':
       item.provider==='Screenrove'?'\nReal screen reference (no publisher design prompt).':
       '\nOriginal publisher prompt: not available or not verified.')).join('\n\n');
   const componentRows=components.map(item=>
