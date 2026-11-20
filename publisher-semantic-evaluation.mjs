@@ -10,11 +10,11 @@ const cache=new Map();
 const text=(value,limit=200)=>String(value??'')
   .replace(/[\u0000-\u001f\u007f<>|]/g,' ').replace(/\s+/g,' ').trim().slice(0,limit);
 const kind=x=>x.provider==='Kage'?'landing-page':x.designType;
-const candidatesOf=items=>{
+const candidatesOf=(items,brief='')=>{
   const seen=new Set();
   return (Array.isArray(items)?items:[]).filter(item=>{
     if(!item||!['application-ui','landing-page'].includes(kind(item))||
-       !trustedPublisherLink(item)||isUnusablePublisherPage(item))return false;
+       !trustedPublisherLink(item)||isUnusablePublisherPage(item,brief))return false;
     if(seen.has(item.site))return false;
     seen.add(item.site);return true;
   }).slice(0,28);
@@ -28,7 +28,7 @@ export function publisherCandidateCatalog(items){
       .join(' | ');
   }).join('\n').slice(0,15_000);
 }
-export function parsePublisherEvaluation(answer,items,{maxApp=2,maxLanding=3}={}){
+export function parsePublisherEvaluation(answer,items,{maxApp=2,maxLanding=3,brief=''}={}){
   const raw=typeof answer==='string'?answer:answer?.text;
   if(typeof raw!=='string'||raw.length>14_000)return null;
   try{
@@ -43,7 +43,7 @@ export function parsePublisherEvaluation(answer,items,{maxApp=2,maxLanding=3}={}
          choice.index>=items.length||seen.has(choice.index))continue;
       seen.add(choice.index);
       const item=items[choice.index];
-      if(isUnusablePublisherPage(item))continue;
+      if(isUnusablePublisherPage(item,brief))continue;
       // A usable pattern must be genuinely applicable, not a visual
       // resemblance or merely two shared buzzwords.
       if(!Number.isInteger(choice.fit)||choice.fit<4||choice.fit>5)continue;
@@ -59,7 +59,7 @@ export function parsePublisherEvaluation(answer,items,{maxApp=2,maxLanding=3}={}
   }catch{return null;}
 }
 export async function evaluatePublisherSources(brief,candidates,{model=null,now=()=>Date.now()}={}){
-  const pool=candidatesOf(candidates);
+  const pool=candidatesOf(candidates,brief);
   if(!pool.length)return {applicationMatches:[],landingMatches:[],
     status:'no-verified-candidates',inspected:0};
   const fingerprint=crypto.createHash('sha256').update(String(brief||'').slice(0,7000)+
@@ -70,7 +70,7 @@ export async function evaluatePublisherSources(brief,candidates,{model=null,now=
     try{
       const raw=await model({brief:String(brief||'').slice(0,7000),
         sourceCatalog:publisherCandidateCatalog(pool)});
-      const parsed=parsePublisherEvaluation(raw,pool);
+      const parsed=parsePublisherEvaluation(raw,pool,{brief});
       if(parsed){
         if(cache.size>=48)cache.delete(cache.keys().next().value);
         cache.set(fingerprint,{expiry:now()+TTL_MS,value:parsed});
