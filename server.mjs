@@ -14,6 +14,7 @@ import {matchPublishedComponents} from './publisher-semantic-matcher.mjs';
 import {planSourceQueries} from './publisher-source-query-plan.mjs';
 import {searchScreenroveReferences} from './screenrove-publisher.mjs';
 import {formatSourceDiscovery,formatSourceCombination,shownSourceReferences,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
+import {normalizedPublisherSourceRows,snapshotPublisherReferences} from './publisher-source-persistence.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
@@ -99,10 +100,8 @@ async function listReferences(){
 async function storeDiscoveredReferences(rows){
   if(!Array.isArray(rows)||!rows.length)return;
   if(!pg){for(const row of rows)memoryLiveReferences.set(row.id,row);return;}
-  const safe=rows.map(r=>({
-    id:r.id,name:r.name,site:r.site,category:r.category,
-    tags:r.tags||[],styles:r.styles||[],provider:r.provider||'',kind:r.sourceKind||''
-  }));
+  const safe=normalizedPublisherSourceRows(rows);
+  if(!safe.length)return;
   await pg.query(`INSERT INTO frontline.design_sources
     (id,name,site,category,tags,styles,summary,active,is_live_discovered,source_provider,source_kind,source_indexed_at)
     SELECT x.id,x.name,x.site,x.category,x.tags,x.styles,'',true,true,x.provider,x.kind,NOW()
@@ -215,7 +214,10 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
     }):null;
   const shortlisted=forSimpleChat?(semantic?.matches||[]):null;
   const current=[...discovery.matches,...(screenrove.matches||[]),...(shortlisted||[...components.matches,...aceternity.matches])];
-  if(current.length)await storeDiscoveredReferences(current);
+  // Public chat merely displays publisher links and stores them in the
+  // owner's message history. It must not depend on a non-essential global
+  // design-board index write (the old Yes crash originated here).
+  if(current.length&&!forSimpleChat)await storeDiscoveredReferences(current);
   const saved=await savedSourceRows(owner,project.id);
   const seen=new Set(current.map(x=>x.id));
   // Saved sources can stay visible if the publisher is temporarily
@@ -1299,14 +1301,7 @@ const server=http.createServer(async(req,res)=>{
             // unchanged in the subsequent consent response, across requests.
             const chosen=flowStage==='offer-combination'&&sources?
               shownSourceReferences(sources,{brief:p.brief}):null;
-            const snapshot=chosen?Object.fromEntries(Object.entries(chosen).map(([group,items])=>[
-              group,items.map(x=>({
-                id:x.id,name:x.name,site:x.site,provider:x.provider,sourceKind:x.sourceKind,
-                designType:x.designType,publisherVerified:x.publisherVerified,
-                originalPromptStatus:x.originalPromptStatus,
-                summary:String(x.summary||'').slice(0,230)
-              }))
-            ])):null;
+            const snapshot=chosen?snapshotPublisherReferences(chosen):null;
             const assistant={role:'assistant',content,source:'publisher',flowStage,
               ...(snapshot?{sourceSnapshot:snapshot}:{}),time:new Date().toISOString()};
             messages.push(assistant);
