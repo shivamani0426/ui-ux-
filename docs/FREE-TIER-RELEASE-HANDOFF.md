@@ -36,3 +36,8 @@
 5. **Final live acceptance** cannot pass before the exact new revision is deployed.
 
 No account payment, production environment mutation, merge, or deployment has occurred as part of this handoff.
+
+## CI budget protection
+- While PR #71 is **draft**, free-quota-consuming real Groq, NVIDIA and current-production baseline checks are intentionally **skipped** on ordinary edits; build, unit, publisher-fixture, PostgreSQL and Chromium/Firefox smoke tests continue.
+- A **ready-for-review** transition (GitHub PR screen) or an authorized `workflow_dispatch` triggers those real integration checks for the candidate. **Do not mark ready unless you intend to consume a few free inference calls.**
+- When the PR is marked ready, live-baseline acceptance may still be red because main is still the old OpenRouter deployment. The new deployed SHA must be checked after the controlled release; never treat a skipped or expected-red job as proof of production readiness.

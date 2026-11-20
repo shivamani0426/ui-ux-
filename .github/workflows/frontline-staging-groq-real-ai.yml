@@ -2,10 +2,11 @@ name: Frontline candidate Groq + NVIDIA recovery + Yes end-to-end gate
 on:
   pull_request:
     branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
   workflow_dispatch:
 jobs:
   candidate-real-ai:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'qa/full-release-') || startsWith(github.head_ref, 'release/') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (startsWith(github.head_ref, 'qa/full-release-') || startsWith(github.head_ref, 'release/'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

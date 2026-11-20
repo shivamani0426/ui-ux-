@@ -1,5 +1,7 @@
 # Frontline UX/UI — immersive design intelligence studio (formerly UI Compass)
 
+> **Current free-only recovery candidate (21 Nov 2026):** The deployed `main` app still uses legacy OpenRouter. Draft [PR #71](https://github.com/shivamani0426/ui-ux-/pull/71) tests **Groq** as primary, with **NVIDIA's hosted trial for isolated testing only**. No paid plan, licensing change, key transfer, merge or production deploy is authorized. See the [free-tier release handoff](docs/FREE-TIER-RELEASE-HANDOFF.md) before using earlier historical OpenRouter instructions below. Real AI and production-baseline CI checks are intentionally reserved for release review to conserve free quota.
+
 A responsive UI/UX design recommendation workspace. Tell it what you want to build, compare **all three** original UI styles, record feedback and return later to continue your design decisions.
 
 ## What's in v0.4
