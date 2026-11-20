@@ -1,0 +1,25 @@
+name: Frontline predeploy real AI semantic acceptance
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  grounded-free-model:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'qa/full-release-') || startsWith(github.head_ref, 'release/') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      FRONTLINE_REAL_AI_ACCEPTANCE: '1'
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: openrouter/free
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install server dependencies without running unrelated tests
+        run: npm install --omit=dev --ignore-scripts
+      - name: Verify actual free model ranks verified original publisher screens
+        run: node tests/real-semantic-provider-acceptance.mjs
