@@ -118,12 +118,15 @@ const configured=env=>({gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_
 let openRouterCooldownUntil=0;
 // Free NVIDIA NIM shares a hosted capacity pool. Respect provider 429 windows.
 let nvidiaCooldownUntil=0;
+// A rate-limited Groq organization must not be bombarded by repeated source/Yes calls.
+let groqCooldownUntil=0;
 const freeRetryBudget=(env,model)=>{
   const value=Number(env.OPENROUTER_MAX_ATTEMPTS);
   if(Number.isInteger(value)&&value>=1&&value<=3)return value;
   return model==='openrouter/free'||model.endsWith(':free')?1:2;
 };
-const safeFailureKind=error=>error?.httpStatus===429?'rate-limited':
+const safeFailureKind=error=>error?.httpStatus===429?
+  error.category==='billing-required'?'billing-required':'rate-limited':
   ['TimeoutError','AbortError'].includes(error?.name)?'timeout':
   [502,503,504].includes(error?.httpStatus)?'upstream-busy':
   error?.message==='provider-incomplete-content'?'incomplete-output':
@@ -138,8 +141,10 @@ export function aiConfig(env=process.env){
   const primary=supported.includes(env.AI_PRIMARY_PROVIDER)?env.AI_PRIMARY_PROVIDER:'openrouter';
   // Gemini remains supported but must not be retried automatically after
   // the user selected Groq as the explicitly configured secondary provider.
+  // Never choose OpenRouter implicitly when the operator explicitly moves to
+  // Groq or NVIDIA. Backups involving user prompts require named approval.
   const requested=supported.includes(env.AI_FALLBACK_PROVIDER)
-    ?env.AI_FALLBACK_PROVIDER:(primary==='openrouter'?'groq':'openrouter');
+    ?env.AI_FALLBACK_PROVIDER:(primary==='openrouter'?'groq':null);
   const fallback=requested===primary?null:requested;
   const any=Object.values(providers).some(Boolean);
   return {
@@ -499,6 +504,11 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
   });
   const handlers={gemini:geminiReply,openrouter:openRouterReply,groq:groqReply,nvidia:nvidiaReply};
   for(const provider of order){
+    if(provider==='groq'&&request===fetch&&groqCooldownUntil>Date.now()){
+      onFailure?.({reason:'rate-limited',retryAfterSeconds:
+        Math.max(1,Math.ceil((groqCooldownUntil-Date.now())/1000))});
+      continue;
+    }
     if(provider==='nvidia'&&request===fetch&&nvidiaCooldownUntil>Date.now()){
       onFailure?.({reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((nvidiaCooldownUntil-Date.now())/1000))});
       continue;
@@ -511,13 +521,17 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
       return await handlers[provider]({brief,messages,styles,task,env,request,designPreferences,sourceCatalog});
     }catch(err){
       const reason=safeFailureKind(err);
+      if(provider==='groq'&&request===fetch&&['rate-limited','billing-required'].includes(reason))
+        groqCooldownUntil=Math.max(groqCooldownUntil,Date.now()+
+          (reason==='billing-required'?900:err.retryAfterSeconds||90)*1000);
       if(provider==='nvidia'&&request===fetch&&reason==='rate-limited')
         nvidiaCooldownUntil=Math.max(nvidiaCooldownUntil,Date.now()+(err.retryAfterSeconds||90)*1000);
       if(provider==='openrouter'&&request===fetch&&reason==='rate-limited'){
         const seconds=err.retryAfterSeconds||90;
         openRouterCooldownUntil=Math.max(openRouterCooldownUntil,Date.now()+seconds*1000);
       }
-      onFailure?.({reason,retryAfterSeconds:reason==='rate-limited'?err.retryAfterSeconds||90:0});
+      onFailure?.({reason,retryAfterSeconds:
+        reason==='billing-required'?900:reason==='rate-limited'?err.retryAfterSeconds||90:0});
       console.warn('Frontline AI provider unavailable:',provider,errorKind(err));
     }
   }

@@ -50,7 +50,7 @@ test('Gemini receives server-only key, original project brief and role-mapped co
 
 test('OpenRouter gets same project when Gemini fails, only with explicit fallback permission',async()=>{
   const calls=[];
-  const env={GEMINI_API_KEY:'gemini-key',OPENROUTER_API_KEY:'openrouter-key',AI_PRIMARY_PROVIDER:'gemini',AI_FALLBACK_ENABLED:'true'};
+  const env={GEMINI_API_KEY:'gemini-key',OPENROUTER_API_KEY:'openrouter-key',AI_PRIMARY_PROVIDER:'gemini',AI_FALLBACK_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'true'};
   const answer=await designAiReply({brief,messages,styles,env,request:async(url,init)=>{
     calls.push({url,init});
     return url.includes('generativelanguage.googleapis.com')
@@ -590,4 +590,35 @@ test('Groq free-model ordinary chat does not impose JSON formatting on human exp
   },request:async(_,init)=>{payload=JSON.parse(init.body);return openRouterOk('A clear useful dashboard design.')}});
   assert.equal(r?.provider,'groq');
   assert.equal(payload.response_format,undefined);
+});
+
+test('Switching Frontline to Groq never silently routes users to an old OpenRouter key',async()=>{
+  const config=aiConfig({AI_PRIMARY_PROVIDER:'groq',OPENROUTER_API_KEY:'legacy',
+    AI_FALLBACK_ENABLED:'true'});
+  assert.equal(config.aiPrimary,'groq');
+  assert.equal(config.aiFallbackProvider,null);
+  let calls=0;
+  const answer=await designAiReply({brief,messages:[],env:{
+    AI_PRIMARY_PROVIDER:'groq',OPENROUTER_API_KEY:'legacy',AI_FALLBACK_ENABLED:'true'
+  },request:async()=>{calls++;return openRouterOk('Unsafe implicit provider transfer')}});
+  assert.equal(answer,null);
+  assert.equal(calls,0);
+});
+test('Groq billing-required is surfaced safely and never causes another unauthorized provider request',async()=>{
+  const failures=[],visited=[];
+  const env={GROQ_API_KEY:'groq-billing-test-key',OPENROUTER_API_KEY:'legacy',
+    AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'};
+  const warn=console.warn,notices=[];console.warn=(...parts)=>notices.push(parts.join(' '));
+  try{
+    const answer=await designAiReply({brief,messages:[],env,
+      onFailure:value=>failures.push(value),request:async(url)=>{
+        visited.push(url);return response(429,{error:{
+          message:'Billing required; private key groq-billing-test-key'}})}});
+    assert.equal(answer,null);
+    assert.equal(visited.length,1);
+    assert.equal(new URL(visited[0]).host,'api.groq.com');
+    assert.equal(failures[0].reason,'billing-required');
+    assert.equal(failures[0].retryAfterSeconds,900);
+    assert.ok(!notices.join(' ').includes('groq-billing-test-key'));
+  }finally{console.warn=warn}
 });
