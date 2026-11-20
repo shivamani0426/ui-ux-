@@ -14,8 +14,15 @@ test('Chat API returns actual publisher component links only after explicit Yes'
   const previous=globalThis.fetch;
   const rbFlag=process.env.FRONTLINE_REACTBITS_TEST_MOCK;
   const acFlag=process.env.FRONTLINE_ACETERNITY_TEST_MOCK;
+  const originalAiKey=process.env.OPENROUTER_API_KEY;
+  const originalAiProvider=process.env.AI_PRIMARY_PROVIDER;
+  // Reproduce Render, which has a real AI key during npm postinstall tests.
+  // The public browser/API integration tests must stay deterministic.
+  process.env.OPENROUTER_API_KEY='test-dummy-key-not-for-network';
+  process.env.AI_PRIMARY_PROVIDER='openrouter';
   process.env.FRONTLINE_REACTBITS_TEST_MOCK='1';
   process.env.FRONTLINE_ACETERNITY_TEST_MOCK='1';
+  let unintendedAiCalls=0;
 
   const officialReactEntries=[
     'https://reactbits.dev/micro/prompt-bar',
@@ -36,6 +43,10 @@ test('Chat API returns actual publisher component links only after explicit Yes'
       categories:['component'],
       documentationUrl:'https://ui.aceternity.com/components/'+name}))};
   globalThis.fetch=(url,options)=>{
+    if(String(url).includes('openrouter.ai')){
+      unintendedAiCalls++;
+      throw Error('Test unexpectedly called external AI despite NODE_ENV=test');
+    }
     if(String(url)==='https://reactbits.dev/sitemap.xml')
       return Promise.resolve(new Response(sitemap,{status:200,
         headers:{'Content-Type':'application/xml'}}));
@@ -76,8 +87,13 @@ test('Chat API returns actual publisher component links only after explicit Yes'
     assert.match(answer,/ui.aceternity.com\/components\/card-hover-effect/);
     assert.doesNotMatch(answer,/squiggly-text|canvas-text/);
     assert.doesNotMatch(answer,/Original prompt: see publisher page \(too long/);
+    assert.equal(unintendedAiCalls,0,'Production AI secrets must not affect test fixture matching');
   }finally{
     globalThis.fetch=previous;
+    if(originalAiKey===undefined)delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY=originalAiKey;
+    if(originalAiProvider===undefined)delete process.env.AI_PRIMARY_PROVIDER;
+    else process.env.AI_PRIMARY_PROVIDER=originalAiProvider;
     if(rbFlag===undefined)delete process.env.FRONTLINE_REACTBITS_TEST_MOCK;
     else process.env.FRONTLINE_REACTBITS_TEST_MOCK=rbFlag;
     if(acFlag===undefined)delete process.env.FRONTLINE_ACETERNITY_TEST_MOCK;
