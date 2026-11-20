@@ -139,7 +139,7 @@ test('large genuine Kage prompts never overflow the combined first-response rend
     applicationMatches:[],
     landingMatches:kage,sourceQualityStatus:'semantic-evaluated',
     screenroveStatus:'ready'
-  },{brief});
+  },{brief:brief+' Include a public exhibition landing page.'});
   assert.ok(result.length<16_000,'All displayed original prompts must fit the renderer');
   assert.match(result,/kage.design\/designs\/heritage-exhibit-1/);
   assert.match(result,/kage.design\/designs\/heritage-exhibit-3/);
