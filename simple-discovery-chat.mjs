@@ -136,8 +136,12 @@ export function formatSourceDiscovery(sources,{brief=''}={}){
     take('Landing-page references',landing);
     if(!sections.length){
       const unavailable=sources.screenroveStatus==='unavailable'||sources?.discovery?.status==='unavailable';
+      const reviewDown=sources.sourceQualityStatus==='metadata-fallback';
       sections.push(unavailable?'Original screen publishers are temporarily unavailable. I could not verify live application or landing-page references.':
-        'No sufficiently relevant original application or landing-page references were verified for this request. I will not invent links or prompts.');
+        reviewDown?'AI relevance checking was temporarily unavailable, and no sufficiently strong publisher-metadata matches were verified. No unrelated pages were substituted.':
+        'No sufficiently relevant original application or landing-page references were verified in the currently available publisher results. I will not invent links or prompts.');
+    }else if(sources.sourceQualityStatus==='metadata-fallback'){
+      sections.push('*AI relevance checking was temporarily unavailable; these links passed only a conservative publisher-metadata check.*');
     }
     return sections.join('\n\n')+
       '\n\n**Would you like matching original UI components with publisher links as well?** Reply **Yes** or **No**.';
