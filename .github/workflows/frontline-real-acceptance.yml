@@ -1,0 +1,31 @@
+name: Frontline genuine live acceptance (release blocker)
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  real-provider-release-gate:
+    # Run only for explicit final-release or QA acceptance PRs, not for every
+    # feature PR. This is a real request to the deployed free model.
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'qa/full-release-') || startsWith(github.head_ref, 'release/') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Live publisher adapter compatibility (no mocked publisher)
+        env:
+          FRONTLINE_LIVE_SCREENROVE_CHECK: '1'
+        run: node --test tests/screenrove-universal-discovery.test.mjs
+      - name: Real model and end-to-end Yes flow on current production baseline
+        # This gate measures the currently deployed release, not the
+        # un-deployed PR code. Staging with the same AI key is still mandatory
+        # before claiming the PR implementation is live-verified.
+        env:
+          LIVE_ACCEPTANCE: '1'
+          FRONTLINE_LIVE_TARGET: https://ui-compass-studio.onrender.com
+        run: node tests/live-source-acceptance.mjs
