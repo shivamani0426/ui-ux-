@@ -95,8 +95,8 @@ const meaningfulWords=text=>new Set((String(text||'').toLowerCase().match(/[a-z]
     'make','interactive','using','this','that','your','there','have','more']).has(w)));
 function evidenceMatchesBrief(brief,item){
   const title=String(item?.name||'');
-  if(/\\b(pricing|plans|upgrade|subscription tier)\\b/i.test(title)&&
-    !/\\b(pricing|subscription|plans|billing|monetization|paid tiers|membership fees)\\b/i.test(brief))
+  if(/\b(pricing|plans|upgrade|subscription tier)\b/i.test(title)&&
+    !/\b(pricing|subscription|plans|billing|monetization|paid tiers|membership fees)\b/i.test(brief))
     return false;
   if(item.provider!=='Kage')return true;
   const query=meaningfulWords(brief),titleWords=meaningfulWords(title);
