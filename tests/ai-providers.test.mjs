@@ -558,3 +558,36 @@ test('NVIDIA reasoning-only answer is not accepted as successful provider output
     assert.equal(result,null);
   }finally{console.warn=original}
 });
+
+test('Groq real source and component selection use strict schema without relaxing semantic relevance thresholds',async()=>{
+  const sent=[];
+  const env={GROQ_API_KEY:'schema-test',AI_PRIMARY_PROVIDER:'groq',GROQ_MODEL:'openai/gpt-oss-20b'};
+  for(const task of ['source-evaluate','component-match','source-query']){
+    const result=await designAiReply({brief,task,sourceCatalog:'0 | Screenrove | Booking calendar | Timeslots',
+      messages:[],env,request:async(_url,init)=>{
+        const payload=JSON.parse(init.body);sent.push(payload);
+        return response(200,{choices:[{message:{content:task==='source-query'?
+          '{"application":"booking calendar","landing":"community services"}':
+          '{"choices":[{"index":0,'+
+          (task==='source-evaluate'?
+            '"fit":5,"reason":"The displayed calendar supports selecting available booking slots."':
+            '"purpose":"Explains the requested booking steps","utility":"functional"')+'}]}'}}]});
+      }});
+    assert.equal(result?.provider,'groq');
+  }
+  assert.equal(sent.length,3);
+  for(const payload of sent){
+    assert.equal(payload.response_format?.type,'json_schema');
+    assert.equal(payload.response_format?.json_schema?.strict,true);
+    assert.equal(payload.response_format?.json_schema?.schema?.additionalProperties,false);
+    assert.ok(!JSON.stringify(payload).includes('schema-test'));
+  }
+});
+test('Groq free-model ordinary chat does not impose JSON formatting on human explanations',async()=>{
+  let payload;
+  const r=await designAiReply({brief,messages:[],env:{
+    GROQ_API_KEY:'test',AI_PRIMARY_PROVIDER:'groq',GROQ_MODEL:'openai/gpt-oss-20b'
+  },request:async(_,init)=>{payload=JSON.parse(init.body);return openRouterOk('A clear useful dashboard design.')}});
+  assert.equal(r?.provider,'groq');
+  assert.equal(payload.response_format,undefined);
+});

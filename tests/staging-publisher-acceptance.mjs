@@ -41,6 +41,7 @@ try{
   const source=first.data.answer;
   assert(source?.flowStage==='offer-combination','staging-first-stage');
   if(REQUIRE_REAL_AI){
+    say('source-review',source.quality?.sourceReview||'missing');
     assert(source.quality?.sourceReview==='semantic-evaluated','staging-semantic-ai-not-proven');
   }else{
     assert(source.quality?.sourceReview==='metadata-fallback'||
@@ -63,6 +64,10 @@ try{
   const components=[...String(yes.data.answer.content).matchAll(/https:\/\/(?:reactbits\.dev|ui\.aceternity\.com)\/[a-z0-9/.-]+/gi)].map(x=>x[0]);
   say('verified-components',String(components.length));
   assert(components.length>0,'staging-no-verified-components');
+  say('component-review',yes.data.answer?.quality?.componentReview||'missing');
+  if(REQUIRE_REAL_AI)assert(
+    yes.data.answer?.quality?.componentReview==='semantic-ranked',
+    'staging-real-ai-component-ranking-not-proven');
   const saved=await get('/api/projects/'+id);
   assert(saved.code===200&&saved.data.project.messages?.length===4,'staging-messages-not-persisted');
   assert(links.length>0,'staging-no-verified-designs-from-real-publishers');

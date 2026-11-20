@@ -355,6 +355,28 @@ async function openRouterReply({brief,messages,styles,task,env,request,designPre
   return {text:answer,source:'ai',provider:'openrouter'};
 }
 
+// Groq GPT-OSS supports strict schema-constrained JSON generation.
+// This is OUTPUT FORMATTING, not an exemption from relevance/source verification.
+const groqResponseFormat=(task,isGptOss)=>{
+  if(!isGptOss)return undefined;
+  if(!['source-evaluate','source-query','component-match'].includes(task))return undefined;
+  let schema;
+  if(task==='source-query')schema={
+    type:'object',properties:{application:{type:'string'},landing:{type:'string'}},
+    required:['application','landing'],additionalProperties:false};
+  else{
+    const properties=task==='source-evaluate'?{
+      index:{type:'integer'},fit:{type:'integer'},reason:{type:'string'}
+    }:{index:{type:'integer'},purpose:{type:'string'},
+      utility:{type:'string',enum:['functional','supporting']}};
+    schema={type:'object',properties:{choices:{type:'array',items:{
+      type:'object',properties,required:Object.keys(properties),additionalProperties:false
+    }}},required:['choices'],additionalProperties:false};
+  }
+  return {type:'json_schema',json_schema:{
+    name:task.replace(/-/g,'_'),strict:true,schema
+  }};
+};
 /** GroqCloud uses an OpenAI-compatible chat endpoint, not OpenRouter. */
 async function groqReply({brief,messages,styles,task,env,request,designPreferences=[],sourceCatalog=''}){
   const configuredModel=env.GROQ_MODEL;
@@ -376,6 +398,7 @@ async function groqReply({brief,messages,styles,task,env,request,designPreferenc
       temperature:['component-match','source-query','source-evaluate'].includes(task)?0.1:task==='prompt'||task==='insight'?0.75:0.65,
       max_completion_tokens:isSourceEvaluation?1350:task==='source-query'?450:task==='component-match'?850:task==='prompt'?5200:task==='insight'?1700:1100,
       ...(isGptOss?{reasoning_effort:'low',include_reasoning:false}:{}),
+      ...(groqResponseFormat(task,isGptOss)?{response_format:groqResponseFormat(task,isGptOss)}:{}),
       messages:[
         {role:'system',content:isSourceEvaluation?SOURCE_EVALUATION_SYSTEM:task==='source-query'?SOURCE_QUERY_SYSTEM:task==='component-match'?COMPONENT_MATCH_SYSTEM:task==='prompt'?DESIGN_PROMPT_SYSTEM:task==='insight'?DESIGN_INSIGHT_SYSTEM:SYSTEM_PROMPT},
         {role:'user',content:isSourceEvaluation?sourceEvaluationContext(brief,sourceCatalog):task==='source-query'?SOURCE_QUERY_CONTEXT(brief):task==='component-match'?componentMatchContext(brief,sourceCatalog):contextMessage(brief,styles,designPreferences)},
