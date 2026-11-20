@@ -448,7 +448,7 @@ test('real shared free key enters a brief 429 cooldown without another upstream 
 
 test('NVIDIA server-only adapter uses the official hosted API and does not expose the key',async()=>{
   const calls=[];
-  const env={NVIDIA_API_KEY:'nvidia-qa-secret',NVIDIA_MODEL:'meta/llama-3.1-8b-instruct',AI_PRIMARY_PROVIDER:'nvidia'};
+  const env={NVIDIA_API_KEY:'nvidia-qa-secret',NVIDIA_MODEL:'nvidia/nemotron-3.5-lightning-30b-a3b',AI_PRIMARY_PROVIDER:'nvidia'};
   const result=await designAiReply({brief,messages:[],styles,task:'source-evaluate',
     sourceCatalog:'0 | application-ui | Screenrove | Shared bookings | Calendar and available reservation slots',
     env,request:async(url,init)=>{
@@ -463,9 +463,10 @@ test('NVIDIA server-only adapter uses the official hosted API and does not expos
   assert.equal(calls[0].url,'https://integrate.api.nvidia.com/v1/chat/completions');
   assert.equal(calls[0].init.headers.Authorization,'Bearer nvidia-qa-secret');
   const body=JSON.parse(calls[0].init.body);
-  assert.equal(body.model,'meta/llama-3.1-8b-instruct');
+  assert.equal(body.model,'nvidia/nemotron-3.5-lightning-30b-a3b');
   assert.equal(body.stream,false);
-  assert.equal(body.max_tokens,1700);
+  assert.equal(body.max_tokens,1800);
+  assert.equal(body.chat_template_kwargs.enable_thinking,false);
   assert.equal(body.messages.length,2);
   assert.match(body.messages[0].content,/genuine publisher design references/);
   assert.match(body.messages[1].content,/Shared bookings/);
@@ -520,4 +521,40 @@ test('NVIDIA configured as missing primary can use an already approved Groq fall
   }});
   assert.equal(answer.provider,'groq');
   assert.deepEqual(calls.map(url=>new URL(url).host),['api.groq.com']);
+});
+
+test('NVIDIA defaults to an official Nemotron model and rejects a different catalog family',async()=>{
+  const bodies=[];
+  for(const model of [undefined,'meta/llama-3.1-8b-instruct']){
+    const env={NVIDIA_API_KEY:'fake-secure',AI_PRIMARY_PROVIDER:'nvidia',NVIDIA_MODEL:model};
+    const result=await designAiReply({brief,messages:[],env,request:async(_url,init)=>{
+      bodies.push(JSON.parse(init.body));return openRouterOk('A complete accessible design analysis.');
+    }});
+    assert.equal(result.provider,'nvidia');
+  }
+  assert.ok(bodies.every(b=>b.model==='nvidia/nemotron-3.5-lightning-30b-a3b'));
+  assert.ok(bodies.every(b=>b.chat_template_kwargs.enable_thinking===false));
+});
+test('NVIDIA chat joins repeated roles into alternating turns and ends with user',async()=>{
+  let body;
+  const result=await designAiReply({brief,task:'chat',env:{NVIDIA_API_KEY:'fake',AI_PRIMARY_PROVIDER:'nvidia'},
+    messages:[
+      {role:'user',content:'First requirement'},
+      {role:'user',content:'Second requirement'},
+      {role:'assistant',content:'I will add a page'},
+      {role:'user',content:'Add equipment list'}
+    ],request:async(_,init)=>{body=JSON.parse(init.body);return openRouterOk('Use a filtered equipment table.')}});
+  assert.equal(result.provider,'nvidia');
+  assert.deepEqual(body.messages.map(x=>x.role),['system','user','assistant','user']);
+  assert.match(body.messages[1].content,/Second requirement/);
+  assert.match(body.messages.at(-1).content,/equipment list/);
+});
+test('NVIDIA reasoning-only answer is not accepted as successful provider output',async()=>{
+  const original=console.warn;console.warn=()=>{};
+  try{
+    const result=await designAiReply({brief,env:{NVIDIA_API_KEY:'fake',AI_PRIMARY_PROVIDER:'nvidia'},
+      request:async()=>response(200,{choices:[{finish_reason:'stop',
+        message:{content:'',reasoning_content:'private invisible reasoning'}}]})});
+    assert.equal(result,null);
+  }finally{console.warn=original}
 });

@@ -114,6 +114,8 @@ const configured=env=>({gemini:!!env.GEMINI_API_KEY,openrouter:!!env.OPENROUTER_
 // The free OpenRouter key is shared by the deployed service. A brief process-local
 // cooldown after HTTP 429 prevents a retry storm. It contains no user data.
 let openRouterCooldownUntil=0;
+// Free NVIDIA NIM shares a hosted capacity pool. Respect provider 429 windows.
+let nvidiaCooldownUntil=0;
 const freeRetryBudget=(env,model)=>{
   const value=Number(env.OPENROUTER_MAX_ATTEMPTS);
   if(Number.isInteger(value)&&value>=1&&value<=3)return value;
@@ -398,13 +400,14 @@ async function groqReply({brief,messages,styles,task,env,request,designPreferenc
  * documented default, and allow an explicit server-side override.
  */
 async function nvidiaReply({brief,messages,styles,task,env,request,designPreferences=[],sourceCatalog=''}) {
-  const configuredModel=env.NVIDIA_MODEL;
-  const safeModel=typeof configuredModel==='string'&&configuredModel.length<=100&&
-    /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(configuredModel);
-  const model=safeModel?configuredModel:'meta/llama-3.1-8b-instruct';
+  // Only documented Nemotron catalog IDs, never user-provided endpoints.
+  const allowedModels=['nvidia/nemotron-3.5-lightning-30b-a3b',
+    'nvidia/nemotron-3-super-120b-a12b'];
+  const model=allowedModels.includes(env.NVIDIA_MODEL)?env.NVIDIA_MODEL:
+    'nvidia/nemotron-3.5-lightning-30b-a3b';
   const isEvaluation=task==='source-evaluate',isQuery=task==='source-query';
   const isMatch=task==='component-match',isPrompt=task==='prompt',isInsight=task==='insight';
-  const outputLimit=isEvaluation?1700:isQuery?450:isMatch?850:isPrompt?3900:isInsight?1700:1500;
+  const outputLimit=isEvaluation?1800:isQuery?550:isMatch?1100:isPrompt?4300:isInsight?1700:2100;
   const contentLimit=isEvaluation||isMatch?7000:isQuery?2200:isPrompt?13000:isInsight?4500:3500;
   const system=isEvaluation?SOURCE_EVALUATION_SYSTEM:isQuery?SOURCE_QUERY_SYSTEM:
     isMatch?COMPONENT_MATCH_SYSTEM:isPrompt?DESIGN_PROMPT_SYSTEM:
@@ -412,6 +415,17 @@ async function nvidiaReply({brief,messages,styles,task,env,request,designPrefere
   const user=isEvaluation?sourceEvaluationContext(brief,sourceCatalog):
     isQuery?SOURCE_QUERY_CONTEXT(brief):isMatch?componentMatchContext(brief,sourceCatalog):
       contextMessage(brief,styles,designPreferences);
+  // Normalize adjacent turns. Hosted NIM expects alternating roles with a final user message.
+  const dialogue=[{role:'user',content:user}];
+  if(!(isEvaluation||isQuery||isMatch)){
+    for(const m of cleanMessages(messages)){
+      const last=dialogue[dialogue.length-1];
+      if(last.role===m.role)last.content=(last.content+'\n\n'+m.content).slice(-9000);
+      else dialogue.push(m);
+    }
+    if(dialogue[dialogue.length-1].role!=='user')
+      dialogue.push({role:'user',content:'Respond to the latest project request.'});
+  }
   const r=await request('https://integrate.api.nvidia.com/v1/chat/completions',{
     method:'POST',
     headers:{Authorization:'Bearer '+env.NVIDIA_API_KEY,
@@ -421,8 +435,9 @@ async function nvidiaReply({brief,messages,styles,task,env,request,designPrefere
       model,stream:false,
       temperature:isEvaluation||isQuery||isMatch?0.1:isPrompt||isInsight?0.65:0.5,
       max_tokens:outputLimit,
-      messages:[{role:'system',content:system},{role:'user',content:user},
-        ...((isEvaluation||isQuery||isMatch)?[]:cleanMessages(messages))]
+      // Supported by NVIDIA's hosted Nemotron chat API: preserve visible answer budget.
+      chat_template_kwargs:{enable_thinking:false},
+      messages:[{role:'system',content:system},...dialogue]
     })
   });
   if(!r.ok)throw await errorFor('nvidia',r);
@@ -431,6 +446,7 @@ async function nvidiaReply({brief,messages,styles,task,env,request,designPrefere
   const answer=(typeof raw==='string'?raw.trim().slice(0,contentLimit):
     extractText(raw,contentLimit));
   if(!answer)throw new Error('provider-empty-content');
+  if(choice?.message?.refusal)throw new Error('provider-incomplete-content');
   // Incomplete JSON cannot verify publisher relevance, and a truncated
   // response must never be promoted to a finished AI recommendation.
   if(['length','content_filter','error'].includes(choice?.finish_reason))
@@ -458,6 +474,10 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
   });
   const handlers={gemini:geminiReply,openrouter:openRouterReply,groq:groqReply,nvidia:nvidiaReply};
   for(const provider of order){
+    if(provider==='nvidia'&&request===fetch&&nvidiaCooldownUntil>Date.now()){
+      onFailure?.({reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((nvidiaCooldownUntil-Date.now())/1000))});
+      continue;
+    }
     if(provider==='openrouter'&&request===fetch&&openRouterCooldownUntil>Date.now()){
       onFailure?.({reason:'rate-limited',retryAfterSeconds:Math.max(1,Math.ceil((openRouterCooldownUntil-Date.now())/1000))});
       continue;
@@ -466,6 +486,8 @@ export async function designAiReply({brief,messages,styles=[],task='chat',env=pr
       return await handlers[provider]({brief,messages,styles,task,env,request,designPreferences,sourceCatalog});
     }catch(err){
       const reason=safeFailureKind(err);
+      if(provider==='nvidia'&&request===fetch&&reason==='rate-limited')
+        nvidiaCooldownUntil=Math.max(nvidiaCooldownUntil,Date.now()+(err.retryAfterSeconds||90)*1000);
       if(provider==='openrouter'&&request===fetch&&reason==='rate-limited'){
         const seconds=err.retryAfterSeconds||90;
         openRouterCooldownUntil=Math.max(openRouterCooldownUntil,Date.now()+seconds*1000);
