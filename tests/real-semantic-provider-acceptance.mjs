@@ -21,7 +21,7 @@ if(!token){
 const qaModel=process.env.OPENROUTER_MODEL||'openrouter/free';
 if(qaModel.length>100||!/^([a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.:-]+$/.test(qaModel))
   throw Error('Invalid explicitly configured QA OpenRouter model');
-if(qaModel!=='openrouter/free'&&!process.env.FRONTLINE_QA_PAID_MODEL_APPROVED)
+if(qaModel!=='openrouter/free'&&process.env.FRONTLINE_QA_PAID_MODEL_APPROVED!=='true')
   throw Error('Non-free QA model requires explicit approval flag');
 const brief='Design a shared equipment booking and inspection application for public workshop administrators. '+
   'Members reserve available time slots, check booking calendars and view equipment status. '+
