@@ -21,6 +21,8 @@ jobs:
         env:
           FRONTLINE_LIVE_SCREENROVE_CHECK: '1'
         run: node --test tests/screenrove-universal-discovery.test.mjs
+      - name: Probe real first-party publisher coverage for generic functional searches
+        run: node tests/publisher-live-coverage.mjs
       - name: Real model and end-to-end Yes flow on current production baseline
         # This gate measures the currently deployed release, not the
         # un-deployed PR code. Staging with the same AI key is still mandatory
