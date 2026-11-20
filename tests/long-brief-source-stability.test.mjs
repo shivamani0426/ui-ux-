@@ -79,9 +79,14 @@ test('long original brief survives project creation, chat submission, and Yes re
       }
       throw Error('Unsupported publisher mock');
     }
-    if(href==='https://reactbits.dev/sitemap.xml')
-      return Promise.resolve(new Response('<urlset><url><loc>https://reactbits.dev/micro/prompt-bar</loc></url></urlset>',
+    if(href==='https://reactbits.dev/sitemap.xml'){
+      // The publisher adapter intentionally rejects implausibly tiny indexes.
+      const urls=['https://reactbits.dev/micro/prompt-bar',
+        ...Array.from({length:25},(_,i)=>'https://reactbits.dev/components/verified-demo-'+i)];
+      const xml='<urlset>'+urls.map(x=>'<url><loc>'+x+'</loc></url>').join('')+'</urlset>';
+      return Promise.resolve(new Response(xml,
         {status:200,headers:{'Content-Type':'application/xml'}}));
+    }
     return originalFetch(url,options);
   };
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
