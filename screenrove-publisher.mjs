@@ -150,13 +150,19 @@ export async function searchScreenroveReferences({appQuery,landingQuery,appQueri
       // lexical filtering so older non-AI flows remain safe.
       const context=brief||products.join(' ')+' '+marketing.join(' ');
       const grouped=await Promise.all(['product','marketing'].map(async kind=>{
-        const found=[...new Map(searches.filter(x=>x.kind===kind)
-          .flatMap(x=>x.found).filter(x=>x&&x.id)
+        const groups=searches.filter(x=>x.kind===kind).map(x=>x.found);
+        // Interleave genuine publisher hits from both query strategies so a
+        // broad first search cannot crowd out a more precise second search.
+        const alternated=[];
+        const longest=Math.max(0,...groups.map(g=>g.length));
+        for(let index=0;index<longest;index++)
+          for(const group of groups)if(group[index])alternated.push(group[index]);
+        const found=[...new Map(alternated.filter(x=>x&&x.id)
           .map(x=>[x.id,x])).values()];
         const annotated=found.map(item=>({
           ...item,name:item.title||item.name,summary:item.notes||item.description||''
         })).filter(item=>!isUnusablePublisherPage(item,context));
-        const ranked=candidateMode?annotated.slice(0,12):
+        const ranked=candidateMode?annotated.slice(0,Math.max(6,limitPerKind+2)):
           rankPublisherEvidence(context,annotated,{limit:Math.max(4,limitPerKind*2)});
         const detailed=await Promise.all(ranked.map(async item=>{
           try{
