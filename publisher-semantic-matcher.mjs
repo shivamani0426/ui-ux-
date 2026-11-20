@@ -112,7 +112,7 @@ export async function matchPublishedComponents(brief,react,aceternity,{
   if(typeof model==='function'){
     try{
       const answer=await model({
-        brief:String(brief||'').slice(0,2400),
+        brief:String(brief||'').slice(0,7000),
         sourceCatalog:sourceCatalogForModel(items)
       });
       const ranked=parseSemanticSelections(typeof answer==='string'?answer:answer?.text,items,{limit:capacity});
