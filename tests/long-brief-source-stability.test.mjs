@@ -116,6 +116,8 @@ test('long original brief survives project creation, chat submission, and Yes re
     assert.equal(offered.flowStage,'offer-combination');
     assert.equal(offered.sourceSnapshot.applicationMatches.length,1);
     assert.equal(offered.sourceSnapshot.landingMatches.length,1);
+    assert.equal(offered.sourceSnapshot.applicationMatches[0].category,'Original application UI');
+    assert.equal(offered.sourceSnapshot.landingMatches[0].category,'Original landing page');
     const beforeSearches=searches;
     const yes=await api(route,'POST',{message:'Yes',styles:[],simpleDiscovery:true});
     assert.equal(yes.status,200,JSON.stringify(yes.data));
