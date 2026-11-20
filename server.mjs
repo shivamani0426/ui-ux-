@@ -1317,7 +1317,18 @@ const server=http.createServer(async(req,res)=>{
             const chosen=flowStage==='offer-combination'&&sources?
               shownSourceReferences(sources,{brief:p.brief}):null;
             const snapshot=chosen?snapshotPublisherReferences(chosen):null;
+            // Non-sensitive machine-verifiable evidence of which gates
+            // actually ran. A green HTTP response does not prove semantic AI
+            // review happened, so expose status, never private prompts/keys.
+            const quality=sources?{
+              sourceReview:sources.sourceQualityStatus||'unverified',
+              componentReview:sources.componentDiscovery?.matchingStatus||'not-requested',
+              sourceAvailability:sources.screenroveStatus||'unknown',
+              verifiedApplicationLinks:snapshot?.applicationMatches?.length||0,
+              verifiedLandingLinks:snapshot?.landingMatches?.length||0
+            }:null;
             const assistant={role:'assistant',content,source:'publisher',flowStage,
+              ...(quality?{quality}:{}),
               ...(snapshot?{sourceSnapshot:snapshot}:{}),time:new Date().toISOString()};
             messages.push(assistant);
             await updateMessages(owner,id,messages);
