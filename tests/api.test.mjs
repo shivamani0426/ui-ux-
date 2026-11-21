@@ -204,3 +204,39 @@ test('simultaneous writes to the same conversation never silently overwrite a sa
     }
   }finally{await new Promise(resolve=>server.close(resolve))}
 });
+
+test('streamed UTF-8 JSON survives packet boundaries and oversized requests are safely rejected',async()=>{
+  const http=await import('node:http');
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const port=server.address().port;
+  const call=async(payload,splitAt)=>{
+    const bytes=Buffer.from(JSON.stringify(payload));
+    return new Promise((resolve,reject)=>{
+      const request=http.request({host:'127.0.0.1',port,path:'/api/projects',
+        method:'POST',headers:{'Content-Type':'application/json'}},response=>{
+        const chunks=[];
+        response.on('data',chunk=>chunks.push(chunk));
+        response.on('end',()=>resolve({status:response.statusCode,
+          body:JSON.parse(Buffer.concat(chunks).toString('utf8'))}));
+        response.on('error',reject);
+      });
+      request.on('error',reject);
+      request.write(bytes.subarray(0,splitAt));
+      setTimeout(()=>request.end(bytes.subarray(splitAt)),12);
+    });
+  };
+  try{
+    const brief='Build an accessible student learning dashboard with multilingual labels 🧠 and course progress.';
+    const bytes=Buffer.from(JSON.stringify({brief}));
+    const marker=bytes.indexOf(Buffer.from('🧠'));
+    assert.ok(marker>0);
+    const created=await call({brief},marker+1);
+    assert.equal(created.status,201);
+    assert.equal(created.body.project.brief,brief,
+      'No replacement characters may be inserted in split multibyte input');
+    const oversized=await call({brief:'A'.repeat(40000)},19000);
+    assert.equal(oversized.status,413);
+    const alive=await fetch('http://127.0.0.1:'+port+'/api/health');
+    assert.equal(alive.status,200);
+  }finally{await new Promise(resolve=>server.close(resolve))}
+});

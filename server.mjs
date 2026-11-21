@@ -813,12 +813,18 @@ async function readBody(req,limit=MAX_BODY){
   // this content type from a cross-site HTML form.
   if(String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase()!=='application/json')
     throw Object.assign(new Error('Use application/json for API writes.'),{status:415});
-  let buff='';for await(const part of req){
-    buff+=part;
-    if(Buffer.byteLength(buff,'utf8')>limit)
-      throw Object.assign(new Error('Request too large'),{status:413});
+  // Buffer entire bounded UTF-8 payload before decoding: calling Buffer.toString()
+  // separately on streaming chunks corrupts emoji and non-Latin text when a
+  // multibyte character crosses a TCP packet boundary.
+  const chunks=[];let bytes=0;
+  for await(const piece of req){
+    const chunk=Buffer.isBuffer(piece)?piece:Buffer.from(piece);
+    bytes+=chunk.length;
+    if(bytes>limit)throw Object.assign(new Error('Request too large'),{status:413});
+    chunks.push(chunk);
   }
-  try{return JSON.parse(buff||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
+  const body=Buffer.concat(chunks,bytes).toString('utf8');
+  try{return JSON.parse(body||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
 }
 function trustedMutationOrigin(req){
   if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;
@@ -961,7 +967,19 @@ const deployedRevision=()=>{
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
-  if(req.method==='GET'&&req.url==='/api/health')return json(res,200,{status:'ok',database:pg?'connected':'demo-memory',ai:aiConfig().aiEnabled,revision:deployedRevision()});
+  if(req.method==='GET'&&req.url==='/api/health'){
+    // An allocated pool is not proof of a healthy database connection.
+    if(!pg)return json(res,200,{status:'ok',database:'demo-memory',
+      ai:aiConfig().aiEnabled,revision:deployedRevision()});
+    try{
+      await pg.query({text:'SELECT 1',query_timeout:4000});
+      return json(res,200,{status:'ok',database:'connected',
+        ai:aiConfig().aiEnabled,revision:deployedRevision()});
+    }catch{
+      return json(res,503,{status:'degraded',database:'unavailable',
+        ai:aiConfig().aiEnabled,revision:deployedRevision()});
+    }
+  }
   let owner=cookie(req,res);
   const guestOwner=owner;
   try{
