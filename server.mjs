@@ -437,9 +437,29 @@ async function modifyProjectWorkspace(owner,id,revision,build){
   }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}
   finally{client.release();}
 }
-async function updateMessages(owner,id,messages){
-  if(!pg){const p=live.get(id);if(p?.owner===owner){p.messages=messages;p.updatedAt=new Date().toISOString();live.set(id,p);}return;}
-  await pg.query('UPDATE frontline.uic_projects SET messages=$1,updated_at=NOW() WHERE id=$2 AND visitor_id=$3',[JSON.stringify(messages),id,owner]);
+const MAX_CHAT_MESSAGES=200;
+const chatConflict=()=>Object.assign(new Error(
+  'This conversation changed in another tab. Reopen the saved project and retry; no messages were overwritten.'
+),{status:409});
+async function updateMessages(owner,id,messages,expected){
+  // Compare-and-set prevents simultaneous chat requests from silently
+  // discarding a completed Yes response or AI message on another tab.
+  // Never truncate earlier saved conversation turns.
+  if(!pg){
+    const project=live.get(id);
+    if(!project||project.owner!==owner)throw chatConflict();
+    if(JSON.stringify(project.messages||[])!==JSON.stringify(expected||[]))
+      throw chatConflict();
+    project.messages=messages;
+    project.updatedAt=new Date().toISOString();
+    live.set(id,project);
+    return;
+  }
+  const result=await pg.query(`UPDATE frontline.uic_projects
+    SET messages=$1::jsonb,updated_at=NOW()
+    WHERE id=$2 AND visitor_id=$3 AND messages=$4::jsonb`,
+    [JSON.stringify(messages),id,owner,JSON.stringify(expected||[])]);
+  if(result.rowCount!==1)throw chatConflict();
 }
 // Paginate owner-scoped history so accounts with more than 50 conversations
 // can actually reach their full history without fetching every chat message.
@@ -773,9 +793,17 @@ async function claimGuestData(guestOwner,accountOwner){
   }finally{client.release();}
 }
 function cookie(req,res){
-  const pairs=Object.fromEntries((req.headers.cookie||'').split(';').map(v=>v.trim().split('=').map(decodeURIComponent)).filter(a=>a.length===2));
-  let id=pairs[cookieName];
-  if(!id||!/^[a-f0-9-]{36}$/.test(id)){
+  // Cookie is attacker-controlled input. A malformed percent escape must not
+  // throw outside the HTTP error handler and terminate the Node process.
+  let id='';
+  const header=typeof req.headers.cookie==='string'?req.headers.cookie.slice(0,8192):'';
+  for(const pair of header.split(';')){
+    const piece=pair.trim(),separator=piece.indexOf('=');
+    if(separator<1||piece.slice(0,separator).trim()!==cookieName)continue;
+    try{id=decodeURIComponent(piece.slice(separator+1));}catch{id='';}
+    break;
+  }
+  if(!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(id)){
     id=crypto.randomUUID();res.setHeader('Set-Cookie',`${cookieName}=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${isProd?'; Secure':''}`);
   }
   return id;
@@ -885,6 +913,7 @@ async function chatReply(brief,messages,styleIds,preferences={}){
     retryGuidance
   ];
   return {text:lines.join('\n'),source:'guide',
+    provider:failure.provider||aiConfig().aiPrimary,
     failureReason:failure.reason,retryAfterSeconds:failure.retryAfterSeconds||0};
 }
 async function serveFile(req,res){
@@ -1275,7 +1304,10 @@ const server=http.createServer(async(req,res)=>{
         if(req.method==='POST'&&action==='/messages'){
           const b=await readBody(req,32000);if(!validateText(b.message,2,7000))return json(res,400,{error:'Message must be 2–7,000 characters.'});
           if(!Array.isArray(b.styles)||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Invalid styles'});
-          const messages=(Array.isArray(p.messages)?p.messages:[]).slice(-24);
+          const originalMessages=Array.isArray(p.messages)?p.messages:[];
+          if(originalMessages.length+2>MAX_CHAT_MESSAGES)
+            return json(res,409,{error:'This conversation has reached the safe history limit. Start a new project; your existing chat remains saved.'});
+          const messages=originalMessages.slice();
           // Public conversation mode: show only authentic design prompts and links.
           // Components are retrieved and presented only after an explicit Yes.
           if(b.simpleDiscovery===true){
@@ -1318,7 +1350,7 @@ const server=http.createServer(async(req,res)=>{
               ...(quality?{quality}:{}),
               ...(snapshot?{sourceSnapshot:snapshot}:{}),time:new Date().toISOString()};
             messages.push(assistant);
-            await updateMessages(owner,id,messages);
+            await updateMessages(owner,id,messages,originalMessages);
             return json(res,200,{messages,answer:assistant});
           }
           messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
@@ -1329,7 +1361,7 @@ const server=http.createServer(async(req,res)=>{
             ...(response.failureReason?{failureReason:response.failureReason}:{}),
             ...(response.retryAfterSeconds?{retryAfterUntil:new Date(Date.now()+response.retryAfterSeconds*1000).toISOString()}:{}),
             time:new Date().toISOString()});
-          await updateMessages(owner,id,messages);return json(res,200,{messages,answer:response});
+          await updateMessages(owner,id,messages,originalMessages);return json(res,200,{messages,answer:response});
         }
         if(req.method==='POST'&&action==='/export'){
           const b=await readBody(req);if(!Array.isArray(b.styles)||!b.styles.length||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Choose at least one design.'});

@@ -132,3 +132,70 @@ test('Cookie-bound API writes reject cross-origin and non-JSON form submissions'
     assert.equal(cleanup.status,200);
   }finally{await new Promise(resolve=>server.close(resolve))}
 });
+
+test('malformed guest cookie never crashes the HTTP server or leaks another visitor workspace',async()=>{
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base='http://127.0.0.1:'+server.address().port;
+  try{
+    for(const header of ['uic_guest=%ZZ','uic_guest=%E0%A4%A',
+      'uic_guest=wrong-format; Other=abc','uic_guest='+('A'.repeat(40))]){
+      const response=await fetch(base+'/api/profile',{headers:{Cookie:header}});
+      assert.equal(response.status,200);
+      const assigned=response.headers.get('set-cookie')||'';
+      assert.match(assigned,/uic_guest=[a-f0-9-]{36}/);
+    }
+    const alive=await fetch(base+'/api/health');
+    assert.equal((await alive.json()).status,'ok','Malformed headers must not kill the Node process');
+  }finally{await new Promise(resolve=>server.close(resolve))}
+});
+test('chat history preserves more than 24 turns, and reaches an explicit safe cap without deletion',async()=>{
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base='http://127.0.0.1:'+server.address().port;
+  let cookie='';
+  const call=async(path,method='GET',body)=>{
+    const response=await fetch(base+path,{method,headers:{
+      ...(cookie?{Cookie:cookie}:{}),
+      ...(body?{'Content-Type':'application/json'}:{})
+    },body:body?JSON.stringify(body):undefined});
+    cookie=response.headers.get('set-cookie')?.split(';')[0]||cookie;
+    return {status:response.status,body:await response.json()};
+  };
+  try{
+    const project=await call('/api/projects','POST',{
+      brief:'Create an accessible classroom dashboard for project and assignment tracking.'});
+    assert.equal(project.status,201);
+    const id=project.body.project.id,route='/api/projects/'+id+'/messages';
+    for(let i=0;i<14;i++){
+      const r=await call(route,'POST',{message:'Explain dashboard section '+i,styles:[]});
+      assert.equal(r.status,200);
+    }
+    const persisted=await call('/api/projects/'+id);
+    assert.equal(persisted.body.project.messages.length,28,
+      'Previously the oldest messages disappeared after the 13th request');
+    assert.equal(persisted.body.project.messages[0].content,'Explain dashboard section 0');
+  }finally{await new Promise(resolve=>server.close(resolve))}
+});
+test('simultaneous writes to the same conversation never silently overwrite a saved reply',async()=>{
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base='http://127.0.0.1:'+server.address().port;
+  let cookie='';
+  try{
+    const created=await fetch(base+'/api/projects',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({brief:'Design a teacher scheduling dashboard with accessible navigation.'})});
+    cookie=created.headers.get('set-cookie').split(';')[0];
+    const id=(await created.json()).project.id;
+    const path=base+'/api/projects/'+id+'/messages';
+    const send=message=>fetch(path,{method:'POST',headers:{
+      Cookie:cookie,'Content-Type':'application/json'},
+      body:JSON.stringify({message,styles:[]})});
+    const [first,second]=await Promise.all([send('First concurrent dashboard request'),
+      send('Second concurrent dashboard request')]);
+    assert.deepEqual([first.status,second.status].sort(),[200,409],
+      'One concurrent request must receive a retryable conflict instead of erasing another reply');
+    const saved=await fetch(base+'/api/projects/'+id,{headers:{Cookie:cookie}});
+    const body=(await saved.json()).project.messages;
+    assert.equal(body.length,2);
+    assert.ok(['First concurrent dashboard request','Second concurrent dashboard request'].includes(body[0].content));
+  }finally{await new Promise(resolve=>server.close(resolve))}
+});
