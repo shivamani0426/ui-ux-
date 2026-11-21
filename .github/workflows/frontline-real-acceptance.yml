@@ -1,15 +1,14 @@
 name: Frontline genuine live acceptance (release blocker)
+# Explicit operator run only: avoids spending free AI capacity or checking
+# an old production revision while a PR is still undeployed.
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review]
   workflow_dispatch:
 jobs:
   real-provider-release-gate:
     # Do not spend free-tier publisher/AI calls on every draft PR edit.
     # The live deployed SHA must still pass final acceptance after release.
-    # Mark the PR ready for review to re-run the gate; do not auto-merge.
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (startsWith(github.head_ref, 'qa/full-release-') || startsWith(github.head_ref, 'release/'))) }}
+    # Run this workflow manually only AFTER Render reports the candidate revision live.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 9
     permissions:
