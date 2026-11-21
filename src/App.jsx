@@ -31,6 +31,7 @@ const api=async (path,options={})=>{
 };
 const formats={minimal:'Minimal SaaS',glass:'Glass UI',creative:'Creative UI'};
 const styleKeys=['minimal','glass','creative'];
+const providerName=id=>({openrouter:'OpenRouter',groq:'Groq',gemini:'Gemini',nvidia:'NVIDIA'})[id]||'AI';
 const starterNotes=[
   'Design a minimalist student learning platform with an AI tutor and study dashboard.',
   'Create a modern portfolio with cinematic typography and delightful transitions.',
@@ -93,6 +94,9 @@ function App(){
   const [portalState,setPortalState]=useState('opening');
   const [gatePhase,setGatePhase]=useState('');
   const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null),composerDockRef=useRef(null),gateTimer=useRef(null);
+  // An Enter key followed by a submit click can fire before React commits
+  // working=true. Use a synchronous lock to avoid duplicate API/AI calls.
+  const sendInFlightRef=useRef(-1),conversationViewRef=useRef(0);
 
   const notice=(message)=>{
     setToast(message);clearTimeout(toastTimer.current);
@@ -392,7 +396,13 @@ function App(){
     // Read the focused textarea's value on submit. A welcome-to-studio focus
     // transition can render before React's brief state catches up in Firefox.
     const raw=String(rawInput??'').trim();
-    if(working||raw.length<2){if(raw.length<2)notice('Describe what you want to design.');return;}
+    if((working&&sendInFlightRef.current===conversationViewRef.current)||
+      sendInFlightRef.current===conversationViewRef.current||raw.length<2){
+      if(raw.length<2)notice('Describe what you want to design.');
+      return;
+    }
+    const view=conversationViewRef.current;
+    sendInFlightRef.current=view;
     focusChat();
     setBrief('');
     setWorking(true);
@@ -409,31 +419,42 @@ function App(){
         const fullBrief=raw.length<15?'Design a thoughtful user interface based on this request: '+raw:raw;
         const r=await api('/api/projects',{method:'POST',body:JSON.stringify({brief:fullBrief})});
         current=r.project;
-        setProject(current);
-        setProjects(p=>[current,...p]);
+        if(view===conversationViewRef.current){
+          setProject(current);
+          setProjects(p=>[current,...p]);
+        }
         setViewPreview(false);
       }
       const out=await api('/api/projects/'+encodeURIComponent(current.id)+'/messages',{method:'POST',body:JSON.stringify({message:raw,styles:selected,simpleDiscovery:!advancedMode})});
-      setMessages(out.messages||[]);
+      if(view===conversationViewRef.current)setMessages(out.messages||[]);
     }catch(e){
-      setMessages(prev=>[...prev,{role:'assistant',content:'Something went wrong: '+e.message,source:'error'}]);
-    }finally{setWorking(false);}
+      if(view===conversationViewRef.current)
+        setMessages(prev=>[...prev,{role:'assistant',content:'Something went wrong: '+e.message,source:'error'}]);
+    }finally{
+      if(sendInFlightRef.current===view)sendInFlightRef.current=-1;
+      if(view===conversationViewRef.current)setWorking(false);
+    }
   };
   const newChat=()=>{
+    conversationViewRef.current++;
+    setWorking(false);
     setProject(null);setMessages([]);setBrief('');setSelected(styleKeys);setMode('welcome');setPanel('menu');routeTo('/');
     setMenuOpen(false);setViewPreview(false);setFeedback('');setRise(false);setLandingFrame(0);setLandingComposerReady(false);
     window.scrollTo({top:0,behavior:'smooth'});
     setTimeout(()=>textareaRef.current?.focus({preventScroll:true}),150);
   };
   const openProject=async p=>{
+    const view=++conversationViewRef.current;
+    setWorking(false);
     try{
       const r=await api('/api/projects/'+encodeURIComponent(p.id));
+      if(view!==conversationViewRef.current)return;
       setProject(r.project);setMessages(r.project.messages||[]);
       setSelected(Array.isArray(r.project.recommendations?._workspace?.selectedStyles)?
         r.project.recommendations._workspace.selectedStyles:styleKeys);
       setMode('chat');routeTo('/studio');setMenuOpen(false);setViewPreview(false);setBrief('');
       window.scrollTo({top:0,behavior:'instant'});
-    }catch(e){notice(e.message);}
+    }catch(e){if(view===conversationViewRef.current)notice(e.message);}
   };
   const toggleStyle=id=>{
     setSelected(current=>current.includes(id)?current.filter(s=>s!==id):[...current,id]);
@@ -590,7 +611,7 @@ function App(){
           {messages.map((message,i)=><div className={'message-row '+(message.role==='user'?'outgoing':'incoming')} key={i}>
             {message.role!=='user'&&<div className="message-avatar"><FrontlineMark size={25}/></div>}
             <div className={'bubble '+(message.role==='user'?'user-bubble':'ai-bubble')}>
-              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='publisher'?(message.content?.includes('**Matching components and animations**')?'Original component sources':'Original publisher results'):message.source==='guide'?(message.failureReason==='rate-limited'?'OpenRouter rate-limited · guided response':message.failureReason==='timeout'?'OpenRouter timeout · guided response':message.failureReason==='incomplete-output'?'Incomplete AI reply · complete guidance':'Guided recommendations · AI fallback'):message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
+              {message.role!=='user'&&<div className="bubble-label">Frontline UX/UI <span>{message.source==='publisher'?(message.content?.includes('**Matching components and animations**')?'Original component sources':'Original publisher results'):message.source==='guide'?(message.failureReason==='rate-limited'?providerName(message.provider||config.aiPrimary)+' rate-limited · guided response':message.failureReason==='timeout'?providerName(message.provider||config.aiPrimary)+' timeout · guided response':message.failureReason==='incomplete-output'?'Incomplete AI reply · complete guidance':'Guided recommendations · AI fallback'):message.source==='error'?'Error':message.provider==='gemini'?'Gemini AI':message.provider==='openrouter'?'OpenRouter AI':message.provider==='groq'?'Groq AI':message.source==='ai'?'AI design consultant':'Design advisor'}</span></div>}
               {message.role==='user'?<p>{message.content}</p>:<MessageMarkdown content={message.content}/>}
               {message.flowStage==='offer-combination'&&i===messages.length-1&&<div className="simple-source-choices">
                 <button type="button" disabled={working} onClick={()=>send('Yes')}>{message.content?.includes('Would you like matching original UI components')?'Yes, show components':'Yes, combine them'}</button>
@@ -601,10 +622,10 @@ function App(){
                 onClick={()=>{
                   const prior=messages.slice(0,i).reverse().find(m=>m.role==='user');
                   if(prior?.content)send(prior.content);
-                }} title={message.failureReason==='rate-limited'?'Wait for the free provider rate-limit cooldown before retrying':'Make another OpenRouter attempt in this conversation'}>
+                }} title={message.failureReason==='rate-limited'?'Wait for the free provider rate-limit cooldown before retrying':'Make another '+providerName(message.provider||config.aiPrimary)+' attempt in this conversation'}>
                 <RotateCcw size={13} aria-hidden="true"/>
                 {message.failureReason==='rate-limited'&&message.retryAfterUntil&&Date.parse(message.retryAfterUntil)>retryClock
-                  ?'OpenRouter rate-limited · retry later':'Retry with OpenRouter'}
+                  ?providerName(message.provider||config.aiPrimary)+' rate-limited · retry later':'Retry with '+providerName(message.provider||config.aiPrimary)}
               </button>}
             </div>
           </div>)}
@@ -678,7 +699,7 @@ function App(){
             {!active&&<div className="composer-wordmark"><div className="composer-tech"><TechText text="DESIGN BEGINS WITH YOU" fontSize={38} fontWeight={650} reveal="letter" reach={0} labels={false} selection={false} draggable={false} specks={0} sweep={false} clickKick={false} color="currentColor" accentColor="#bd7444" /></div></div>}
             <textarea ref={textareaRef} value={brief} onChange={e=>setBrief(e.target.value)} onFocus={focusChat} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent?.isComposing){e.preventDefault();send(e.currentTarget.value);}}} placeholder="Describe your website, app, or design idea…" rows={active?1:3} maxLength={7000} aria-label="Ask the Frontline UX/UI design advisor" />
             <div className="composer-toolbar">
-              <span className="composer-status"><span className="live-dot"/>{!advancedMode?'Original publisher lookup':config.aiEnabled?(config.aiPrimary==='openrouter'?'OpenRouter configured':'AI configured'):'Design guidance ready'}</span>
+              <span className="composer-status"><span className="live-dot"/>{!advancedMode?'Original publisher lookup':config.aiEnabled?(providerName(config.aiPrimary)+' configured'):'Design guidance ready'}</span>
               <div className="composer-buttons">
                 {advancedMode&&<button type="button" className="tool-button" title="Explore tools" onClick={()=>showMenu('tools')} aria-label="Open design tools"><Plus size={19}/></button>}
                 <button className="submit-button" type="submit" disabled={working||brief.trim().length<2} aria-label="Send message">{working?<RotateCcw size={18} className="spin"/>:<ArrowUp size={19}/>}</button>

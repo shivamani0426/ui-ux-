@@ -139,9 +139,18 @@ export async function searchScreenroveReferences({appQuery,landingQuery,appQueri
       // Search by distinct user jobs and interface patterns, not by one
       // memorized industry query. Every returned URL still needs get_screen.
       const pairs=[...products.map(q=>['product',q]),...marketing.map(q=>['marketing',q])];
+      const retryPublisherRead=async(fn)=>{
+        try{return await fn()}catch(error){
+          if(!/Screenrove MCP HTTP (?:429|500|502|503|504)|TimeoutError|fetch failed/i.test(
+            String(error?.message||'')+' '+String(error?.name||'')))throw error;
+          await new Promise(resolve=>setTimeout(resolve,300));
+          return fn();
+        }
+      };
       const searches=await Promise.all(pairs.map(async([kind,q])=>{
         try{
-          const response=await client.call('search_screens',{q,kind,limit:Math.max(3,Math.min(8,limitPerKind*3)),images:0});
+          const response=await retryPublisherRead(()=>
+            client.call('search_screens',{q,kind,limit:Math.max(3,Math.min(8,limitPerKind*3)),images:0}));
           return {kind,found:entriesFrom(response).slice(0,Math.min(8,limitPerKind*3)),status:'ready'};
         }catch{return {kind,found:[],status:'unavailable'};}
       }));
@@ -166,7 +175,8 @@ export async function searchScreenroveReferences({appQuery,landingQuery,appQueri
           rankPublisherEvidence(context,annotated,{limit:Math.max(4,limitPerKind*2)});
         const detailed=await Promise.all(ranked.map(async item=>{
           try{
-            const record=detailFrom(await client.call('get_screen',{screenId:item.id}));
+            const record=detailFrom(await retryPublisherRead(()=>
+              client.call('get_screen',{screenId:item.id})));
             return verifiedScreenroveReference(item,record,kind);
           }catch{return null;}
         }));
@@ -179,8 +189,11 @@ export async function searchScreenroveReferences({appQuery,landingQuery,appQueri
       const result={status:matches.length?'ready':searches.some(x=>x.status==='unavailable')?'unavailable':'no-matches',
         matches,providerStatus:searches.map(x=>({id:'screenrove-'+x.kind,status:x.status,
           count:matches.filter(m=>m.designType===(x.kind==='product'?'application-ui':'landing-page')).length}))};
-      if(cache.size>40)cache.delete(cache.keys().next().value);
-      cache.set(key,{result,expires:now()+TTL});
+      // A temporary upstream outage must not poison the publisher cache.
+      if(result.status!=='unavailable'){
+        if(cache.size>40)cache.delete(cache.keys().next().value);
+        cache.set(key,{result,expires:now()+TTL});
+      }
       return result;
     }catch{
       return {status:'unavailable',matches:[],providerStatus:[],

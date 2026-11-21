@@ -16,9 +16,9 @@ const openRouterOk=text=>response(200,{choices:[{message:{content:text}}]});
 test('Provider configuration never exposes keys, and no key means no network access',async()=>{
   const env={GEMINI_API_KEY:'super-private-123',OPENROUTER_API_KEY:'another-private-789',GROQ_API_KEY:'groq-private-456',AI_FALLBACK_ENABLED:'true'};
   const config=aiConfig(env);
-  assert.deepEqual(config,{aiEnabled:true,aiProviders:{gemini:true,openrouter:true,groq:true},aiPrimary:'openrouter',aiFallbackProvider:'groq',aiFallbackEnabled:true,aiStatus:'configured-unverified'});
+  assert.deepEqual(config,{aiEnabled:true,aiProviders:{gemini:true,openrouter:true,groq:true,nvidia:false},aiPrimary:'openrouter',aiFallbackProvider:'groq',aiFallbackEnabled:true,aiStatus:'configured-unverified'});
   assert.ok(!JSON.stringify(config).includes('private'));
-  assert.deepEqual(aiConfig({}),{aiEnabled:false,aiProviders:{gemini:false,openrouter:false,groq:false},aiPrimary:'openrouter',aiFallbackProvider:'groq',aiFallbackEnabled:false,aiStatus:'not-configured'});
+  assert.deepEqual(aiConfig({}),{aiEnabled:false,aiProviders:{gemini:false,openrouter:false,groq:false,nvidia:false},aiPrimary:'openrouter',aiFallbackProvider:'groq',aiFallbackEnabled:false,aiStatus:'not-configured'});
   let calls=0;
   const out=await designAiReply({brief,messages,env:{},request:()=>{calls++;throw Error('must not run')}});
   assert.equal(out,null);
@@ -50,7 +50,7 @@ test('Gemini receives server-only key, original project brief and role-mapped co
 
 test('OpenRouter gets same project when Gemini fails, only with explicit fallback permission',async()=>{
   const calls=[];
-  const env={GEMINI_API_KEY:'gemini-key',OPENROUTER_API_KEY:'openrouter-key',AI_PRIMARY_PROVIDER:'gemini',AI_FALLBACK_ENABLED:'true'};
+  const env={GEMINI_API_KEY:'gemini-key',OPENROUTER_API_KEY:'openrouter-key',AI_PRIMARY_PROVIDER:'gemini',AI_FALLBACK_PROVIDER:'openrouter',AI_FALLBACK_ENABLED:'true'};
   const answer=await designAiReply({brief,messages,styles,env,request:async(url,init)=>{
     calls.push({url,init});
     return url.includes('generativelanguage.googleapis.com')
@@ -188,7 +188,7 @@ test('Groq receives a brief only if enabled backup after OpenRouter failure',asy
   assert.ok(!calls[2].init.body.includes('groq-secret'));
   const body=JSON.parse(calls[2].init.body);
   assert.equal(body.model,'openai/gpt-oss-20b');
-  assert.equal(body.max_completion_tokens,1100);
+  assert.equal(body.max_completion_tokens,1500);
   assert.equal(body.reasoning_effort,'low');
   assert.equal(body.include_reasoning,false);
   assert.equal(body.messages.at(-1).content,'Use a calming blue color system');
@@ -443,4 +443,306 @@ test('real shared free key enters a brief 429 cooldown without another upstream 
     assert.equal(failures.length,2);
     assert.ok(failures.every(x=>x.reason==='rate-limited'&&x.retryAfterSeconds>0));
   }finally{globalThis.fetch=nativeFetch;console.warn=originalWarn;}
+});
+
+
+test('NVIDIA server-only adapter uses the official hosted API and does not expose the key',async()=>{
+  const calls=[];
+  const env={NVIDIA_API_KEY:'nvidia-qa-secret',NVIDIA_MODEL:'nvidia/nemotron-3.5-lightning-30b-a3b',AI_PRIMARY_PROVIDER:'nvidia'};
+  const result=await designAiReply({brief,messages:[],styles,task:'source-evaluate',
+    sourceCatalog:'0 | application-ui | Screenrove | Shared bookings | Calendar and available reservation slots',
+    env,request:async(url,init)=>{
+      calls.push({url,init});
+      return response(200,{choices:[{finish_reason:'stop',message:{
+        content:'{"choices":[{"index":0,"fit":5,"reason":"The calendar offers available reservation slots."}]}'
+      }}]});
+    }});
+  assert.equal(result.provider,'nvidia');
+  assert.equal(result.source,'ai');
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,'https://integrate.api.nvidia.com/v1/chat/completions');
+  assert.equal(calls[0].init.headers.Authorization,'Bearer nvidia-qa-secret');
+  const body=JSON.parse(calls[0].init.body);
+  assert.equal(body.model,'nvidia/nemotron-3.5-lightning-30b-a3b');
+  assert.equal(body.stream,false);
+  assert.equal(body.max_tokens,1800);
+  assert.equal(body.chat_template_kwargs.enable_thinking,false);
+  assert.equal(body.messages.length,2);
+  assert.match(body.messages[0].content,/genuine publisher design references/);
+  assert.match(body.messages[1].content,/Shared bookings/);
+  assert.ok(!JSON.stringify(body).includes('nvidia-qa-secret'));
+  assert.equal(aiConfig(env).aiProviders.nvidia,true);
+});
+
+test('Groq 429 falls back to NVIDIA only with explicit permission',async()=>{
+  const calls=[];
+  const env={GROQ_API_KEY:'groq-qa',NVIDIA_API_KEY:'nvidia-qa',OPENROUTER_API_KEY:'unused',
+    AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_PROVIDER:'nvidia',AI_FALLBACK_ENABLED:'true'};
+  const got=await designAiReply({brief,messages:[],env,request:async(url)=>{
+    calls.push(url);
+    if(url.includes('api.groq.com'))return response(429,{error:{message:'quota hit'}});
+    return response(200,{choices:[{finish_reason:'stop',message:{content:'Verified response from independent NVIDIA inference.'}}]});
+  }});
+  assert.equal(got.provider,'nvidia');
+  assert.deepEqual(calls.map(url=>new URL(url).host),['api.groq.com','integrate.api.nvidia.com']);
+  assert.equal(aiConfig(env).aiFallbackProvider,'nvidia');
+});
+
+test('Do not send user requests to NVIDIA without explicit fallback permission',async()=>{
+  const calls=[];
+  const result=await designAiReply({brief,messages:[],env:{
+    GROQ_API_KEY:'groq',NVIDIA_API_KEY:'nvidia',
+    AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_PROVIDER:'nvidia',AI_FALLBACK_ENABLED:'false'
+  },request:async url=>{calls.push(url);return response(429,{error:{message:'quota'}})}});
+  assert.equal(result,null);
+  assert.deepEqual(calls.map(u=>new URL(u).host),['api.groq.com']);
+});
+
+test('NVIDIA failures preserve privacy and never show truncated or empty inference as verified',async()=>{
+  const logs=[];const original=console.warn;console.warn=(...parts)=>logs.push(parts.join(' '));
+  const env={NVIDIA_API_KEY:'private-nvidia-credential',AI_PRIMARY_PROVIDER:'nvidia'};
+  try{
+    const result=await designAiReply({brief,messages:[],env,request:async()=>response(200,{
+      choices:[{finish_reason:'length',message:{content:'{"choices":[{"index":0'}}]} )});
+    assert.equal(result,null);
+    const refused=await designAiReply({brief,messages:[],env,request:async()=>response(401,{
+      error:{message:'private-nvidia-credential must never appear in logs'}})});
+    assert.equal(refused,null);
+    assert.doesNotMatch(logs.join(' '),/private-nvidia-credential/);
+    assert.match(logs.join(' '),/nvidia/);
+  }finally{console.warn=original}
+});
+
+test('NVIDIA configured as missing primary can use an already approved Groq fallback',async()=>{
+  const calls=[];const env={AI_PRIMARY_PROVIDER:'nvidia',AI_FALLBACK_PROVIDER:'groq',
+    AI_FALLBACK_ENABLED:'false',GROQ_API_KEY:'groq-only'};
+  const answer=await designAiReply({brief,messages:[],env,request:async url=>{
+    calls.push(url);return response(200,{choices:[{message:{content:'Groq live backup response'}}]});
+  }});
+  assert.equal(answer.provider,'groq');
+  assert.deepEqual(calls.map(url=>new URL(url).host),['api.groq.com']);
+});
+
+test('NVIDIA defaults to an official Nemotron model and rejects a different catalog family',async()=>{
+  const bodies=[];
+  for(const model of [undefined,'meta/llama-3.1-8b-instruct']){
+    const env={NVIDIA_API_KEY:'fake-secure',AI_PRIMARY_PROVIDER:'nvidia',NVIDIA_MODEL:model};
+    const result=await designAiReply({brief,messages:[],env,request:async(_url,init)=>{
+      bodies.push(JSON.parse(init.body));return openRouterOk('A complete accessible design analysis.');
+    }});
+    assert.equal(result.provider,'nvidia');
+  }
+  assert.ok(bodies.every(b=>b.model==='nvidia/nemotron-3.5-lightning-30b-a3b'));
+  assert.ok(bodies.every(b=>b.chat_template_kwargs.enable_thinking===false));
+});
+test('NVIDIA chat joins repeated roles into alternating turns and ends with user',async()=>{
+  let body;
+  const result=await designAiReply({brief,task:'chat',env:{NVIDIA_API_KEY:'fake',AI_PRIMARY_PROVIDER:'nvidia'},
+    messages:[
+      {role:'user',content:'First requirement'},
+      {role:'user',content:'Second requirement'},
+      {role:'assistant',content:'I will add a page'},
+      {role:'user',content:'Add equipment list'}
+    ],request:async(_,init)=>{body=JSON.parse(init.body);return openRouterOk('Use a filtered equipment table.')}});
+  assert.equal(result.provider,'nvidia');
+  assert.deepEqual(body.messages.map(x=>x.role),['system','user','assistant','user']);
+  assert.match(body.messages[1].content,/Second requirement/);
+  assert.match(body.messages.at(-1).content,/equipment list/);
+});
+test('NVIDIA reasoning-only answer is not accepted as successful provider output',async()=>{
+  const original=console.warn;console.warn=()=>{};
+  try{
+    const result=await designAiReply({brief,env:{NVIDIA_API_KEY:'fake',AI_PRIMARY_PROVIDER:'nvidia'},
+      request:async()=>response(200,{choices:[{finish_reason:'stop',
+        message:{content:'',reasoning_content:'private invisible reasoning'}}]})});
+    assert.equal(result,null);
+  }finally{console.warn=original}
+});
+
+test('Groq real source and component selection use strict schema without relaxing semantic relevance thresholds',async()=>{
+  const sent=[];
+  const env={GROQ_API_KEY:'schema-test',AI_PRIMARY_PROVIDER:'groq',GROQ_MODEL:'openai/gpt-oss-20b'};
+  for(const task of ['source-evaluate','component-match','source-query']){
+    const result=await designAiReply({brief,task,sourceCatalog:'0 | Screenrove | Booking calendar | Timeslots',
+      messages:[],env,request:async(_url,init)=>{
+        const payload=JSON.parse(init.body);sent.push(payload);
+        return response(200,{choices:[{message:{content:task==='source-query'?
+          '{"application":"booking calendar","landing":"community services"}':
+          '{"choices":[{"index":0,'+
+          (task==='source-evaluate'?
+            '"fit":5,"reason":"The displayed calendar supports selecting available booking slots."':
+            '"purpose":"Explains the requested booking steps","utility":"functional"')+'}]}'}}]});
+      }});
+    assert.equal(result?.provider,'groq');
+  }
+  assert.equal(sent.length,3);
+  for(const payload of sent){
+    assert.equal(payload.response_format?.type,'json_schema');
+    assert.equal(payload.response_format?.json_schema?.strict,true);
+    assert.equal(payload.response_format?.json_schema?.schema?.additionalProperties,false);
+    assert.ok(!JSON.stringify(payload).includes('schema-test'));
+  }
+});
+test('Groq free-model ordinary chat does not impose JSON formatting on human explanations',async()=>{
+  let payload;
+  const r=await designAiReply({brief,messages:[],env:{
+    GROQ_API_KEY:'test',AI_PRIMARY_PROVIDER:'groq',GROQ_MODEL:'openai/gpt-oss-20b'
+  },request:async(_,init)=>{payload=JSON.parse(init.body);return openRouterOk('A clear useful dashboard design.')}});
+  assert.equal(r?.provider,'groq');
+  assert.equal(payload.response_format,undefined);
+});
+
+test('Switching Frontline to Groq never silently routes users to an old OpenRouter key',async()=>{
+  const config=aiConfig({AI_PRIMARY_PROVIDER:'groq',OPENROUTER_API_KEY:'legacy',
+    AI_FALLBACK_ENABLED:'true'});
+  assert.equal(config.aiPrimary,'groq');
+  assert.equal(config.aiFallbackProvider,null);
+  let calls=0;
+  const answer=await designAiReply({brief,messages:[],env:{
+    AI_PRIMARY_PROVIDER:'groq',OPENROUTER_API_KEY:'legacy',AI_FALLBACK_ENABLED:'true'
+  },request:async()=>{calls++;return openRouterOk('Unsafe implicit provider transfer')}});
+  assert.equal(answer,null);
+  assert.equal(calls,0);
+});
+test('Groq billing-required is surfaced safely and never causes another unauthorized provider request',async()=>{
+  const failures=[],visited=[];
+  const env={GROQ_API_KEY:'groq-billing-test-key',OPENROUTER_API_KEY:'legacy',
+    AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'};
+  const warn=console.warn,notices=[];console.warn=(...parts)=>notices.push(parts.join(' '));
+  try{
+    const answer=await designAiReply({brief,messages:[],env,
+      onFailure:value=>failures.push(value),request:async(url)=>{
+        visited.push(url);return response(429,{error:{
+          message:'Billing required; private key groq-billing-test-key'}})}});
+    assert.equal(answer,null);
+    assert.equal(visited.length,1);
+    assert.equal(new URL(visited[0]).host,'api.groq.com');
+    assert.equal(failures[0].reason,'billing-required');
+    assert.equal(failures[0].retryAfterSeconds,900);
+    assert.ok(!notices.join(' ').includes('groq-billing-test-key'));
+  }finally{console.warn=warn}
+});
+
+test('NVIDIA hosted trial cannot accidentally become a production fallback',async()=>{
+  const env={NODE_ENV:'production',GROQ_API_KEY:'primary',
+    NVIDIA_API_KEY:'nvidia-trial',AI_PRIMARY_PROVIDER:'groq',
+    AI_FALLBACK_PROVIDER:'nvidia',AI_FALLBACK_ENABLED:'true'};
+  const config=aiConfig(env);
+  assert.equal(config.aiProviders.nvidia,false,'Developer trial cannot serve live users by default');
+  const hosts=[];
+  const got=await designAiReply({brief,messages:[],env,request:async url=>{
+    hosts.push(new URL(url).host);return response(429,{error:{message:'quota limit'}});
+  }});
+  assert.equal(got,null);
+  assert.deepEqual(hosts,['api.groq.com']);
+  assert.equal(aiConfig({...env,NVIDIA_PRODUCTION_LICENSE_APPROVED:'true'}).aiProviders.nvidia,true);
+  assert.equal(aiConfig({...env,GITHUB_ACTIONS:'true',FRONTLINE_ISOLATED_STAGING:'1'}).aiProviders.nvidia,true);
+  assert.equal(aiConfig({...env,FRONTLINE_ISOLATED_STAGING:'1'}).aiProviders.nvidia,false);
+});
+
+test('Groq error callbacks identify their own provider without printing a credential',async()=>{
+  const failures=[];
+  const env={GROQ_API_KEY:'private-test-key',AI_PRIMARY_PROVIDER:'groq',
+    AI_FALLBACK_ENABLED:'false'};
+  const answer=await designAiReply({brief,messages:[],env,
+    onFailure:v=>failures.push(v),request:async()=>response(429,{error:{message:'quota exceeded'}})});
+  assert.equal(answer,null);
+  assert.equal(failures.length,1);
+  assert.equal(failures[0].provider,'groq');
+  assert.equal(failures[0].reason,'rate-limited');
+  assert.ok(!JSON.stringify(failures).includes('private-test-key'));
+});
+
+test('Groq retries one reasoning-only length response with a larger token budget on the same provider',async()=>{
+  const requests=[];
+  const result=await designAiReply({brief,messages:[],task:'source-query',
+    env:{GROQ_API_KEY:'hidden-test-token',OPENROUTER_API_KEY:'never-use',
+      AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+    request:async(url,init)=>{
+      requests.push({url,body:JSON.parse(init.body)});
+      return response(200,requests.length===1?
+        {choices:[{finish_reason:'length',message:{content:null,reasoning_content:'private hidden reasoning'}}]}:
+        {choices:[{finish_reason:'stop',message:{content:'{"application":"booking calendar","landing":"workshop community"}'}}]});
+    }});
+  assert.equal(result.provider,'groq');
+  assert.equal(JSON.parse(result.text).application,'booking calendar');
+  assert.equal(requests.length,2);
+  assert.ok(requests.every(x=>new URL(x.url).host==='api.groq.com'));
+  assert.ok(requests[1].body.max_completion_tokens>requests[0].body.max_completion_tokens);
+  assert.ok(requests[1].body.max_completion_tokens<=6500);
+  assert.ok(requests.every(x=>x.body.reasoning_effort==='low'&&x.body.include_reasoning===false));
+  assert.ok(requests.every(x=>x.body.response_format?.json_schema?.strict===true));
+  assert.ok(!JSON.stringify(requests.map(x=>x.body)).includes('hidden-test-token'));
+});
+test('Groq retries one empty stop completion but never promotes reasoning text as a design',async()=>{
+  let calls=0;const result=await designAiReply({brief,task:'source-evaluate',
+    sourceCatalog:'0 | Screenrove | Booking calendar | slots',
+    env:{GROQ_API_KEY:'fictional',AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+    request:async()=>{
+      calls++;
+      return response(200,{choices:[{finish_reason:'stop',message:{
+        content:calls===1?'':'{"choices":[{"index":0,"fit":5,"reason":"Booking slots are relevant"}]}',
+        reasoning:'private reasoning must never be shown'
+      }}]});
+    }});
+  assert.equal(calls,2);
+  assert.equal(result.provider,'groq');
+  assert.equal(JSON.parse(result.text).choices[0].fit,5);
+});
+test('Groq never returns truncated structured evaluations as confirmed outputs',async()=>{
+  let calls=0;const errors=[];
+  const original=console.warn;console.warn=()=>{};
+  try{
+    const r=await designAiReply({brief,task:'source-evaluate',sourceCatalog:'verified publisher metadata',
+      env:{GROQ_API_KEY:'fictional',AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+      onFailure:v=>errors.push(v),request:async()=>{
+        calls++;return response(200,{choices:[{finish_reason:'length',
+          message:{content:'{"choices":[{"index":0,"fit":5'}}]});
+      }});
+    assert.equal(r,null);
+    assert.equal(calls,2,'Only one Groq recovery call permitted');
+    assert.equal(errors[0].reason,'incomplete-output');
+  }finally{console.warn=original}
+});
+test('Groq never retries filtered/refused responses or forbidden HTTP 429; no legacy fallback',async()=>{
+  for(const payload of [
+    {choices:[{finish_reason:'content_filter',message:{content:''}}]},
+    {choices:[{finish_reason:'stop',message:{content:'',refusal:'no'}}]},
+  ]){
+    let count=0;
+    const oldWarn=console.warn;console.warn=()=>{};
+    try{
+      const answer=await designAiReply({brief,task:'source-query',env:{
+        GROQ_API_KEY:'test',OPENROUTER_API_KEY:'unused',
+        AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+        request:async(url)=>{assert.equal(new URL(url).host,'api.groq.com');count++;return response(200,payload)}});
+      assert.equal(answer,null);assert.equal(count,1);
+    }finally{console.warn=oldWarn}
+  }
+  let count=0;const oldWarn=console.warn;console.warn=()=>{};
+  try{
+    const answer=await designAiReply({brief,task:'source-query',env:{
+      GROQ_API_KEY:'test',OPENROUTER_API_KEY:'unused',
+      AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+      request:async(url)=>{assert.equal(new URL(url).host,'api.groq.com');count++;return response(429,{error:{message:'rate limit'}})}});
+    assert.equal(answer,null);assert.equal(count,1);
+  }finally{console.warn=oldWarn}
+});
+test('Groq all-empty responses stop at two attempts and explain failure without exposing secrets',async()=>{
+  let calls=0;const failures=[];const warnings=[];
+  const previous=console.warn;console.warn=(...parts)=>warnings.push(parts.join(' '));
+  try{
+    const answer=await designAiReply({brief,task:'source-query',env:{
+      GROQ_API_KEY:'no-log-secret',OPENROUTER_API_KEY:'legacy-unused',
+      AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+      onFailure:info=>failures.push(info),request:async url=>{
+        calls++;assert.equal(new URL(url).host,'api.groq.com');
+        return response(200,{choices:[{finish_reason:'stop',message:{content:'',reasoning:'hidden secret reasoning'}}]});
+      }});
+    assert.equal(answer,null);assert.equal(calls,2);
+    assert.equal(failures[0].provider,'groq');
+    assert.equal(failures[0].reason,'empty-output');
+    assert.ok(!JSON.stringify(failures).includes('no-log-secret'));
+    assert.ok(!warnings.join(' ').includes('no-log-secret'));
+  }finally{console.warn=previous}
 });

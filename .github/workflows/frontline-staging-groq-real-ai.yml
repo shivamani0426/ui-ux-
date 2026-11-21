@@ -1,0 +1,88 @@
+name: Frontline candidate Groq-only + Yes end-to-end gate
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+jobs:
+  candidate-real-ai:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (startsWith(github.head_ref, 'qa/full-release-') || startsWith(github.head_ref, 'release/'))) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qa
+          POSTGRES_PASSWORD: local_qa_only
+          POSTGRES_DB: frontline_ai_acceptance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qa -d frontline_ai_acceptance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://qa:local_qa_only@127.0.0.1:5432/frontline_ai_acceptance
+      PORT: '3020'
+      NODE_ENV: production
+      STAGING_TARGET: http://127.0.0.1:3020
+      STAGING_REQUIRE_SEMANTIC_AI: '1'
+      AI_PRIMARY_PROVIDER: groq
+      # Match free production: Groq only, never developer-trial NVIDIA.
+      AI_FALLBACK_ENABLED: 'false'
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL: openai/gpt-oss-20b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require actual model credential (never print token)
+        run: |
+          if [ -z "${GROQ_API_KEY}" ]; then
+            echo 'RELEASE_BLOCKED missing repository Actions Groq secret'
+            exit 1
+          fi
+      - name: Install and build actual PR candidate
+        run: |
+          npm install --omit=dev --ignore-scripts
+          npm run build
+      - name: Apply original migrations to isolated PostgreSQL
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import pg from 'pg';
+          const client = new pg.Client({connectionString:process.env.DATABASE_URL});
+          await client.connect();
+          try {
+            await client.query(fs.readFileSync('tests/frontline-private-schema-ci.sql','utf8'));
+            const res=await client.query("SELECT to_regclass('frontline.uic_projects') AS projects,to_regclass('frontline.design_sources') AS sources");
+            if(!res.rows[0].projects||!res.rows[0].sources)throw Error('schema-incomplete');
+            console.log('QA PostgreSQL migrations validated');
+          } finally { await client.end(); }
+          NODE
+      - name: Start isolated candidate using ONLY genuine Groq model
+        run: |
+          npm start > /tmp/frontline-real-ai-stage.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3020/api/health >/dev/null 2>&1; then
+              echo 'Real-model candidate server responsive'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'RELEASE_BLOCKED staging candidate did not start'
+          grep -Ei 'error|failed|fatal' /tmp/frontline-real-ai-stage.log | tail -n 15 || true
+          exit 1
+      - name: Verify real model decisions inside complete candidate chat, Yes, persistence and cleanup
+        run: node tests/staging-publisher-acceptance.mjs
+      - name: Print sanitized diagnostics on failure
+        if: failure()
+        run: |
+          if [ -f /tmp/frontline-real-ai-stage.log ]; then
+            grep -Ei 'provider unavailable|timeout|empty-content|semantic|error|failed' /tmp/frontline-real-ai-stage.log | tail -n 20 || true
+          fi

@@ -1,0 +1,34 @@
+name: Frontline genuine live acceptance (release blocker)
+# Explicit operator run only: avoids spending free AI capacity or checking
+# an old production revision while a PR is still undeployed.
+on:
+  workflow_dispatch:
+jobs:
+  real-provider-release-gate:
+    # Do not spend free-tier publisher/AI calls on every draft PR edit.
+    # The live deployed SHA must still pass final acceptance after release.
+    # Run this workflow manually only AFTER Render reports the candidate revision live.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Live publisher adapter compatibility (no mocked publisher)
+        env:
+          FRONTLINE_LIVE_SCREENROVE_CHECK: '1'
+        run: node --test tests/screenrove-universal-discovery.test.mjs
+      - name: Probe real first-party publisher coverage for generic functional searches
+        run: node tests/publisher-live-coverage.mjs
+      - name: Real model and end-to-end Yes flow on current production baseline
+        # This gate measures the currently deployed release, not the
+        # un-deployed PR code. Staging with the same AI key is still mandatory
+        # before claiming the PR implementation is live-verified.
+        env:
+          LIVE_ACCEPTANCE: '1'
+          FRONTLINE_LIVE_TARGET: https://ui-compass-studio.onrender.com
+        run: node tests/live-source-acceptance.mjs

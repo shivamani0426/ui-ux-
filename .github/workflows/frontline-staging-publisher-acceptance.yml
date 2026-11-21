@@ -1,0 +1,73 @@
+name: Frontline isolated staging + real publisher acceptance
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  staging-real-publisher:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'qa/full-release-') || startsWith(github.head_ref, 'release/') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qa
+          POSTGRES_PASSWORD: local_qa_only
+          POSTGRES_DB: frontline_acceptance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qa -d frontline_acceptance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://qa:local_qa_only@127.0.0.1:5432/frontline_acceptance
+      PORT: '3019'
+      NODE_ENV: production
+      STAGING_TARGET: http://127.0.0.1:3019
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies without invoking unrelated postinstall
+        run: npm install --omit=dev --ignore-scripts
+      - name: Build actual candidate app
+        run: npm run build
+      - name: Apply original private-schema migrations to disposable PostgreSQL
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import pg from 'pg';
+            const client=new pg.Client({connectionString:process.env.DATABASE_URL});
+            await client.connect();
+            try{
+              await client.query(fs.readFileSync('tests/frontline-private-schema-ci.sql','utf8'));
+              const check=await client.query(\"SELECT to_regclass('frontline.uic_projects') AS projects,to_regclass('frontline.design_sources') AS sources\");
+              if(!check.rows[0].projects||!check.rows[0].sources)throw Error('schema-incomplete');
+              console.log('Original Frontline migrations applied on disposable CI PostgreSQL');
+            }finally{await client.end()}
+          "
+      - name: Start isolated real server (no AI credentials)
+        run: |
+          npm start > /tmp/frontline-qa-server.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3019/api/health >/dev/null; then
+              echo 'Staging server responsive'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'Staging server failed to start'
+          sed -n '1,100p' /tmp/frontline-qa-server.log
+          exit 1
+      - name: Full Yes journey using real Screenrove, Kage, React Bits, Aceternity, and PostgreSQL
+        run: node tests/staging-publisher-acceptance.mjs
+      - name: Bounded server diagnostics after a failure
+        if: failure()
+        run: |
+          grep -Ei 'unavailable|timeout|error|failed' /tmp/frontline-qa-server.log | tail -n 30 || true

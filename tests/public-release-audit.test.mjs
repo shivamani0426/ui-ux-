@@ -51,7 +51,7 @@ test('unavailable, rate-limited, and genuinely unmatched publisher states stay d
     assert.doesNotMatch(reply,/best combination of UI\/UX designs and components/);
   }
 });
-test('source-only result does not synthesize combination; Yes with both creates a separate labeled synthesis',()=>{
+test('a source-only Yes reply remains useful and clearly Frontline-authored; components are never fabricated',()=>{
   const onlyComponent=formatSourceCombination({matches:[],componentMatches:[component]},{brief});
   assert.match(onlyComponent,/Sidebar/);
   assert.doesNotMatch(onlyComponent,/Frontline combined implementation prompt/);
@@ -65,7 +65,10 @@ test('source-only result does not synthesize combination; Yes with both creates 
   assert.match(both,/ui.aceternity.com\/components\/sidebar/);
   assert.ok(!both.includes(original.originalPrompt),'Do not repeat and relabel verbatim prompts');
   const noComponents=formatSourceCombination({matches:[original],componentMatches:[]},{brief});
-  assert.doesNotMatch(noComponents,/Frontline combined implementation prompt/);
+  assert.match(noComponents,/Frontline combined implementation prompt/);
+  assert.match(noComponents,/No verified matching components were found/);
+  assert.match(noComponents,/No matching original component was verified/);
+  assert.doesNotMatch(noComponents,/ui.aceternity.com|reactbits.dev/);
 });
 test('clear punctuation-normalized Yes! stays consent; ambiguous acknowledgements do not',()=>{
   for(const yes of ['Yes','YES!','yes!!!','yes please','Yes, please!','yes.']){

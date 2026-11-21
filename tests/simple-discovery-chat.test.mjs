@@ -79,3 +79,15 @@ test('after consent, absent original designs do not produce an empty section or 
   assert.match(onlyComponents,/ui.aceternity.com\/components\/sidebar/);
   assert.doesNotMatch(onlyComponents,/Frontline combined implementation prompt/);
 });
+
+test('Yes always returns an honest copyable original prompt when real AI rejects all publisher components',()=>{
+  const brief='Create an equipment booking calendar and status workspace';
+  const result=formatSourceCombination({matches:[original],componentMatches:[]},{brief});
+  assert.match(result,/No verified matching components were found/);
+  assert.match(result,/Frontline combined implementation prompt/);
+  assert.match(result,/Design a cohesive interface for: Create an equipment booking calendar/);
+  assert.match(result,/No matching original component was verified/);
+  assert.match(result,/kage.design\/designs\/learning-dashboard/);
+  assert.doesNotMatch(result,/reactbits.dev|ui.aceternity.com/);
+  assert.doesNotMatch(result,/Original publisher prompt: Design a responsive school/);
+});

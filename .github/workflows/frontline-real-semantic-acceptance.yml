@@ -1,0 +1,25 @@
+name: Frontline NVIDIA Nemotron semantic acceptance
+# Explicit operator run only: avoids spending free AI capacity or checking
+# an old production revision while a PR is still undeployed.
+on:
+  workflow_dispatch:
+jobs:
+  grounded-free-model:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      FRONTLINE_REAL_AI_ACCEPTANCE: '1'
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_MODEL: nvidia/nemotron-3.5-lightning-30b-a3b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install server dependencies without running unrelated tests
+        run: npm install --omit=dev --ignore-scripts
+      - name: Verify actual free model ranks verified original publisher screens
+        run: node tests/real-semantic-provider-acceptance.mjs

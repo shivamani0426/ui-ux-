@@ -11,13 +11,14 @@ import {findReactBitsOriginalComponents} from './reactbits-official.mjs';
 import {findAceternityOriginalComponents} from './aceternity-official.mjs';
 import {selectPublisherComponents} from './published-component-selection.mjs';
 import {matchPublishedComponents} from './publisher-semantic-matcher.mjs';
-import {planSourceQueries,fallbackSourceQueries} from './publisher-source-query-plan.mjs';
+import {planResilientPublisherQueries} from './publisher-workflow-queries.mjs';
 import {evaluatePublisherSources} from './publisher-semantic-evaluation.mjs';
 import {searchScreenroveReferences} from './screenrove-publisher.mjs';
 import {formatSourceDiscovery,formatSourceCombination,shownSourceReferences,isAffirmative,isNegative,isAmbiguousConsent} from './simple-discovery-chat.mjs';
 import {persistDiscoveredPublisherSources,snapshotPublisherReferences} from './publisher-source-persistence.mjs';
 import {rankInspirations} from './inspiration-engine.mjs';
 import {aiConfig,designAiReply} from './ai-providers.mjs';
+import {aiFallbackGuidance} from './ai-failure-guidance.mjs';
 import {createDesignPrompt} from './design-intelligence.mjs';
 import {analyzeProject,compareDirections,inspectAdvisorScope} from './project-intelligence.mjs';
 import {derivePrivateLearning,contextForCategory,publicLearningSummary,
@@ -181,21 +182,14 @@ async function makeInspirationResponse(owner,project,{includeComponents=true,for
   }):!forSimpleChat?Promise.resolve({status:'not-requested',matches:[]}):
     process.env.NODE_ENV==='test'&&process.env.FRONTLINE_SCREENROVE_TEST_MOCK!=='1'
     ?Promise.resolve({status:'test-disabled',matches:[]}):
-    planSourceQueries(project.brief,{
-      // Test suites use controlled publisher fixtures; Render's configured
-      // production AI keys must never turn regression tests into live calls.
-      model:process.env.NODE_ENV==='test'?null:
-        brief=>designAiReply({brief,task:'source-query',messages:[],styles:[]})
-    }).then(queries=>{
-      const fallback=fallbackSourceQueries(project.brief);
-      // Two different search strategies: the model's task-to-UI query and a
-      // privacy-safe subject-based alternative. The publisher, not AI, supplies
-      // the authentic links; a separate AI judge checks actual suitability.
-      return searchScreenroveReferences({
-        ...queries,appQueries:[fallback.appQuery],landingQueries:[fallback.landingQuery],
-        brief:project.brief
-      },{candidateMode:true,limitPerKind:6});
-    }).catch(()=>({status:'unavailable',matches:[]}));
+    // Search generic UI jobs first. Reserve the one unreliable free-model
+    // request for judging verified source suitability instead of burning time
+    // on a second, sequential AI call merely to invent search keywords.
+    Promise.resolve(planResilientPublisherQueries(project.brief))
+      .then(queries=>searchScreenroveReferences({
+        ...queries,brief:project.brief
+      },{candidateMode:true,limitPerKind:6}))
+      .catch(()=>({status:'unavailable',matches:[]}));
   const [discovery,screenrove,components,aceternity,raw,picks,personalTags]=await Promise.all([
     discoveryRequest,screenroveRequest,
     componentsRequest,aceternityRequest,
@@ -443,9 +437,29 @@ async function modifyProjectWorkspace(owner,id,revision,build){
   }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}
   finally{client.release();}
 }
-async function updateMessages(owner,id,messages){
-  if(!pg){const p=live.get(id);if(p?.owner===owner){p.messages=messages;p.updatedAt=new Date().toISOString();live.set(id,p);}return;}
-  await pg.query('UPDATE frontline.uic_projects SET messages=$1,updated_at=NOW() WHERE id=$2 AND visitor_id=$3',[JSON.stringify(messages),id,owner]);
+const MAX_CHAT_MESSAGES=200;
+const chatConflict=()=>Object.assign(new Error(
+  'This conversation changed in another tab. Reopen the saved project and retry; no messages were overwritten.'
+),{status:409});
+async function updateMessages(owner,id,messages,expected){
+  // Compare-and-set prevents simultaneous chat requests from silently
+  // discarding a completed Yes response or AI message on another tab.
+  // Never truncate earlier saved conversation turns.
+  if(!pg){
+    const project=live.get(id);
+    if(!project||project.owner!==owner)throw chatConflict();
+    if(JSON.stringify(project.messages||[])!==JSON.stringify(expected||[]))
+      throw chatConflict();
+    project.messages=messages;
+    project.updatedAt=new Date().toISOString();
+    live.set(id,project);
+    return;
+  }
+  const result=await pg.query(`UPDATE frontline.uic_projects
+    SET messages=$1::jsonb,updated_at=NOW()
+    WHERE id=$2 AND visitor_id=$3 AND messages=$4::jsonb`,
+    [JSON.stringify(messages),id,owner,JSON.stringify(expected||[])]);
+  if(result.rowCount!==1)throw chatConflict();
 }
 // Paginate owner-scoped history so accounts with more than 50 conversations
 // can actually reach their full history without fetching every chat message.
@@ -779,9 +793,17 @@ async function claimGuestData(guestOwner,accountOwner){
   }finally{client.release();}
 }
 function cookie(req,res){
-  const pairs=Object.fromEntries((req.headers.cookie||'').split(';').map(v=>v.trim().split('=').map(decodeURIComponent)).filter(a=>a.length===2));
-  let id=pairs[cookieName];
-  if(!id||!/^[a-f0-9-]{36}$/.test(id)){
+  // Cookie is attacker-controlled input. A malformed percent escape must not
+  // throw outside the HTTP error handler and terminate the Node process.
+  let id='';
+  const header=typeof req.headers.cookie==='string'?req.headers.cookie.slice(0,8192):'';
+  for(const pair of header.split(';')){
+    const piece=pair.trim(),separator=piece.indexOf('=');
+    if(separator<1||piece.slice(0,separator).trim()!==cookieName)continue;
+    try{id=decodeURIComponent(piece.slice(separator+1));}catch{id='';}
+    break;
+  }
+  if(!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(id)){
     id=crypto.randomUUID();res.setHeader('Set-Cookie',`${cookieName}=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${isProd?'; Secure':''}`);
   }
   return id;
@@ -791,12 +813,18 @@ async function readBody(req,limit=MAX_BODY){
   // this content type from a cross-site HTML form.
   if(String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase()!=='application/json')
     throw Object.assign(new Error('Use application/json for API writes.'),{status:415});
-  let buff='';for await(const part of req){
-    buff+=part;
-    if(Buffer.byteLength(buff,'utf8')>limit)
-      throw Object.assign(new Error('Request too large'),{status:413});
+  // Buffer entire bounded UTF-8 payload before decoding: calling Buffer.toString()
+  // separately on streaming chunks corrupts emoji and non-Latin text when a
+  // multibyte character crosses a TCP packet boundary.
+  const chunks=[];let bytes=0;
+  for await(const piece of req){
+    const chunk=Buffer.isBuffer(piece)?piece:Buffer.from(piece);
+    bytes+=chunk.length;
+    if(bytes>limit)throw Object.assign(new Error('Request too large'),{status:413});
+    chunks.push(chunk);
   }
-  try{return JSON.parse(buff||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
+  const body=Buffer.concat(chunks,bytes).toString('utf8');
+  try{return JSON.parse(body||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}
 }
 function trustedMutationOrigin(req){
   if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;
@@ -866,15 +894,9 @@ async function chatReply(brief,messages,styleIds,preferences={}){
   }else{
     focus='Start with entry point → main task → progress/feedback → error recovery. Design real content and empty states before decorative treatments.';
   }
-  const unavailableNote=failure.reason==='rate-limited'
-    ?'OpenRouter is currently rate-limited. Repeated requests can consume the free allowance; try again after the cooldown (about '+Math.max(1,Math.ceil((failure.retryAfterSeconds||90)/60))+' minute(s)).'
-    :failure.reason==='timeout'
-      ?'OpenRouter timed out on this request. Free models can be slow or overloaded; the structured guidance below remains available.'
-      :failure.reason==='incomplete-output'
-        ?'OpenRouter stopped before its answer was complete. An unfinished AI answer was not passed off as a final design.'
-        :failure.reason==='scope-conflict'
-          ?'The AI suggestion contradicted an explicitly excluded capability, so Frontline used a scoped design guide instead.'
-          :'OpenRouter did not provide an answer for this request.';
+  const {note:unavailableNote,retry:retryGuidance}=aiFallbackGuidance({
+    ...failure,provider:failure.provider||aiConfig().aiPrimary
+  });
   const lines=[
     '## Project understanding',
     '**Audience:** '+audience,
@@ -894,10 +916,10 @@ async function chatReply(brief,messages,styleIds,preferences={}){
     focus,
     '',
     '*'+unavailableNote+' This is brief-based guidance, not a live model answer. Generate UI/UX can still produce a complete copyable specification.*',
-    ...(failure.reason==='rate-limited'?['*Do not repeatedly press Retry while the provider is rate-limited.*']:
-      ['*You may use Retry with OpenRouter to try again.*'])
+    retryGuidance
   ];
   return {text:lines.join('\n'),source:'guide',
+    provider:failure.provider||aiConfig().aiPrimary,
     failureReason:failure.reason,retryAfterSeconds:failure.retryAfterSeconds||0};
 }
 async function serveFile(req,res){
@@ -945,7 +967,19 @@ const deployedRevision=()=>{
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
-  if(req.method==='GET'&&req.url==='/api/health')return json(res,200,{status:'ok',database:pg?'connected':'demo-memory',ai:aiConfig().aiEnabled,revision:deployedRevision()});
+  if(req.method==='GET'&&req.url==='/api/health'){
+    // An allocated pool is not proof of a healthy database connection.
+    if(!pg)return json(res,200,{status:'ok',database:'demo-memory',
+      ai:aiConfig().aiEnabled,revision:deployedRevision()});
+    try{
+      await pg.query({text:'SELECT 1',query_timeout:4000});
+      return json(res,200,{status:'ok',database:'connected',
+        ai:aiConfig().aiEnabled,revision:deployedRevision()});
+    }catch{
+      return json(res,503,{status:'degraded',database:'unavailable',
+        ai:aiConfig().aiEnabled,revision:deployedRevision()});
+    }
+  }
   let owner=cookie(req,res);
   const guestOwner=owner;
   try{
@@ -1288,7 +1322,10 @@ const server=http.createServer(async(req,res)=>{
         if(req.method==='POST'&&action==='/messages'){
           const b=await readBody(req,32000);if(!validateText(b.message,2,7000))return json(res,400,{error:'Message must be 2–7,000 characters.'});
           if(!Array.isArray(b.styles)||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Invalid styles'});
-          const messages=(Array.isArray(p.messages)?p.messages:[]).slice(-24);
+          const originalMessages=Array.isArray(p.messages)?p.messages:[];
+          if(originalMessages.length+2>MAX_CHAT_MESSAGES)
+            return json(res,409,{error:'This conversation has reached the safe history limit. Start a new project; your existing chat remains saved.'});
+          const messages=originalMessages.slice();
           // Public conversation mode: show only authentic design prompts and links.
           // Components are retrieved and presented only after an explicit Yes.
           if(b.simpleDiscovery===true){
@@ -1317,10 +1354,21 @@ const server=http.createServer(async(req,res)=>{
             const chosen=flowStage==='offer-combination'&&sources?
               shownSourceReferences(sources,{brief:p.brief}):null;
             const snapshot=chosen?snapshotPublisherReferences(chosen):null;
+            // Non-sensitive machine-verifiable evidence of which gates
+            // actually ran. A green HTTP response does not prove semantic AI
+            // review happened, so expose status, never private prompts/keys.
+            const quality=sources?{
+              sourceReview:sources.sourceQualityStatus||'unverified',
+              componentReview:sources.componentDiscovery?.matchingStatus||'not-requested',
+              sourceAvailability:sources.screenroveStatus||'unknown',
+              verifiedApplicationLinks:snapshot?.applicationMatches?.length||0,
+              verifiedLandingLinks:snapshot?.landingMatches?.length||0
+            }:null;
             const assistant={role:'assistant',content,source:'publisher',flowStage,
+              ...(quality?{quality}:{}),
               ...(snapshot?{sourceSnapshot:snapshot}:{}),time:new Date().toISOString()};
             messages.push(assistant);
-            await updateMessages(owner,id,messages);
+            await updateMessages(owner,id,messages,originalMessages);
             return json(res,200,{messages,answer:assistant});
           }
           messages.push({role:'user',content:b.message.trim(),time:new Date().toISOString()});
@@ -1331,7 +1379,7 @@ const server=http.createServer(async(req,res)=>{
             ...(response.failureReason?{failureReason:response.failureReason}:{}),
             ...(response.retryAfterSeconds?{retryAfterUntil:new Date(Date.now()+response.retryAfterSeconds*1000).toISOString()}:{}),
             time:new Date().toISOString()});
-          await updateMessages(owner,id,messages);return json(res,200,{messages,answer:response});
+          await updateMessages(owner,id,messages,originalMessages);return json(res,200,{messages,answer:response});
         }
         if(req.method==='POST'&&action==='/export'){
           const b=await readBody(req);if(!Array.isArray(b.styles)||!b.styles.length||b.styles.some(s=>!STYLES.some(t=>t.id===s)))return json(res,400,{error:'Choose at least one design.'});

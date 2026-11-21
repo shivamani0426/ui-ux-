@@ -1,0 +1,32 @@
+name: Frontline Groq real semantic acceptance
+# Explicit operator run only: avoids spending free AI capacity or checking
+# an old production revision while a PR is still undeployed.
+on:
+  workflow_dispatch:
+jobs:
+  groq-real-model:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    env:
+      FRONTLINE_REAL_AI_ACCEPTANCE: '1'
+      FRONTLINE_TEST_PROVIDER: groq
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL: openai/gpt-oss-20b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require real Groq secret; never print token
+        run: |
+          if [ -z "${GROQ_API_KEY}" ]; then
+            echo 'RELEASE_BLOCKED missing GitHub Actions GROQ_API_KEY'
+            exit 1
+          fi
+      - name: Install dependencies
+        run: npm install --omit=dev --ignore-scripts
+      - name: Verify genuine Groq semantic selection of original publisher designs
+        run: node tests/real-semantic-provider-acceptance.mjs

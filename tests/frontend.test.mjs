@@ -59,3 +59,12 @@ test('chat-first frontend uses upstream React Bits and keeps features accessible
   assert.match(app,/Optional refinement notes/);
   for(const content of components){assert.match(content,/'use client'/);assert.match(content,/import React, \{ useEffect, useRef \} from 'react';/);}
 });
+
+test('public chat accurately names Groq and does not invite paid OpenRouter retries',async()=>{
+  const fs=await import('node:fs/promises');
+  const code=await fs.readFile(new URL('../src/App.jsx',import.meta.url),'utf8');
+  assert.match(code,/providerName\(message\.provider\|\|config\.aiPrimary\)/);
+  assert.match(code,/Groq/);
+  assert.doesNotMatch(code,/'Retry with OpenRouter'/);
+  assert.doesNotMatch(code,/'OpenRouter rate-limited · retry later'/);
+});
