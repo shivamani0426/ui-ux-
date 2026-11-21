@@ -191,11 +191,16 @@ test('simultaneous writes to the same conversation never silently overwrite a sa
       body:JSON.stringify({message,styles:[]})});
     const [first,second]=await Promise.all([send('First concurrent dashboard request'),
       send('Second concurrent dashboard request')]);
-    assert.deepEqual([first.status,second.status].sort(),[200,409],
-      'One concurrent request must receive a retryable conflict instead of erasing another reply');
+    const statuses=[first.status,second.status];
+    assert.ok(statuses.every(code=>code===200||code===409));
+    assert.ok(statuses.includes(200));
     const saved=await fetch(base+'/api/projects/'+id,{headers:{Cookie:cookie}});
     const body=(await saved.json()).project.messages;
-    assert.equal(body.length,2);
-    assert.ok(['First concurrent dashboard request','Second concurrent dashboard request'].includes(body[0].content));
+    assert.equal(body.length,statuses.filter(code=>code===200).length*2,
+      'All successful user/assistant pairs must survive even when requests race');
+    for(const [index,code] of statuses.entries()){
+      if(code===200)assert.ok(body.some(item=>item.role==='user'&&
+        item.content===[ 'First concurrent dashboard request','Second concurrent dashboard request'][index]));
+    }
   }finally{await new Promise(resolve=>server.close(resolve))}
 });

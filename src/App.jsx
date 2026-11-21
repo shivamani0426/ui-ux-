@@ -96,7 +96,7 @@ function App(){
   const endRef=useRef(null),textareaRef=useRef(null),scrollTimer=useRef(null),toastTimer=useRef(null),portalTimer=useRef(null),portalFinishTimer=useRef(null),composerDockRef=useRef(null),gateTimer=useRef(null);
   // An Enter key followed by a submit click can fire before React commits
   // working=true. Use a synchronous lock to avoid duplicate API/AI calls.
-  const sendInFlightRef=useRef(false),conversationViewRef=useRef(0);
+  const sendInFlightRef=useRef(-1),conversationViewRef=useRef(0);
 
   const notice=(message)=>{
     setToast(message);clearTimeout(toastTimer.current);
@@ -396,12 +396,13 @@ function App(){
     // Read the focused textarea's value on submit. A welcome-to-studio focus
     // transition can render before React's brief state catches up in Firefox.
     const raw=String(rawInput??'').trim();
-    if(working||sendInFlightRef.current||raw.length<2){
+    if((working&&sendInFlightRef.current===conversationViewRef.current)||
+      sendInFlightRef.current===conversationViewRef.current||raw.length<2){
       if(raw.length<2)notice('Describe what you want to design.');
       return;
     }
-    sendInFlightRef.current=true;
     const view=conversationViewRef.current;
+    sendInFlightRef.current=view;
     focusChat();
     setBrief('');
     setWorking(true);
@@ -430,7 +431,7 @@ function App(){
       if(view===conversationViewRef.current)
         setMessages(prev=>[...prev,{role:'assistant',content:'Something went wrong: '+e.message,source:'error'}]);
     }finally{
-      sendInFlightRef.current=false;
+      if(sendInFlightRef.current===view)sendInFlightRef.current=-1;
       if(view===conversationViewRef.current)setWorking(false);
     }
   };
