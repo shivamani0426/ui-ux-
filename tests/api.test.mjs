@@ -34,10 +34,17 @@ test('project creation, all-three feedback, history isolation and deletion',asyn
     const list=await call(0,'/api/projects');assert.equal(list.data.projects.length,1);
     const chat=await call(0,`/api/projects/${id}/messages`,'POST',{message:'Plan the pages',styles:selection});
     assert.equal(chat.status,200);assert.equal(chat.data.messages.length,2);
-    assert.equal(chat.data.answer.source,'guide','Test mode must not make real OpenRouter calls');
+    assert.equal(chat.data.answer.source,'guide','Test mode must not make any real AI calls');
     assert.match(chat.data.answer.text,/## Project understanding/);
     assert.match(chat.data.answer.text,/## Recommended UI\/UX direction/);
-    assert.match(chat.data.answer.text,/Retry with OpenRouter/);
+    // Test mode deliberately avoids live API calls; the guidance must name
+    // whichever provider is configured for this deployment, not OpenRouter.
+    const config=await call(0,'/api/config');
+    const providerLabels={groq:'Groq',openrouter:'OpenRouter',
+      gemini:'Gemini',nvidia:'NVIDIA'};
+    const providerLabel=providerLabels[config.data.aiPrimary]||'The AI provider';
+    assert.ok(chat.data.answer.text.includes('Retry with '+providerLabel),
+      'Fallback retry text must identify the configured AI provider');
     const after=await call(0,`/api/projects/${id}`);assert.equal(after.data.project.messages.length,2);
     const generate=await call(0,`/api/projects/${id}/design-prompt`,'POST',{
       mode:'generate',styles:['minimal'],refinement:'Focus on responsive accessibility'
