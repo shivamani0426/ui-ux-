@@ -401,34 +401,72 @@ async function groqReply({brief,messages,styles,task,env,request,designPreferenc
   const model=validModel?configuredModel:'openai/gpt-oss-20b';
   const isGptOss=['openai/gpt-oss-20b','openai/gpt-oss-120b'].includes(model);
   const isSourceEvaluation=task==='source-evaluate';
-  const r=await request('https://api.groq.com/openai/v1/chat/completions',{
-    method:'POST',
-    headers:{
-      Authorization:'Bearer '+env.GROQ_API_KEY,
-      'Content-Type':'application/json',
-    },
-    signal:AbortSignal.timeout(networkTimeout(env)),
-    body:JSON.stringify({
-      model,
-      temperature:['component-match','source-query','source-evaluate'].includes(task)?0.1:task==='prompt'||task==='insight'?0.75:0.65,
-      max_completion_tokens:isSourceEvaluation?1350:task==='source-query'?450:task==='component-match'?850:task==='prompt'?5200:task==='insight'?1700:1100,
-      ...(isGptOss?{reasoning_effort:'low',include_reasoning:false}:{}),
-      ...(groqResponseFormat(task,isGptOss)?{response_format:groqResponseFormat(task,isGptOss)}:{}),
-      messages:[
-        {role:'system',content:isSourceEvaluation?SOURCE_EVALUATION_SYSTEM:task==='source-query'?SOURCE_QUERY_SYSTEM:task==='component-match'?COMPONENT_MATCH_SYSTEM:task==='prompt'?DESIGN_PROMPT_SYSTEM:task==='insight'?DESIGN_INSIGHT_SYSTEM:SYSTEM_PROMPT},
-        {role:'user',content:isSourceEvaluation?sourceEvaluationContext(brief,sourceCatalog):task==='source-query'?SOURCE_QUERY_CONTEXT(brief):task==='component-match'?componentMatchContext(brief,sourceCatalog):contextMessage(brief,styles,designPreferences)},
-        ...(['source-query','component-match','source-evaluate'].includes(task)?[]:cleanMessages(messages)),
-      ],
-    }),
-  });
-  if(!r.ok)throw await errorFor('groq',r);
-  const data=await r.json();
-  const message=data?.choices?.[0]?.message;
-  const answer=typeof message?.content==='string'
-    ?message.content.trim().slice(0,isSourceEvaluation?7000:task==='source-query'?2200:task==='component-match'?7000:task==='prompt'?13000:task==='insight'?4500:2500)
-    :extractText(message?.content,isSourceEvaluation?7000:task==='component-match'?7000:task==='prompt'?13000:task==='insight'?4500:2500);
-  if(!answer)throw new Error('provider-empty-content');
-  return {text:answer,source:'ai',provider:'groq'};
+  const isStructured=['source-query','source-evaluate','component-match'].includes(task);
+  // GPT-OSS hidden reasoning consumes max_completion_tokens even when
+  // include_reasoning=false. Do not starve short JSON generation of tokens.
+  // Keep the first attempt bounded for free-tier quotas.
+  const firstBudget=isSourceEvaluation?1950:task==='source-query'?900:
+    task==='component-match'?1500:task==='prompt'?5200:task==='insight'?1900:1500;
+  const secondBudget=Math.min(6500,Math.max(firstBudget+700,Math.ceil(firstBudget*1.75)));
+  const responseFormat=groqResponseFormat(task,isGptOss);
+  const messagesForModel=[
+    {role:'system',content:isSourceEvaluation?SOURCE_EVALUATION_SYSTEM:
+      task==='source-query'?SOURCE_QUERY_SYSTEM:
+      task==='component-match'?COMPONENT_MATCH_SYSTEM:
+      task==='prompt'?DESIGN_PROMPT_SYSTEM:
+      task==='insight'?DESIGN_INSIGHT_SYSTEM:SYSTEM_PROMPT},
+    {role:'user',content:isSourceEvaluation?sourceEvaluationContext(brief,sourceCatalog):
+      task==='source-query'?SOURCE_QUERY_CONTEXT(brief):
+      task==='component-match'?componentMatchContext(brief,sourceCatalog):
+      contextMessage(brief,styles,designPreferences)},
+    ...(isStructured?[]:cleanMessages(messages)),
+  ];
+  const contentLimit=isSourceEvaluation?7000:task==='source-query'?2200:
+    task==='component-match'?7000:task==='prompt'?13000:
+    task==='insight'?4500:2500;
+  const once=async budget=>{
+    const response=await request('https://api.groq.com/openai/v1/chat/completions',{
+      method:'POST',
+      headers:{
+        Authorization:'Bearer '+env.GROQ_API_KEY,
+        'Content-Type':'application/json',
+      },
+      signal:AbortSignal.timeout(networkTimeout(env)),
+      body:JSON.stringify({
+        model,
+        temperature:isStructured?0.1:task==='prompt'||task==='insight'?0.75:0.65,
+        max_completion_tokens:budget,
+        ...(isGptOss?{reasoning_effort:'low',include_reasoning:false}:{}),
+        ...(responseFormat?{response_format:responseFormat}:{}),
+        messages:messagesForModel,
+      }),
+    });
+    if(!response.ok)throw await errorFor('groq',response);
+    const data=await response.json();
+    const choice=data?.choices?.[0];
+    const raw=choice?.message?.content;
+    // Do not use reasoning_content or reasoning as the public answer.
+    const answer=typeof raw==='string'?raw.trim().slice(0,contentLimit):
+      extractText(raw,contentLimit);
+    return {answer,finish:choice?.finish_reason,refusal:!!choice?.message?.refusal};
+  };
+  let result=await once(firstBudget);
+  const blocked=reply=>reply.refusal||['content_filter','error'].includes(reply.finish);
+  if(blocked(result))throw new Error('provider-incomplete-content');
+  // HTTP 200 is not enough: hidden-reasoning-only and length-clipped outputs
+  // are not usable. At most ONE additional request to the SAME provider.
+  // Never retry rate limits, auth errors, refusals or safety filters.
+  if(!result.answer||result.finish==='length'){
+    const retriable=!result.answer||result.finish==='length';
+    if(retriable){
+      const repeated=await once(secondBudget);
+      result=repeated;
+    }
+  }
+  if(blocked(result)||result.finish==='length')
+    throw new Error('provider-incomplete-content');
+  if(!result.answer)throw new Error('provider-empty-content');
+  return {text:result.answer,source:'ai',provider:'groq'};
 }
 
 

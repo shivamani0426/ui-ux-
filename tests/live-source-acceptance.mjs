@@ -42,8 +42,10 @@ try{
   check(/^[a-f0-9]{12}$/.test(revision),'unverified-live-revision');
   note('production-revision',revision);
   const config=await request('/api/config');
-  check(config.status===200&&config.body.aiProviders?.openrouter===true,'ai-provider-not-configured');
-  note('live-ai-provider','configured-openrouter');
+  check(config.status===200&&config.body.aiPrimary==='groq'&&
+    config.body.aiProviders?.groq===true&&config.body.aiFallbackEnabled===false,
+    'groq-only-primary-not-active');
+  note('live-ai-provider','configured-groq-only');
   const created=await request('/api/projects','POST',{brief});
   check(created.status===201&&/^[a-f0-9-]{36}$/.test(created.body?.project?.id||''),'cannot-create-disposable-project');
   projectId=created.body.project.id;

@@ -188,7 +188,7 @@ test('Groq receives a brief only if enabled backup after OpenRouter failure',asy
   assert.ok(!calls[2].init.body.includes('groq-secret'));
   const body=JSON.parse(calls[2].init.body);
   assert.equal(body.model,'openai/gpt-oss-20b');
-  assert.equal(body.max_completion_tokens,1100);
+  assert.equal(body.max_completion_tokens,1500);
   assert.equal(body.reasoning_effort,'low');
   assert.equal(body.include_reasoning,false);
   assert.equal(body.messages.at(-1).content,'Use a calming blue color system');
@@ -651,4 +651,98 @@ test('Groq error callbacks identify their own provider without printing a creden
   assert.equal(failures[0].provider,'groq');
   assert.equal(failures[0].reason,'rate-limited');
   assert.ok(!JSON.stringify(failures).includes('private-test-key'));
+});
+
+test('Groq retries one reasoning-only length response with a larger token budget on the same provider',async()=>{
+  const requests=[];
+  const result=await designAiReply({brief,messages:[],task:'source-query',
+    env:{GROQ_API_KEY:'hidden-test-token',OPENROUTER_API_KEY:'never-use',
+      AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+    request:async(url,init)=>{
+      requests.push({url,body:JSON.parse(init.body)});
+      return response(200,requests.length===1?
+        {choices:[{finish_reason:'length',message:{content:null,reasoning_content:'private hidden reasoning'}}]}:
+        {choices:[{finish_reason:'stop',message:{content:'{"application":"booking calendar","landing":"workshop community"}'}}]});
+    }});
+  assert.equal(result.provider,'groq');
+  assert.equal(JSON.parse(result.text).application,'booking calendar');
+  assert.equal(requests.length,2);
+  assert.ok(requests.every(x=>new URL(x.url).host==='api.groq.com'));
+  assert.ok(requests[1].body.max_completion_tokens>requests[0].body.max_completion_tokens);
+  assert.ok(requests[1].body.max_completion_tokens<=6500);
+  assert.ok(requests.every(x=>x.body.reasoning_effort==='low'&&x.body.include_reasoning===false));
+  assert.ok(requests.every(x=>x.body.response_format?.json_schema?.strict===true));
+  assert.ok(!JSON.stringify(requests.map(x=>x.body)).includes('hidden-test-token'));
+});
+test('Groq retries one empty stop completion but never promotes reasoning text as a design',async()=>{
+  let calls=0;const result=await designAiReply({brief,task:'source-evaluate',
+    sourceCatalog:'0 | Screenrove | Booking calendar | slots',
+    env:{GROQ_API_KEY:'fictional',AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+    request:async()=>{
+      calls++;
+      return response(200,{choices:[{finish_reason:'stop',message:{
+        content:calls===1?'':'{"choices":[{"index":0,"fit":5,"reason":"Booking slots are relevant"}]}',
+        reasoning:'private reasoning must never be shown'
+      }}]});
+    }});
+  assert.equal(calls,2);
+  assert.equal(result.provider,'groq');
+  assert.equal(JSON.parse(result.text).choices[0].fit,5);
+});
+test('Groq never returns truncated structured evaluations as confirmed outputs',async()=>{
+  let calls=0;const errors=[];
+  const original=console.warn;console.warn=()=>{};
+  try{
+    const r=await designAiReply({brief,task:'source-evaluate',sourceCatalog:'verified publisher metadata',
+      env:{GROQ_API_KEY:'fictional',AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+      onFailure:v=>errors.push(v),request:async()=>{
+        calls++;return response(200,{choices:[{finish_reason:'length',
+          message:{content:'{"choices":[{"index":0,"fit":5'}}]});
+      }});
+    assert.equal(r,null);
+    assert.equal(calls,2,'Only one Groq recovery call permitted');
+    assert.equal(errors[0].reason,'incomplete-output');
+  }finally{console.warn=original}
+});
+test('Groq never retries filtered/refused responses or forbidden HTTP 429; no legacy fallback',async()=>{
+  for(const payload of [
+    {choices:[{finish_reason:'content_filter',message:{content:''}}]},
+    {choices:[{finish_reason:'stop',message:{content:'',refusal:'no'}}]},
+  ]){
+    let count=0;
+    const oldWarn=console.warn;console.warn=()=>{};
+    try{
+      const answer=await designAiReply({brief,task:'source-query',env:{
+        GROQ_API_KEY:'test',OPENROUTER_API_KEY:'unused',
+        AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+        request:async(url)=>{assert.equal(new URL(url).host,'api.groq.com');count++;return response(200,payload)}});
+      assert.equal(answer,null);assert.equal(count,1);
+    }finally{console.warn=oldWarn}
+  }
+  let count=0;const oldWarn=console.warn;console.warn=()=>{};
+  try{
+    const answer=await designAiReply({brief,task:'source-query',env:{
+      GROQ_API_KEY:'test',OPENROUTER_API_KEY:'unused',
+      AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+      request:async(url)=>{assert.equal(new URL(url).host,'api.groq.com');count++;return response(429,{error:{message:'rate limit'}})}});
+    assert.equal(answer,null);assert.equal(count,1);
+  }finally{console.warn=oldWarn}
+});
+test('Groq all-empty responses stop at two attempts and explain failure without exposing secrets',async()=>{
+  let calls=0;const failures=[];const warnings=[];
+  const previous=console.warn;console.warn=(...parts)=>warnings.push(parts.join(' '));
+  try{
+    const answer=await designAiReply({brief,task:'source-query',env:{
+      GROQ_API_KEY:'no-log-secret',OPENROUTER_API_KEY:'legacy-unused',
+      AI_PRIMARY_PROVIDER:'groq',AI_FALLBACK_ENABLED:'false'},
+      onFailure:info=>failures.push(info),request:async url=>{
+        calls++;assert.equal(new URL(url).host,'api.groq.com');
+        return response(200,{choices:[{finish_reason:'stop',message:{content:'',reasoning:'hidden secret reasoning'}}]});
+      }});
+    assert.equal(answer,null);assert.equal(calls,2);
+    assert.equal(failures[0].provider,'groq');
+    assert.equal(failures[0].reason,'empty-output');
+    assert.ok(!JSON.stringify(failures).includes('no-log-secret'));
+    assert.ok(!warnings.join(' ').includes('no-log-secret'));
+  }finally{console.warn=previous}
 });
